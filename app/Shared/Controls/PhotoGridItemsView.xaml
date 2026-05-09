@@ -1,0 +1,76 @@
+<UserControl
+    x:Class="Alpheratz.Shared.Controls.PhotoGridItemsView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Alpheratz.Shared.Controls">
+    <GridView x:Name="PhotoItems"
+              IsItemClickEnabled="True"
+              ItemClick="PhotoItems_ItemClick"
+              SelectionMode="None"
+              Padding="10"
+              ScrollViewer.VerticalScrollBarVisibility="Hidden"
+              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+              SizeChanged="GridView_SizeChanged">
+        <GridView.ItemsPanel>
+            <ItemsPanelTemplate>
+                <ItemsWrapGrid Orientation="Horizontal"
+                               x:Name="PhotoItemsWrapGrid"
+                               ItemWidth="320" ItemHeight="260"
+                               Loaded="PhotoItemsWrapGrid_Loaded"/>
+            </ItemsPanelTemplate>
+        </GridView.ItemsPanel>
+        <GridView.ItemTemplate>
+            <DataTemplate>
+                <Grid Margin="4,4,4,6">
+                    <Border Style="{StaticResource PhotoCardBorderStyle}" PointerEntered="CardBorder_PointerEntered" PointerExited="CardBorder_PointerExited">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="56"/>
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0" Background="{ThemeResource ASurfaceSoft}">
+                                <Image Stretch="UniformToFill"
+                                       DataContextChanged="ThumbImage_DataContextChanged"
+                                       ImageFailed="ThumbImage_Failed"/>
+
+                                <Border HorizontalAlignment="Left" VerticalAlignment="Top"
+                                        Margin="9,9,0,0"
+                                        MinWidth="44" Padding="7,3"
+                                        CornerRadius="999"
+                                        Background="{ThemeResource ASurface}"
+                                        Visibility="{Binding GroupCountVisibility}">
+                                    <TextBlock Text="{Binding GroupCountLabel}"
+                                               FontSize="11" FontWeight="ExtraBold"
+                                               HorizontalAlignment="Center"/>
+                                </Border>
+
+                                <controls:AnimatedFavoriteStar HorizontalAlignment="Right"
+                                                               VerticalAlignment="Bottom"
+                                                               Margin="0,0,9,9"
+                                                               Width="30" Height="30"
+                                                               Liked="{Binding Photo.IsFavorite}"
+                                                               Interactive="True"
+                                                               Loaded="FavoriteStar_Loaded"/>
+                            </Grid>
+
+                            <StackPanel Grid.Row="1" Margin="11,8,11,8" Spacing="2"
+                                        VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Photo.WorldName}"
+                                           FontSize="13"
+                                           FontWeight="Bold"
+                                           Foreground="{ThemeResource AText}"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Text="{Binding Photo.Timestamp}"
+                                           FontFamily="{StaticResource AFontMono}"
+                                           FontSize="11"
+                                           Foreground="{ThemeResource ATextDim}"
+                                           TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </DataTemplate>
+        </GridView.ItemTemplate>
+    </GridView>
+</UserControl>

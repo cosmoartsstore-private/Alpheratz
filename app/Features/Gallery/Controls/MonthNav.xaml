@@ -1,0 +1,15 @@
+<UserControl
+    x:Class="Alpheratz.Features.Gallery.Controls.MonthNav"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border Background="{ThemeResource ASurfaceSoft}"
+            BorderBrush="{ThemeResource ABorder}"
+            BorderThickness="1,0,0,0">
+        <ScrollViewer x:Name="NavScroll"
+                      VerticalScrollBarVisibility="Hidden"
+                      HorizontalScrollBarVisibility="Disabled"
+                      Padding="0,8">
+            <StackPanel x:Name="MonthList" Spacing="0"/>
+        </ScrollViewer>
+    </Border>
+</UserControl>

@@ -1,0 +1,375 @@
+<UserControl
+    x:Class="Alpheratz.Features.Gallery.Controls.GalleryFilterPanel"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:shared="using:Alpheratz.Shared.Controls">
+    <Border Style="{StaticResource SidebarBorderStyle}" Padding="0">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+
+                    <!-- Header -->
+                    <Border Padding="14,12" BorderBrush="{ThemeResource ABorder}" BorderThickness="0,0,0,1"
+                            Background="{ThemeResource ASurfaceSide}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <TextBlock Text="条件検索" FontSize="15" FontWeight="ExtraBold"/>
+                                <Border x:Name="BadgeBorder" Visibility="Collapsed"
+                                        Background="{ThemeResource APrimary}" CornerRadius="999"
+                                        MinWidth="20" Height="20" Padding="6,0">
+                                    <TextBlock x:Name="BadgeText" FontSize="11" FontWeight="Bold"
+                                               Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="リセット" Style="{StaticResource GhostButtonStyle}"
+                                    FontSize="12" FontWeight="Bold" Click="ResetFilters_Click"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- 表示順 (Sort) -->
+                    <StackPanel Spacing="8" Padding="14,12" BorderBrush="{ThemeResource ABorder}" BorderThickness="0,0,0,1">
+                        <TextBlock Text="表示順" Style="{StaticResource SectionTitleStyle}"/>
+                        <Grid ColumnSpacing="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="SortDateBtn" Content="新しい順"
+                                    Style="{StaticResource GhostButtonStyle}" FontSize="12" FontWeight="ExtraBold"
+                                    HorizontalAlignment="Stretch" MinHeight="42" Click="SortDate_Click"/>
+                            <Button x:Name="SortWorldBtn" Grid.Column="1" Content="ワールド名順"
+                                    Style="{StaticResource GhostButtonStyle}" FontSize="12" FontWeight="ExtraBold"
+                                    HorizontalAlignment="Stretch" MinHeight="42" Click="SortWorld_Click"/>
+                        </Grid>
+                    </StackPanel>
+
+                    <!-- 撮影日 (Date) -->
+                    <StackPanel Spacing="8" Padding="14,12" BorderBrush="{ThemeResource ABorder}" BorderThickness="0,0,0,1">
+                        <TextBlock Text="撮影日" Style="{StaticResource SectionTitleStyle}"/>
+
+                        <!-- Date trigger button -->
+                        <Grid ColumnSpacing="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="DateTriggerBtn" Style="{StaticResource GhostButtonStyle}"
+                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                    Padding="10,8" CornerRadius="10" Click="DateTrigger_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <Border Width="24" Height="24" CornerRadius="6"
+                                            BorderBrush="{ThemeResource ABorder}" BorderThickness="1"
+                                            Background="{ThemeResource ASurface}">
+                                        <TextBlock Text="&#x1F4C5;" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <StackPanel Spacing="1">
+                                        <TextBlock Text="撮影日" FontSize="10" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}"/>
+                                        <TextBlock x:Name="DateRangeLabel" Text="すべての期間" FontSize="13" FontWeight="Bold" Foreground="{ThemeResource ATextDim}"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="DateClearBtn" Grid.Column="1" Content="×" Visibility="Collapsed"
+                                    Style="{StaticResource GhostButtonStyle}" FontSize="12" FontWeight="Bold"
+                                    MinWidth="42" Click="DateClear_Click"/>
+                        </Grid>
+
+                        <!-- Date picker popup (collapsed by default) -->
+                        <Border x:Name="DatePickerPopup" Visibility="Collapsed"
+                                Background="{ThemeResource ASurface}" CornerRadius="16"
+                                BorderBrush="{ThemeResource ABorder}" BorderThickness="1">
+                            <StackPanel>
+                                <!-- Calendar header -->
+                                <Border Padding="12,10" BorderBrush="{ThemeResource ABorder}" BorderThickness="0,0,0,1">
+                                    <StackPanel Spacing="2">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <TextBlock Text="&#x1F4C5;" FontSize="12" Foreground="{ThemeResource ATextFaint}"/>
+                                            <TextBlock x:Name="CalendarRangeLabel" Text="すべての期間" FontSize="12" Foreground="{ThemeResource ATextFaint}"/>
+                                        </StackPanel>
+                                        <TextBlock Text="From / To を切り替えて選択します" FontSize="12" Foreground="{ThemeResource ATextFaint}"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- From / To chips -->
+                                <Grid ColumnSpacing="6" Padding="10,8,10,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Button x:Name="FromChipBtn" Style="{StaticResource GhostButtonStyle}"
+                                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                            Padding="10,8" CornerRadius="9" MinHeight="38" Click="FromChip_Click">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="From" FontSize="10" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}"/>
+                                            <TextBlock x:Name="FromValueText" Text="---" FontSize="12" FontWeight="Bold"
+                                                       FontFamily="{StaticResource AFontMono}"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <Button x:Name="ToChipBtn" Grid.Column="1" Style="{StaticResource GhostButtonStyle}"
+                                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                            Padding="10,8" CornerRadius="9" MinHeight="38" Click="ToChip_Click">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="To" FontSize="10" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}"/>
+                                            <TextBlock x:Name="ToValueText" Text="---" FontSize="12" FontWeight="Bold"
+                                                       FontFamily="{StaticResource AFontMono}"/>
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+
+                                <!-- Presets 2x3 -->
+                                <Grid ColumnSpacing="6" RowSpacing="6" Padding="10,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <Button x:Name="PresetTodayBtn" Content="今日" Style="{StaticResource GhostButtonStyle}"
+                                            HorizontalAlignment="Stretch" MinHeight="38" FontSize="12" FontWeight="Bold" CornerRadius="9"
+                                            Click="PresetToday_Click"/>
+                                    <Button x:Name="PresetLast7Btn" Grid.Column="1" Content="直近7日" Style="{StaticResource GhostButtonStyle}"
+                                            HorizontalAlignment="Stretch" MinHeight="38" FontSize="12" FontWeight="Bold" CornerRadius="9"
+                                            Click="PresetLast7Days_Click"/>
+                                    <Button x:Name="PresetThisMonthBtn" Grid.Row="1" Content="今月" Style="{StaticResource GhostButtonStyle}"
+                                            HorizontalAlignment="Stretch" MinHeight="38" FontSize="12" FontWeight="Bold" CornerRadius="9"
+                                            Click="PresetThisMonth_Click"/>
+                                    <Button x:Name="PresetLastMonthBtn" Grid.Row="1" Grid.Column="1" Content="先月" Style="{StaticResource GhostButtonStyle}"
+                                            HorizontalAlignment="Stretch" MinHeight="38" FontSize="12" FontWeight="Bold" CornerRadius="9"
+                                            Click="PresetLastMonth_Click"/>
+                                    <Button x:Name="PresetHalfYearBtn" Grid.Row="2" Content="半年" Style="{StaticResource GhostButtonStyle}"
+                                            HorizontalAlignment="Stretch" MinHeight="38" FontSize="12" FontWeight="Bold" CornerRadius="9"
+                                            Click="PresetHalfYear_Click"/>
+                                    <Button x:Name="PresetOneYearBtn" Grid.Row="2" Grid.Column="1" Content="一年" Style="{StaticResource GhostButtonStyle}"
+                                            HorizontalAlignment="Stretch" MinHeight="38" FontSize="12" FontWeight="Bold" CornerRadius="9"
+                                            Click="PresetOneYear_Click"/>
+                                </Grid>
+
+                                <!-- Month calendar -->
+                                <Border Padding="8,6">
+                                    <StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Button x:Name="MonthPrevBtn" Content="‹" Style="{StaticResource GhostButtonStyle}"
+                                                    MinWidth="34" MinHeight="34" Padding="0" CornerRadius="9" Click="MonthPrev_Click"/>
+                                            <TextBlock x:Name="MonthLabel" Grid.Column="1" FontSize="13" FontWeight="ExtraBold"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            <Button x:Name="MonthNextBtn" Grid.Column="2" Content="›" Style="{StaticResource GhostButtonStyle}"
+                                                    MinWidth="34" MinHeight="34" Padding="0" CornerRadius="9" Click="MonthNext_Click"/>
+                                        </Grid>
+                                        <!-- Weekday headers -->
+                                        <Grid x:Name="WeekdayHeaderGrid" Margin="0,4,0,2"/>
+                                        <!-- Calendar day grid -->
+                                        <Grid x:Name="CalendarDayGrid"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Calendar footer -->
+                                <Border Padding="12,10" BorderBrush="{ThemeResource ABorder}" BorderThickness="0,1,0,0">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Button Content="クリア" Style="{StaticResource GhostButtonStyle}"
+                                                MinWidth="92" FontSize="12" FontWeight="Bold" CornerRadius="9"
+                                                Click="CalendarClear_Click"/>
+                                        <Button Grid.Column="2" Content="確認" Style="{StaticResource PrimaryButtonStyle}"
+                                                MinWidth="92" FontSize="12" FontWeight="Bold" CornerRadius="9"
+                                                Click="CalendarApply_Click"/>
+                                    </Grid>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- 向き (Orientation) -->
+                    <StackPanel Spacing="8" Padding="14,12" BorderBrush="{ThemeResource ABorder}" BorderThickness="0,0,0,1">
+                        <TextBlock Text="向き" Style="{StaticResource SectionTitleStyle}"/>
+                        <Grid ColumnSpacing="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="OrientationAllBtn" Style="{StaticResource GhostButtonStyle}"
+                                    HorizontalAlignment="Stretch" MinHeight="70" CornerRadius="9" Click="OrientationAll_Click">
+                                <StackPanel HorizontalAlignment="Center" Spacing="4">
+                                    <TextBlock Text="&#x229E;" FontSize="18" HorizontalAlignment="Center" Foreground="{ThemeResource ATextDim}"/>
+                                    <TextBlock Text="すべて" FontSize="11" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="OrientationLandscapeBtn" Grid.Column="1" Style="{StaticResource GhostButtonStyle}"
+                                    HorizontalAlignment="Stretch" MinHeight="70" CornerRadius="9" Click="OrientationLandscape_Click">
+                                <StackPanel HorizontalAlignment="Center" Spacing="4">
+                                    <TextBlock Text="&#x229F;" FontSize="18" HorizontalAlignment="Center" Foreground="{ThemeResource ATextDim}"/>
+                                    <TextBlock Text="横長" FontSize="11" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="OrientationPortraitBtn" Grid.Column="2" Style="{StaticResource GhostButtonStyle}"
+                                    HorizontalAlignment="Stretch" MinHeight="70" CornerRadius="9" Click="OrientationPortrait_Click">
+                                <StackPanel HorizontalAlignment="Center" Spacing="4">
+                                    <TextBlock Text="&#x25AF;" FontSize="18" HorizontalAlignment="Center" Foreground="{ThemeResource ATextDim}"/>
+                                    <TextBlock Text="縦長" FontSize="11" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+                    </StackPanel>
+
+                    <!-- タグ (Tags) - dropdown style -->
+                    <StackPanel Spacing="8" Padding="14,12" BorderBrush="{ThemeResource ABorder}" BorderThickness="0,0,0,1">
+                        <TextBlock Text="タグ" Style="{StaticResource SectionTitleStyle}"/>
+                        <Button x:Name="TagTriggerBtn" Style="{StaticResource GhostButtonStyle}"
+                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                Padding="10,8" CornerRadius="10" Click="TagTrigger_Click">
+                            <Grid HorizontalAlignment="Stretch">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Width="24" Height="24" CornerRadius="6"
+                                        BorderBrush="{ThemeResource ABorder}" BorderThickness="1"
+                                        Background="{ThemeResource ASurface}">
+                                    <TextBlock Text="#" FontSize="11" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <StackPanel Grid.Column="1" Spacing="1" Margin="10,0,0,0">
+                                    <TextBlock Text="タグ" FontSize="10" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}"/>
+                                    <TextBlock x:Name="TagSummaryLabel" Text="すべてのタグ" FontSize="13" FontWeight="Bold"
+                                               Foreground="{ThemeResource ATextDim}" TextTrimming="CharacterEllipsis"/>
+                                </StackPanel>
+                                <TextBlock Grid.Column="2" Text="▼" FontSize="10" VerticalAlignment="Center" Foreground="{ThemeResource ATextFaint}"/>
+                            </Grid>
+                        </Button>
+                        <!-- Tag dropdown panel -->
+                        <Border x:Name="TagDropdownPanel" Visibility="Collapsed"
+                                Background="{ThemeResource ASurface}" CornerRadius="16"
+                                BorderBrush="{ThemeResource ABorder}" BorderThickness="1">
+                            <StackPanel>
+                                <Border Padding="10,8" BorderBrush="{ThemeResource ABorder}" BorderThickness="0,0,0,1">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="&#x2315;" FontSize="14" VerticalAlignment="Center" Foreground="{ThemeResource ATextFaint}"/>
+                                        <TextBox x:Name="TagSearchBox" PlaceholderText="タグ名で絞り込む..."
+                                                 BorderThickness="0" Background="Transparent" Padding="0"
+                                                 FontSize="13" HorizontalAlignment="Stretch"
+                                                 TextChanged="TagSearch_TextChanged"/>
+                                    </StackPanel>
+                                </Border>
+                                <ScrollViewer MaxHeight="300" VerticalScrollBarVisibility="Auto">
+                                    <StackPanel x:Name="TagCheckboxList" Spacing="2" Padding="4"/>
+                                </ScrollViewer>
+                                <Border Padding="8,6" BorderBrush="{ThemeResource ABorder}" BorderThickness="0,1,0,0">
+                                    <TextBlock x:Name="TagCountLabel" FontSize="11" Foreground="{ThemeResource ATextFaint}"
+                                               HorizontalAlignment="Center"/>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- ワールド (World) - dropdown style -->
+                    <StackPanel Spacing="8" Padding="14,12" BorderBrush="{ThemeResource ABorder}" BorderThickness="0,0,0,1">
+                        <TextBlock Text="ワールド" Style="{StaticResource SectionTitleStyle}"/>
+                        <Button x:Name="WorldTriggerBtn" Style="{StaticResource GhostButtonStyle}"
+                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                Padding="10,8" CornerRadius="10" Click="WorldTrigger_Click">
+                            <Grid HorizontalAlignment="Stretch">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Width="24" Height="24" CornerRadius="6"
+                                        BorderBrush="{ThemeResource ABorder}" BorderThickness="1"
+                                        Background="{ThemeResource ASurface}">
+                                    <TextBlock Text="&#x1F310;" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <StackPanel Grid.Column="1" Spacing="1" Margin="10,0,0,0">
+                                    <TextBlock Text="ワールド" FontSize="10" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}"/>
+                                    <TextBlock x:Name="WorldSummaryLabel" Text="すべてのワールド" FontSize="13" FontWeight="Bold"
+                                               Foreground="{ThemeResource ATextDim}" TextTrimming="CharacterEllipsis"/>
+                                </StackPanel>
+                                <TextBlock Grid.Column="2" Text="▼" FontSize="10" VerticalAlignment="Center" Foreground="{ThemeResource ATextFaint}"/>
+                            </Grid>
+                        </Button>
+                        <!-- World dropdown panel -->
+                        <Border x:Name="WorldDropdownPanel" Visibility="Collapsed"
+                                Background="{ThemeResource ASurface}" CornerRadius="16"
+                                BorderBrush="{ThemeResource ABorder}" BorderThickness="1">
+                            <StackPanel>
+                                <Border Padding="10,8" BorderBrush="{ThemeResource ABorder}" BorderThickness="0,0,0,1">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="&#x2315;" FontSize="14" VerticalAlignment="Center" Foreground="{ThemeResource ATextFaint}"/>
+                                        <TextBox x:Name="WorldSearchBox" PlaceholderText="ワールド名で絞り込む..."
+                                                 BorderThickness="0" Background="Transparent" Padding="0"
+                                                 FontSize="13" HorizontalAlignment="Stretch"
+                                                 TextChanged="WorldSearch_TextChanged"/>
+                                    </StackPanel>
+                                </Border>
+                                <ScrollViewer MaxHeight="440" VerticalScrollBarVisibility="Auto">
+                                    <StackPanel x:Name="WorldCheckboxList" Spacing="2" Padding="4"/>
+                                </ScrollViewer>
+                                <Border Padding="8,6" BorderBrush="{ThemeResource ABorder}" BorderThickness="0,1,0,0">
+                                    <TextBlock x:Name="WorldCountLabel" FontSize="11" Foreground="{ThemeResource ATextFaint}"
+                                               HorizontalAlignment="Center"/>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- お気に入り (Favorites) -->
+                    <StackPanel Spacing="8" Padding="14,12">
+                        <TextBlock Text="お気に入り" Style="{StaticResource SectionTitleStyle}"/>
+                        <Button x:Name="FavoriteToggleBtn"
+                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                Padding="14,11" CornerRadius="14"
+                                Background="{ThemeResource ASurfaceSoft}"
+                                BorderBrush="{ThemeResource ABorder}"
+                                BorderThickness="1"
+                                Click="FavoriteToggle_Click">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <shared:AnimatedFavoriteStar x:Name="FavoriteStarIcon"
+                                    Liked="False" Interactive="False"
+                                    Width="22" Height="22"/>
+                                <TextBlock x:Name="FavoriteLabel" Text="お気に入りのみ"
+                                           FontSize="13" FontWeight="ExtraBold"
+                                           Foreground="{ThemeResource ATextDim}"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+
+                    <!-- Hidden buttons for code-behind compatibility (folder/grouping) -->
+                    <Button x:Name="FolderAllBtn" Visibility="Collapsed" Click="FolderAll_Click"/>
+                    <Button x:Name="FolderPrimaryBtn" Visibility="Collapsed" Click="FolderPrimary_Click"/>
+                    <Button x:Name="FolderSecondaryBtn" Visibility="Collapsed" Click="FolderSecondary_Click"/>
+                    <Button x:Name="GroupNoneBtn" Visibility="Collapsed" Click="GroupNone_Click"/>
+                    <Button x:Name="GroupWorldBtn" Visibility="Collapsed" Click="GroupWorld_Click"/>
+
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Bottom count -->
+            <Border Grid.Row="1" Padding="14,10"
+                    BorderBrush="{ThemeResource ABorder}" BorderThickness="0,1,0,0">
+                <TextBlock FontSize="12" Foreground="{ThemeResource ATextFaint}" HorizontalAlignment="Center">
+                    <Run x:Name="FilteredCountRun" Text="0"/><Run Text="枚"/><Run Text=" 該当"/>
+                </TextBlock>
+            </Border>
+        </Grid>
+    </Border>
+</UserControl>

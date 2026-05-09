@@ -1,0 +1,43 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS related
+.DS_Store
+Thumbs.db
+
+# --- .NET / Visual Studio ---
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.userprefs
+*.dbmdl
+*.visualstate
+*.DotSettings.user
+.vs/
+
+# --- Project Specific ---
+/BuildWorks/artifacts/
+/BuildWorks/cargo-target/
+/BuildWorks/*.exe
+/BuildWorks/runtime/
+/app/artifacts/
+/app/build.binlog
+/app/xaml_stderr.txt
+/app/xaml_stdout.txt
+/artifacts/
+/frontend/

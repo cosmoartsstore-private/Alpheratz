@@ -1,0 +1,18 @@
+<UserControl
+    x:Class="Alpheratz.Features.Gallery.Controls.GalleryGridStage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:shared="using:Alpheratz.Shared.Controls"
+    xmlns:galleryControls="using:Alpheratz.Features.Gallery.Controls">
+    <Grid Background="{ThemeResource ASurface}">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition x:Name="MonthNavColumn" Width="56"/>
+        </Grid.ColumnDefinitions>
+        <shared:PhotoGrid x:Name="PhotoGridControl" Grid.Column="0"/>
+        <galleryControls:GalleryMasonryView x:Name="MasonryViewControl" Grid.Column="0"
+                                            HorizontalAlignment="Stretch" Visibility="Collapsed"/>
+        <shared:EmptyState x:Name="EmptyStateControl" Grid.Column="0" Visibility="Collapsed"/>
+        <galleryControls:MonthNav x:Name="MonthNavControl" Grid.Column="1"/>
+    </Grid>
+</UserControl>

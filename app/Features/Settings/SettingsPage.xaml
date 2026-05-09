@@ -1,0 +1,87 @@
+<Page
+    x:Class="Alpheratz.Features.Settings.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="{ThemeResource ASurface}">
+    <ScrollViewer>
+        <StackPanel Padding="48,58,48,32" Spacing="28">
+            <TextBlock Text="設定" Style="{StaticResource HeadingTextStyle}"/>
+
+            <Grid ColumnSpacing="18">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Spacing="10">
+                    <TextBlock Text="写真フォルダ 1st" FontWeight="SemiBold"/>
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBox Text="{Binding PhotoFolderPath}" IsReadOnly="True"/>
+                        <Button Grid.Column="1" Content="変更" Style="{StaticResource PrimaryButtonStyle}" Click="ChoosePrimaryFolder_Click"/>
+                        <Button Grid.Column="2" Content="リセット" Style="{StaticResource GhostButtonStyle}" Click="ResetPrimaryFolder_Click"/>
+                    </Grid>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="10">
+                    <TextBlock Text="写真フォルダ 2nd" FontWeight="SemiBold"/>
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBox Text="{Binding SecondaryPhotoFolderPath}" IsReadOnly="True"/>
+                        <Button Grid.Column="1" Content="変更" Style="{StaticResource PrimaryButtonStyle}" Click="ChooseSecondaryFolder_Click"/>
+                        <Button Grid.Column="2" Content="リセット" Style="{StaticResource GhostButtonStyle}" Click="ResetSecondaryFolder_Click"/>
+                    </Grid>
+                </StackPanel>
+            </Grid>
+
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="ログイン時に起動" FontWeight="SemiBold"/>
+                    <TextBlock Text="Windows ログイン時に Alpheratz を自動起動します。" Style="{StaticResource HintTextStyle}"/>
+                </StackPanel>
+                <ToggleSwitch Grid.Column="1" IsOn="{Binding StartupEnabled, Mode=TwoWay}" Toggled="StartupToggle_Toggled"/>
+            </Grid>
+
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="テーマ" FontWeight="SemiBold"/>
+                    <TextBlock Text="アプリの外観テーマを切り替えます。" Style="{StaticResource HintTextStyle}"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Button Content="ライト" Style="{StaticResource GhostButtonStyle}" Click="ThemeLight_Click"/>
+                    <Button Content="ダーク" Style="{StaticResource GhostButtonStyle}" Click="ThemeDark_Click"/>
+                </StackPanel>
+            </Grid>
+
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="StellaRecord 連携" FontWeight="SemiBold"/>
+                    <TextBlock Text="StellaRecord のランチャーにこのアプリを登録します。" Style="{StaticResource HintTextStyle}"/>
+                </StackPanel>
+                <Button Grid.Column="1" Content="登録" Style="{StaticResource PrimaryButtonStyle}" Click="RegisterStellaRecord_Click"/>
+            </Grid>
+
+            <StackPanel Spacing="10">
+                <TextBlock Text="ワールド情報の一括解決" FontWeight="SemiBold"/>
+                <TextBlock Text="ワールドが不明な写真に対して pHash 解析でワールドを推定します。処理には時間がかかる場合があります。" Style="{StaticResource HintTextStyle}"/>
+                <Button Content="解析を開始" Style="{StaticResource PrimaryButtonStyle}" Click="StartWorldAnalysis_Click"/>
+            </StackPanel>
+
+            <Border Padding="20"
+                    CornerRadius="{StaticResource ARadiusLg}"
+                    BorderBrush="{ThemeResource ABorder}"
+                    BorderThickness="1"
+                    Background="{ThemeResource ASurfaceSoft}">
+                <StackPanel Orientation="Horizontal" Spacing="16" HorizontalAlignment="Center">
+                    <Border Width="52" Height="52" CornerRadius="26">
+                        <Border.Background>
+                            <ImageBrush ImageSource="ms-appx:///Assets/avatar.jpg" Stretch="UniformToFill"/>
+                        </Border.Background>
+                    </Border>
+                    <StackPanel VerticalAlignment="Center" Spacing="2">
+                        <TextBlock Text="CosmoArtsStore" FontSize="15" FontWeight="SemiBold"/>
+                        <TextBlock Text="by ぷらねっと" Style="{StaticResource HintTextStyle}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

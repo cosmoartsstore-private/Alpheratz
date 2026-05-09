@@ -1,0 +1,32 @@
+<UserControl
+    x:Class="Alpheratz.Shared.Controls.AnimatedFavoriteStar"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    x:Name="Root">
+    <Grid>
+        <!-- Radial glow layer -->
+        <Ellipse x:Name="Glow" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                 Margin="-6" Opacity="0">
+            <Ellipse.Fill>
+                <RadialGradientBrush>
+                    <GradientStop Color="#47FBBF24" Offset="0.0"/>
+                    <GradientStop Color="#0FFDE68A" Offset="0.5"/>
+                    <GradientStop Color="#00000000" Offset="1.0"/>
+                </RadialGradientBrush>
+            </Ellipse.Fill>
+        </Ellipse>
+
+        <Button x:Name="InteractiveButton" Padding="0" BorderThickness="0" Background="Transparent"
+                HorizontalAlignment="Center" VerticalAlignment="Center"
+                Click="InteractiveButton_Click">
+            <Viewbox Width="18" Height="18">
+                <Path x:Name="Star"
+                      Data="M12,2L15.09,8.26L22,9.27L17,14.14L18.18,21.02L12,17.77L5.82,21.02L7,14.14L2,9.27L8.91,8.26L12,2Z"
+                      Fill="{Binding StarFill, ElementName=Root}"
+                      Stroke="{Binding StarStroke, ElementName=Root}"
+                      StrokeThickness="1.2"
+                      StrokeLineJoin="Round"/>
+            </Viewbox>
+        </Button>
+    </Grid>
+</UserControl>

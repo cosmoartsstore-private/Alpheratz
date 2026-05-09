@@ -1,0 +1,107 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Header icon button (square 34x34) -->
+    <Style x:Key="HeaderIconButtonStyle" TargetType="Button">
+        <Setter Property="Width" Value="34"/>
+        <Setter Property="Height" Value="34"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="CornerRadius" Value="17"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{ThemeResource ATextDim}"/>
+    </Style>
+
+    <!-- Header pill button (text + bold) -->
+    <Style x:Key="HeaderPillButtonStyle" TargetType="Button">
+        <Setter Property="MinHeight" Value="34"/>
+        <Setter Property="Padding" Value="12,6"/>
+        <Setter Property="CornerRadius" Value="17"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{ThemeResource ATextDim}"/>
+        <Setter Property="FontWeight" Value="ExtraBold"/>
+    </Style>
+
+    <!-- Primary call-to-action -->
+    <Style x:Key="PrimaryButtonStyle" TargetType="Button">
+        <Setter Property="MinHeight" Value="36"/>
+        <Setter Property="Padding" Value="14,8"/>
+        <Setter Property="CornerRadius" Value="{StaticResource ARadiusMd}"/>
+        <Setter Property="Background" Value="{ThemeResource APrimary}"/>
+        <Setter Property="BorderBrush" Value="{ThemeResource APrimary}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+
+    <!-- Ghost / secondary button -->
+    <Style x:Key="GhostButtonStyle" TargetType="Button">
+        <Setter Property="MinHeight" Value="34"/>
+        <Setter Property="Padding" Value="12,7"/>
+        <Setter Property="CornerRadius" Value="{StaticResource ARadiusMd}"/>
+        <Setter Property="Background" Value="{ThemeResource ASurfaceSoft}"/>
+        <Setter Property="BorderBrush" Value="{ThemeResource ABorder}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Foreground" Value="{ThemeResource ATextDim}"/>
+    </Style>
+
+    <!-- Destructive primary -->
+    <Style x:Key="DangerButtonStyle" TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
+        <Setter Property="Background" Value="{ThemeResource ADangerSolid}"/>
+        <Setter Property="BorderBrush" Value="{ThemeResource ADangerSolid}"/>
+    </Style>
+
+    <!-- Outline (transparent + colored border) -->
+    <Style x:Key="OutlineButtonStyle" TargetType="Button">
+        <Setter Property="MinHeight" Value="34"/>
+        <Setter Property="Padding" Value="12,7"/>
+        <Setter Property="CornerRadius" Value="{StaticResource ARadiusMd}"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="{ThemeResource ABorderStrong}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Foreground" Value="{ThemeResource APrimary}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+
+    <!-- Left rail nav button (legacy left-rail-button) -->
+    <Style x:Key="RailButtonStyle" TargetType="Button">
+        <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        <Setter Property="MinHeight" Value="44"/>
+        <Setter Property="Padding" Value="12,10"/>
+        <Setter Property="CornerRadius" Value="{StaticResource ARadiusMd}"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Foreground" Value="{ThemeResource ATextDim}"/>
+        <Setter Property="FontWeight" Value="Bold"/>
+    </Style>
+
+    <!-- Active rail nav button (selected state) -->
+    <Style x:Key="RailButtonActiveStyle" TargetType="Button" BasedOn="{StaticResource RailButtonStyle}">
+        <Setter Property="Background" Value="{ThemeResource APrimarySoft}"/>
+        <Setter Property="Foreground" Value="{ThemeResource APrimary}"/>
+    </Style>
+
+    <!-- Disabled rail nav button (non-interactive, visually muted) -->
+    <Style x:Key="RailButtonDisabledStyle" TargetType="Button" BasedOn="{StaticResource RailButtonStyle}">
+        <Setter Property="IsEnabled" Value="False"/>
+        <Setter Property="Opacity" Value="0.35"/>
+        <Setter Property="Foreground" Value="{ThemeResource ATextFaint}"/>
+    </Style>
+
+    <!-- Pill chip button (filter chip with × icon) -->
+    <Style x:Key="ChipButtonStyle" TargetType="Button">
+        <Setter Property="Padding" Value="8,3"/>
+        <Setter Property="CornerRadius" Value="{StaticResource ARadiusPill}"/>
+        <Setter Property="Background" Value="{ThemeResource APrimarySoft}"/>
+        <Setter Property="BorderBrush" Value="{ThemeResource ABorderStrong}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Foreground" Value="{ThemeResource APrimary}"/>
+        <Setter Property="FontSize" Value="{StaticResource AFontSizeXs}"/>
+    </Style>
+</ResourceDictionary>

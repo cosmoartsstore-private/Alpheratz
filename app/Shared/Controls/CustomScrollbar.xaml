@@ -1,0 +1,31 @@
+<UserControl
+    x:Class="Alpheratz.Shared.Controls.CustomScrollbar"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Width="12">
+    <Grid x:Name="Track"
+          Background="Transparent"
+          PointerEntered="Track_PointerEntered"
+          PointerExited="Track_PointerExited"
+          PointerPressed="Track_PointerPressed"
+          PointerMoved="Track_PointerMoved"
+          PointerReleased="Track_PointerReleased">
+        <!-- Track rail (subtle pill behind the thumb) -->
+        <Border x:Name="TrackRail"
+                Margin="4,0"
+                CornerRadius="999"
+                Background="{ThemeResource AScrollbarTrack}"
+                Opacity="0"/>
+        <!-- Thumb (pill, animated to thicker on hover) -->
+        <Border x:Name="Thumb"
+                Width="6"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Top"
+                CornerRadius="999"
+                Background="{ThemeResource AScrollbarThumb}">
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="ThumbTransform"/>
+            </Border.RenderTransform>
+        </Border>
+    </Grid>
+</UserControl>

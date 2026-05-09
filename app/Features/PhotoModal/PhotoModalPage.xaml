@@ -1,0 +1,330 @@
+<Page
+    x:Class="Alpheratz.Features.PhotoModal.PhotoModalPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:shared="using:Alpheratz.Shared.Controls"
+    Background="Transparent"
+    IsTabStop="True"
+    Loaded="Page_Loaded"
+    KeyDown="Page_KeyDown">
+    <Page.Resources/>
+    <Grid Background="Transparent" Tapped="Backdrop_Tapped">
+        <Border MaxWidth="1480"
+                MaxHeight="900"
+                Margin="32"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                CornerRadius="28"
+                Background="{ThemeResource ASurface}"
+                BorderBrush="{ThemeResource ABorder}"
+                BorderThickness="1"
+                Tapped="ModalContent_Tapped">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="420"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- ═══ Image panel (left) ═══ -->
+                <Grid x:Name="ImagePanel" Grid.Column="0" Background="#000000"
+                      CornerRadius="28,0,0,28">
+                    <Image x:Name="ModalImage" Stretch="Uniform"/>
+
+                    <!-- Back button (top-left) -->
+                    <Button x:Name="BackButton"
+                            HorizontalAlignment="Left" VerticalAlignment="Top"
+                            Margin="14"
+                            Width="34" Height="34" CornerRadius="17"
+                            Background="{ThemeResource ASurface}"
+                            BorderBrush="{ThemeResource ABorder}"
+                            BorderThickness="1"
+                            IsEnabled="{Binding state.CanGoBack}"
+                            Click="BackButton_Click">
+                        <shared:AppIcon IconName="back" IconSize="14" Foreground="{ThemeResource AText}"/>
+                    </Button>
+
+
+                    <!-- Similar photos strip (bottom of image) -->
+                    <Border x:Name="SimilarPhotosStrip" Visibility="Collapsed"
+                            HorizontalAlignment="Stretch" VerticalAlignment="Bottom"
+                            Margin="14,0,14,42"
+                            Padding="12,10"
+                            CornerRadius="18"
+                            Background="#C8000000"
+                            BorderBrush="#20FFFFFF"
+                            BorderThickness="1">
+                        <StackPanel Spacing="8">
+                            <TextBlock x:Name="SimilarPhotosHint"
+                                       FontSize="12" FontWeight="ExtraBold"
+                                       Foreground="#BBFFFFFF"/>
+                            <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                          VerticalScrollBarVisibility="Disabled"
+                                          HorizontalScrollMode="Enabled">
+                                <StackPanel x:Name="SimilarPhotosList"
+                                            Orientation="Horizontal" Spacing="8"/>
+                            </ScrollViewer>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Filename overlay (bottom-right) -->
+                    <Border HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                            Margin="14"
+                            MaxWidth="500"
+                            Padding="10,6"
+                            CornerRadius="10"
+                            Background="#85000000"
+                            BorderBrush="#1FFFFFFF"
+                            BorderThickness="1">
+                        <TextBlock Text="{Binding state.SelectedPhoto.PhotoFilename}"
+                                   Foreground="#D1FFFFFF"
+                                   FontSize="11"
+                                   TextWrapping="Wrap"/>
+                    </Border>
+                </Grid>
+
+                <!-- ═══ Info panel (right) ═══ -->
+                <Grid Grid.Column="1" Background="{ThemeResource ASurface}"
+                      CornerRadius="0,28,28,0"
+                      BorderBrush="{ThemeResource ABorder}"
+                      BorderThickness="1,0,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Close button row -->
+                    <Grid Grid.Row="0" Padding="24,16,16,0">
+                        <Button x:Name="CloseButtonOverlay"
+                                HorizontalAlignment="Right" VerticalAlignment="Top"
+                                Width="34" Height="34" CornerRadius="17"
+                                Background="Transparent"
+                                BorderBrush="{ThemeResource ABorder}"
+                                BorderThickness="1"
+                                Click="CloseButton_Click">
+                            <shared:AppIcon IconName="close" IconSize="12" Foreground="{ThemeResource ATextDim}"/>
+                        </Button>
+                    </Grid>
+
+                    <!-- Header info -->
+                    <StackPanel Grid.Row="1" Padding="24,8,24,0" Spacing="10">
+                        <StackPanel Spacing="4">
+                            <TextBlock x:Name="WorldNameText"
+                                       FontSize="19" FontWeight="ExtraBold"
+                                       Foreground="{ThemeResource AText}"
+                                       TextTrimming="CharacterEllipsis"/>
+                            <!-- Match source indicator -->
+                            <StackPanel Orientation="Horizontal" Spacing="6"
+                                        x:Name="MatchSourcePanel" Visibility="Collapsed">
+                                <Border Width="28" Height="28" CornerRadius="14"
+                                        Background="{ThemeResource ASurfaceSoft}">
+                                    <shared:AppIcon IconName="exclamation-circle-fill" IconSize="14"
+                                                    Foreground="{ThemeResource AWarn}"
+                                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <TextBlock x:Name="MatchSourceLabel" FontSize="12"
+                                           Foreground="{ThemeResource ATextFaint}"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Source/match badges -->
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Border Padding="9,3" CornerRadius="999"
+                                    Background="{ThemeResource APrimarySoft}"
+                                    BorderBrush="{ThemeResource ABorderStrong}"
+                                    BorderThickness="1">
+                                <TextBlock Text="{Binding state.SelectedPhoto.MatchSource}"
+                                           FontSize="10" FontWeight="ExtraBold"
+                                           Foreground="{ThemeResource APrimary}"/>
+                            </Border>
+                            <Border Padding="9,3" CornerRadius="999"
+                                    Background="{ThemeResource APrimarySoft}"
+                                    BorderBrush="{ThemeResource ABorderStrong}"
+                                    BorderThickness="1">
+                                <TextBlock Text="{Binding state.SelectedPhoto.SourceSlot}"
+                                           FontSize="10" FontWeight="ExtraBold"
+                                           Foreground="{ThemeResource APrimary}"/>
+                            </Border>
+                        </StackPanel>
+
+                        <Rectangle Height="1" Fill="{ThemeResource ABorder}" Opacity="0.9"/>
+                    </StackPanel>
+
+                    <!-- Scrollable form area -->
+                    <ScrollViewer Grid.Row="2" Padding="24,14,24,24" VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="10">
+
+                            <!-- Tag label -->
+                            <TextBlock Text="タグ" FontSize="12" FontWeight="ExtraBold"
+                                       Foreground="{ThemeResource ATextFaint}" CharacterSpacing="60"/>
+
+                            <!-- Tag select + add button row -->
+                            <Grid x:Name="TagAddRow" ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <ComboBox x:Name="ExistingTagCombo" HorizontalAlignment="Stretch"
+                                          PlaceholderText="タグを選択..."
+                                          CornerRadius="14"/>
+                                <Button Grid.Column="1" Content="追加"
+                                        Style="{StaticResource PrimaryButtonStyle}"
+                                        Padding="16,10" CornerRadius="12" FontWeight="ExtraBold"
+                                        Click="AddExistingTag_Click"/>
+                            </Grid>
+
+                            <!-- Empty tags note (dashed border) -->
+                            <TextBlock x:Name="EmptyTagNote" Visibility="Collapsed"
+                                       Text="追加できるタグがありません。"
+                                       FontSize="13" Foreground="{ThemeResource ATextFaint}"
+                                       Margin="0,4,0,0"/>
+
+                            <!-- Tag chips (wrap) -->
+                            <ItemsControl ItemsSource="{Binding state.SelectedPhoto.Tags}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="6"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Tag="{Binding}" Click="RemoveTag_Click"
+                                                Style="{StaticResource ChipButtonStyle}">
+                                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                                <TextBlock Text="{Binding}" FontSize="11"
+                                                           FontWeight="Bold"
+                                                           Foreground="{ThemeResource APrimary}"
+                                                           VerticalAlignment="Center"/>
+                                                <TextBlock Text="×" FontSize="11"
+                                                           Foreground="{ThemeResource ATextFaint}"
+                                                           VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <!-- Memo label -->
+                            <TextBlock Text="メモ" FontSize="12" FontWeight="ExtraBold"
+                                       Foreground="{ThemeResource ATextFaint}" CharacterSpacing="60"/>
+
+                            <!-- Memo textarea -->
+                            <TextBox Text="{Binding state.LocalMemo, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     AcceptsReturn="True" TextWrapping="Wrap"
+                                     MinHeight="180" CornerRadius="12"
+                                     PlaceholderText="メモを入力..."/>
+                            <Button x:Name="SaveMemoBtn" Content="メモを保存"
+                                    Style="{StaticResource PrimaryButtonStyle}"
+                                    CornerRadius="12" FontWeight="ExtraBold"
+                                    HorizontalAlignment="Left" Click="SaveMemo_Click"/>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- ═══ Bottom actions (flush, fixed at bottom) ═══ -->
+                    <Grid Grid.Row="3"
+                          BorderBrush="{ThemeResource ABorder}" BorderThickness="0,1,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Button Grid.Column="0" MinHeight="66"
+                                Background="Transparent" BorderThickness="0"
+                                CornerRadius="0" Padding="4,8"
+                                HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                HorizontalContentAlignment="Center"
+                                ToolTipService.ToolTip="お気に入りに追加 / 解除"
+                                Click="Favorite_Click"
+                                PointerEntered="BottomAction_PointerEntered"
+                                PointerExited="BottomAction_PointerExited">
+                            <StackPanel HorizontalAlignment="Center" Spacing="5">
+                                <shared:AnimatedFavoriteStar
+                                    Width="30" Height="30"
+                                    Liked="{Binding state.SelectedPhoto.IsFavorite}"
+                                    Interactive="False"/>
+                                <TextBlock Text="お気に入り" FontSize="11" FontWeight="ExtraBold"
+                                           Foreground="{ThemeResource ATextFaint}"
+                                           HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Separator -->
+                        <Border Grid.Column="1" HorizontalAlignment="Left" Width="1"
+                                Background="{ThemeResource ABorder}"/>
+                        <Button Grid.Column="1" MinHeight="66"
+                                Background="Transparent" BorderThickness="0"
+                                CornerRadius="0" Padding="4,8"
+                                HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                HorizontalContentAlignment="Center"
+                                ToolTipService.ToolTip="ツイート投稿画面を開く"
+                                Click="Tweet_Click"
+                                PointerEntered="BottomAction_PointerEntered"
+                                PointerExited="BottomAction_PointerExited">
+                            <StackPanel HorizontalAlignment="Center" Spacing="5">
+                                <shared:AppIcon IconName="pen" IconSize="16" Foreground="{ThemeResource ATextFaint}"/>
+                                <TextBlock Text="投稿" FontSize="11" FontWeight="ExtraBold"
+                                           Foreground="{ThemeResource ATextFaint}"
+                                           HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <Border Grid.Column="2" HorizontalAlignment="Left" Width="1"
+                                Background="{ThemeResource ABorder}"/>
+                        <Button Grid.Column="2" MinHeight="66"
+                                Background="Transparent" BorderThickness="0"
+                                CornerRadius="0" Padding="4,8"
+                                HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                HorizontalContentAlignment="Center"
+                                ToolTipService.ToolTip="ワールドリンクを開く"
+                                Click="OpenWorld_Click"
+                                PointerEntered="BottomAction_PointerEntered"
+                                PointerExited="BottomAction_PointerExited">
+                            <StackPanel HorizontalAlignment="Center" Spacing="5">
+                                <shared:AppIcon IconName="globe" IconSize="16" Foreground="{ThemeResource ATextFaint}"/>
+                                <TextBlock Text="ワールド" FontSize="11" FontWeight="ExtraBold"
+                                           Foreground="{ThemeResource ATextFaint}"
+                                           HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <Border Grid.Column="3" HorizontalAlignment="Left" Width="1"
+                                Background="{ThemeResource ABorder}"/>
+                        <Button Grid.Column="3" MinHeight="66"
+                                Background="Transparent" BorderThickness="0"
+                                CornerRadius="0" Padding="4,8"
+                                HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                HorizontalContentAlignment="Center"
+                                ToolTipService.ToolTip="エクスプローラーで表示"
+                                Click="OpenExplorer_Click"
+                                PointerEntered="BottomAction_PointerEntered"
+                                PointerExited="BottomAction_PointerExited">
+                            <StackPanel HorizontalAlignment="Center" Spacing="5">
+                                <shared:AppIcon IconName="explorer" IconSize="16" Foreground="{ThemeResource ATextFaint}"/>
+                                <TextBlock Text="表示" FontSize="11" FontWeight="ExtraBold"
+                                           Foreground="{ThemeResource ATextFaint}"
+                                           HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- Clipboard copy overlay -->
+        <Grid x:Name="ClipboardOverlay" Opacity="0" IsHitTestVisible="False">
+            <Border Background="#50000000" CornerRadius="28"/>
+            <Border HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Padding="32,18" CornerRadius="16"
+                    Background="#E0181818"
+                    BorderBrush="#30FFFFFF" BorderThickness="1">
+                <TextBlock Text="クリップボードにコピーしました"
+                           FontSize="15" FontWeight="Bold"
+                           Foreground="#FFFFFFFF"/>
+            </Border>
+        </Grid>
+    </Grid>
+</Page>

@@ -1,0 +1,14 @@
+<UserControl
+    x:Class="Alpheratz.Features.Gallery.Controls.GalleryMasonryView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer x:Name="ScrollHost"
+                  VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled"
+                  HorizontalContentAlignment="Stretch"
+                  HorizontalScrollMode="Disabled"
+                  SizeChanged="ScrollHost_SizeChanged"
+                  ViewChanged="ScrollHost_ViewChanged">
+        <Canvas x:Name="MasonryCanvas" Background="Transparent" Margin="14"/>
+    </ScrollViewer>
+</UserControl>
