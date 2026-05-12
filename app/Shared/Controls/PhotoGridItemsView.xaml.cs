@@ -229,15 +229,24 @@ public sealed partial class PhotoGridItemsView : UserControl
         catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.CardBorder_PointerExited: {ex}"); }
     }
 
+    /// <summary>
+    /// R2-A-5: Image.Tag に (Photo, handler) のタプルを保存することで、
+    /// DataContext が null や別オブジェクトに差し替わっても確実に元の Photo から
+    /// PropertyChanged を unsubscribe できるようにし、ハンドラリークを防止する。
+    /// </summary>
+    private sealed record GridImageSubscription(PhotoThumbnailItem Photo, System.ComponentModel.PropertyChangedEventHandler Handler);
+
     private void ThumbImage_DataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
     {
         try
         {
             if (sender is not Image img) return;
-            if (img.Tag is System.ComponentModel.PropertyChangedEventHandler oldHandler
-                && img.DataContext is PhotoGridItem oldItem)
+            // 旧購読を Tag から取り出してアンサブスクライブ。
+            // DataContext 経由ではなくタプル経由なので、recycle で DataContext が
+            // 既に新オブジェクトに差し替わっていても旧 Photo から確実に外せる。
+            if (img.Tag is GridImageSubscription oldSub)
             {
-                oldItem.Photo.PropertyChanged -= oldHandler;
+                oldSub.Photo.PropertyChanged -= oldSub.Handler;
             }
 
             if (args.NewValue is not PhotoGridItem item)
@@ -258,7 +267,7 @@ public sealed partial class PhotoGridItemsView : UserControl
                 }
             };
             item.Photo.PropertyChanged += handler;
-            img.Tag = handler;
+            img.Tag = new GridImageSubscription(item.Photo, handler);
         }
         catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.ThumbImage_DataContextChanged: {ex}"); }
     }

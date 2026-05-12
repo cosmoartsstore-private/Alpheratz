@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,6 +13,9 @@ namespace Alpheratz.Core.Scanner;
 public sealed partial class PhotoScanner
 {
     private const int MaxItxtSize = 4 * 1024 * 1024;
+    // VRChat の output_log 1 行の上限。ここを超える行は破損または異常データとみなして
+    // Regex を走らせずに打ち切る。デフォルト 64 KiB。
+    private const int MaxLogLineLength = 64 * 1024;
     private static readonly string[] SupportedExtensions = ["png", "jpg", "jpeg", "webp", "psd", "xcf"];
     private static readonly string[] SkipDirs = ["node_modules", "vendor", "cache", "$recycle.bin", "system volume information", "thumbnails"];
 
@@ -112,12 +116,15 @@ public sealed partial class PhotoScanner
         // Load existing photos
         var existing = await _db.GetExistingPhotosAsync(ct).ConfigureAwait(false);
 
-        // Collect files
+        // Collect files.
+        // R2-A-25: シンボリックリンクのループ（A -> B -> A）で無限再帰しないように
+        // 訪問済みディレクトリの正規化フルパスを集合で管理する。
         var foundFiles = new List<(long slot, string filename, string path)>();
+        var visitedDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (slot, dir) in photoDirs)
         {
             ct.ThrowIfCancellationRequested();
-            CollectPhotosRecursive(slot, dir, foundFiles, ct);
+            CollectPhotosRecursive(slot, dir, foundFiles, visitedDirs, ct);
         }
 
         ct.ThrowIfCancellationRequested();
@@ -208,6 +215,18 @@ public sealed partial class PhotoScanner
             imageWidth = existing?.ImageWidth;
             imageHeight = existing?.ImageHeight;
         }
+        else if (kind == ScanRefreshKind.MetadataOnly
+            && existing is { ImageWidth: { } existingWidth, ImageHeight: { } existingHeight }
+            && existing.Orientation is { Length: > 0 } existingOrient
+            && existingOrient != "unknown")
+        {
+            // R2-A-18: MetadataOnly はワールド情報の補完を目的とした再走査なので、
+            //          ファイルを再オープンせずに既存の寸法/orientation を保持する。
+            //          既存値が "unknown" または null/0 の場合のみ ResolveImageDimensions を実行する。
+            orientation = existingOrient;
+            imageWidth = existingWidth;
+            imageHeight = existingHeight;
+        }
         else
         {
             (orientation, imageWidth, imageHeight) = ResolveImageDimensions(path);
@@ -295,6 +314,9 @@ public sealed partial class PhotoScanner
             var marker = buf[1];
             if (stream.Read(buf, 0, 2) < 2) break;
             int segLen = (buf[0] << 8) | buf[1];
+            // 破損 JPEG では segLen<2 が起こり得る。Seek(segLen-2,...) が後退して
+            // 無限ループになるのを防ぐためここで打ち切る。
+            if (segLen < 2) break;
             if (marker is >= 0xC0 and <= 0xC3)
             {
                 if (stream.Read(buf, 0, 1) < 1) break;
@@ -373,6 +395,10 @@ public sealed partial class PhotoScanner
                 }
             }
         }
+        catch (IOException ex)
+        {
+            AppLogger.Error($"PNG メタデータ読み取り失敗 (I/O) [{path}]: {ex.Message}");
+        }
         catch (Exception ex)
         {
             AppLogger.Warn($"PNG メタデータ解析に失敗しました [{path}]: {ex.Message}");
@@ -403,9 +429,39 @@ public sealed partial class PhotoScanner
         catch { return false; }
     }
 
-    private static void CollectPhotosRecursive(long slot, string dir, List<(long, string, string)> files, CancellationToken ct)
+    private static void CollectPhotosRecursive(
+        long slot,
+        string dir,
+        List<(long, string, string)> files,
+        HashSet<string> visitedDirs,
+        CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
+
+        // R2-A-25: シンボリックリンク循環（A -> B -> A）を検出して無限再帰を防ぐ。
+        // また、訪問済みディレクトリは再帰しない（ハードリンクや bind mount でも同様の事故を防ぐ）。
+        string canonical;
+        try
+        {
+            canonical = Path.GetFullPath(dir);
+            var attrs = File.GetAttributes(canonical);
+            if ((attrs & FileAttributes.ReparsePoint) != 0)
+            {
+                AppLogger.Trace($"PhotoScanner.CollectPhotosRecursive: skip reparse point [{canonical}]");
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Warn($"ディレクトリ属性を取得できません [{dir}]: {ex.Message}");
+            return;
+        }
+        if (!visitedDirs.Add(canonical))
+        {
+            AppLogger.Trace($"PhotoScanner.CollectPhotosRecursive: skip already-visited [{canonical}]");
+            return;
+        }
+
         IEnumerable<string> entries;
         try { entries = Directory.EnumerateFileSystemEntries(dir); }
         catch (Exception ex)
@@ -422,7 +478,7 @@ public sealed partial class PhotoScanner
             {
                 if (name.StartsWith('.')) continue;
                 if (Array.Exists(SkipDirs, s => s.Equals(name, StringComparison.OrdinalIgnoreCase))) continue;
-                CollectPhotosRecursive(slot, entry, files, ct);
+                CollectPhotosRecursive(slot, entry, files, visitedDirs, ct);
             }
             else if (File.Exists(entry))
             {
@@ -479,13 +535,58 @@ public sealed partial class PhotoScanner
         return visits;
     }
 
+    /// <summary>
+    /// 行末まで読むが、<see cref="MaxLogLineLength"/> を超える行はそこで打ち切って残りを破棄する。
+    /// File.ReadLines だと巨大行が 1 つでもあると LOH に乗って OOM することがあるため、
+    /// 手動でストリームを舐めて長さ制限を効かせる。
+    /// </summary>
+    private static IEnumerable<string> ReadCappedLines(string path)
+    {
+        using var sr = new StreamReader(path);
+        var sb = new StringBuilder();
+        var truncating = false;
+        while (true)
+        {
+            var ch = sr.Read();
+            if (ch == -1)
+            {
+                if (sb.Length > 0 || truncating)
+                    yield return sb.ToString();
+                yield break;
+            }
+            if (ch == '\n')
+            {
+                yield return sb.ToString();
+                sb.Clear();
+                truncating = false;
+                continue;
+            }
+            if (ch == '\r')
+            {
+                // CRLF / CR どちらも次の文字を見て LF をスキップ
+                if (sr.Peek() == '\n') sr.Read();
+                yield return sb.ToString();
+                sb.Clear();
+                truncating = false;
+                continue;
+            }
+            if (truncating) continue;
+            if (sb.Length >= MaxLogLineLength)
+            {
+                truncating = true;
+                continue;
+            }
+            sb.Append((char)ch);
+        }
+    }
+
     private static void LoadVisitsFromLog(string logPath, List<ArchiveWorldVisitData> visits)
     {
         string? currentWorld = null;
         string? currentJoinTime = null;
         try
         {
-            foreach (var line in File.ReadLines(logPath))
+            foreach (var line in ReadCappedLines(logPath))
             {
                 var timeMatch = ReLogTime.Match(line);
                 var lineTime = timeMatch.Success
@@ -496,8 +597,11 @@ public sealed partial class PhotoScanner
                 var enterMatch = ReLogEntering.Match(line);
                 if (enterMatch.Success)
                 {
+                    // R2-A-10: 旧実装は前のワールドを閉じる際 LeaveTime に「次の Entering の時刻」を入れていたが、
+                    //          実際にはユーザーがいつ前のワールドを抜けたかは不明である（OnLeftRoom が来ていない）。
+                    //          LeaveTime=null として未確定であることを明示する。
                     if (currentWorld is not null && currentJoinTime is not null)
-                        visits.Add(new ArchiveWorldVisitData { SourceLogName = Path.GetFileName(logPath), WorldName = currentWorld, JoinTime = currentJoinTime, LeaveTime = lineTime });
+                        visits.Add(new ArchiveWorldVisitData { SourceLogName = Path.GetFileName(logPath), WorldName = currentWorld, JoinTime = currentJoinTime, LeaveTime = null });
                     if (lineTime is not null) { currentWorld = enterMatch.Groups[1].Value; currentJoinTime = lineTime; }
                     continue;
                 }

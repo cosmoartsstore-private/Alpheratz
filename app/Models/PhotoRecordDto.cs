@@ -29,9 +29,6 @@ public sealed record PhotoRecordDto
     [JsonPropertyName("timestamp")]
     public string timestamp { get; init; } = string.Empty;
 
-    [JsonPropertyName("memo")]
-    public string memo { get; init; } = string.Empty;
-
     [JsonPropertyName("phash")]
     public string? phash { get; init; }
 

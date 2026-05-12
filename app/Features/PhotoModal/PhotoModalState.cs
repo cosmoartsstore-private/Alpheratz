@@ -33,8 +33,6 @@ public partial class PhotoModalState : UiThreadSafeObservableObject
     [ObservableProperty] private PhotoThumbnailItem? selectedPhoto;
     /// <summary>類似ワールド検索時の戻り先スタック。</summary>
     public UiObservableCollection<PhotoThumbnailItem> photoHistory { get; } = [];
-    [ObservableProperty] private string localMemo = string.Empty;
-    [ObservableProperty] private bool isSavingMemo;
 
     /// <summary>ギャラリーから渡された写真リスト。前後ナビゲーションに使用する。</summary>
     private List<PhotoThumbnailItem> photoList = [];
@@ -57,35 +55,6 @@ public partial class PhotoModalState : UiThreadSafeObservableObject
         this.photoService = photoService;
         this.toastService = toastService;
         AppLogger.Trace("PhotoModalState.ctor: exit");
-    }
-
-    /// <summary>現在のローカルメモを DB に保存する。</summary>
-    public async Task handleSaveMemo()
-    {
-        AppLogger.Trace("PhotoModalState.handleSaveMemo: enter");
-        if (DETACH_RUNTIME_DATA || DETACH_AUXILIARY_RUNTIME_DATA || SelectedPhoto is null)
-        {
-            AppLogger.Trace("PhotoModalState.handleSaveMemo: skip (detached or no selection)");
-            return;
-        }
-
-        IsSavingMemo = true;
-        try
-        {
-            await photoService.SavePhotoMemoAsync(SelectedPhoto.PhotoPath, LocalMemo, SelectedPhoto.SourceSlot).ConfigureAwait(false);
-            SelectedPhoto.Memo = LocalMemo;
-            toastService.addToast("メモを保存しました。");
-        }
-        catch (Exception err)
-        {
-            AppLogger.Error($"PhotoModalState.handleSaveMemo: threw: {err}");
-            toastService.addToast($"保存に失敗しました: {err}", ToastType.error);
-        }
-        finally
-        {
-            IsSavingMemo = false;
-        }
-        AppLogger.Trace("PhotoModalState.handleSaveMemo: exit");
     }
 
     /// <summary>選択写真を直接設定する（補助データの遅延取得も開始する）。</summary>
@@ -123,7 +92,6 @@ public partial class PhotoModalState : UiThreadSafeObservableObject
             }
 
             SelectedPhoto = photo;
-            LocalMemo = string.Empty;
             _ = loadSelectedPhotoAuxiliaryData(photo);
             notifyNavProps();
         }
@@ -149,7 +117,6 @@ public partial class PhotoModalState : UiThreadSafeObservableObject
             var lastPhoto = photoHistory[^1];
             photoHistory.RemoveAt(photoHistory.Count - 1);
             SelectedPhoto = lastPhoto;
-            LocalMemo = lastPhoto.Memo ?? string.Empty;
             notifyNavProps();
         }
         catch (Exception ex)
@@ -215,9 +182,14 @@ public partial class PhotoModalState : UiThreadSafeObservableObject
         AppLogger.Trace("PhotoModalState.closePhotoModal: enter");
         try
         {
-            selectedPhotoCancellation?.Cancel();
-            selectedPhotoCancellation?.Dispose();
-            selectedPhotoCancellation = null;
+            // Cancel/Dispose も Interlocked.Exchange で一気に取り出し、
+            // setSelectedPhoto と同時呼び出しでも片方がアトミックに勝つようにする。
+            var prev = Interlocked.Exchange(ref selectedPhotoCancellation, null);
+            if (prev is not null)
+            {
+                try { prev.Cancel(); } catch { }
+                prev.Dispose();
+            }
             SelectedPhoto = null;
             photoHistory.Clear();
         }
@@ -229,39 +201,36 @@ public partial class PhotoModalState : UiThreadSafeObservableObject
     }
 
     /// <summary>
-    /// 選択写真のメモ・タグを DB から非同期取得する。
+    /// 選択写真のタグを DB から非同期取得する。
     /// 写真切替時は前回のリクエストをキャンセルして新しいリクエストを開始する。
     /// </summary>
     private async Task loadSelectedPhotoAuxiliaryData(PhotoThumbnailItem? selectedPhotoSnapshot)
     {
         AppLogger.Trace($"PhotoModalState.loadSelectedPhotoAuxiliaryData: enter snapshot={selectedPhotoSnapshot?.PhotoPath ?? "(null)"}");
-        selectedPhotoCancellation?.Cancel();
-        selectedPhotoCancellation?.Dispose();
-        selectedPhotoCancellation = new CancellationTokenSource();
-        var token = selectedPhotoCancellation.Token;
+        var nextCts = new CancellationTokenSource();
+        var prevCts = Interlocked.Exchange(ref selectedPhotoCancellation, nextCts);
+        if (prevCts is not null)
+        {
+            try { prevCts.Cancel(); } catch { }
+            prevCts.Dispose();
+        }
+        var token = nextCts.Token;
 
         if (DETACH_RUNTIME_DATA || DETACH_AUXILIARY_RUNTIME_DATA)
         {
             AppLogger.Trace("PhotoModalState.loadSelectedPhotoAuxiliaryData: skip (detached)");
-            LocalMemo = string.Empty;
             return;
         }
 
         if (selectedPhotoSnapshot is null)
         {
             AppLogger.Trace("PhotoModalState.loadSelectedPhotoAuxiliaryData: skip (null snapshot)");
-            LocalMemo = string.Empty;
             return;
         }
 
-        LocalMemo = selectedPhotoSnapshot.Memo ?? string.Empty;
-
         try
         {
-            // メモとタグを並列取得する
-            var memoTask = photoService.GetPhotoMemoAsync(selectedPhotoSnapshot.PhotoPath, selectedPhotoSnapshot.SourceSlot, token);
-            var tagsTask = photoService.GetPhotoTagsAsync(selectedPhotoSnapshot.PhotoPath, selectedPhotoSnapshot.SourceSlot, token);
-            await Task.WhenAll(memoTask, tagsTask).ConfigureAwait(false);
+            var tags = await photoService.GetPhotoTagsAsync(selectedPhotoSnapshot.PhotoPath, selectedPhotoSnapshot.SourceSlot, token).ConfigureAwait(false);
 
             if (token.IsCancellationRequested)
             {
@@ -269,13 +238,8 @@ public partial class PhotoModalState : UiThreadSafeObservableObject
                 return;
             }
 
-            var memo = await memoTask.ConfigureAwait(false);
-            var tags = await tagsTask.ConfigureAwait(false);
-
-            LocalMemo = memo;
             if (SelectedPhoto is not null && SelectedPhoto.PhotoPath == selectedPhotoSnapshot.PhotoPath)
             {
-                SelectedPhoto.Memo = memo;
                 SelectedPhoto.Tags = tags;
             }
         }
@@ -284,7 +248,7 @@ public partial class PhotoModalState : UiThreadSafeObservableObject
             AppLogger.Error($"PhotoModalState.loadSelectedPhotoAuxiliaryData: threw: {err}");
             if (!token.IsCancellationRequested)
             {
-                toastService.addToast($"メモの読み込みに失敗しました: {err}", ToastType.error);
+                toastService.addToast($"タグの読み込みに失敗しました: {err}", ToastType.error);
             }
         }
         AppLogger.Trace("PhotoModalState.loadSelectedPhotoAuxiliaryData: exit");

@@ -116,6 +116,9 @@ public sealed class ThumbnailService
                 pathLock.Release();
             }
 
+            if (pathLock.CurrentCount == 1)
+                _pathLocks.TryRemove(thumbPath, out _);
+
             AppLogger.Trace("ThumbnailService.EnsureThumbAsync: exit (generated)");
             return thumbPath;
         }
@@ -139,24 +142,40 @@ public sealed class ThumbnailService
             using var sourceStream = await sourceFile.OpenReadAsync().AsTask(ct).ConfigureAwait(false);
             var decoder = await BitmapDecoder.CreateAsync(sourceStream).AsTask(ct).ConfigureAwait(false);
 
-            var origW = decoder.PixelWidth;
-            var origH = decoder.PixelHeight;
-            double scale = Math.Min((double)maxSize / origW, (double)maxSize / origH);
+            // EXIF回転後の寸法でスケールを計算する。BitmapTransformはraw寸法に適用され、
+            // その後EXIF回転が適用されるため、回転で軸が入れ替わる場合はTransformの寸法も入れ替える。
+            var orientedW = decoder.OrientedPixelWidth;
+            var orientedH = decoder.OrientedPixelHeight;
+            double scale = Math.Min((double)maxSize / orientedW, (double)maxSize / orientedH);
             scale = Math.Min(scale, 1.0);
-            var newW = (uint)Math.Round(origW * scale);
-            var newH = (uint)Math.Round(origH * scale);
+            var finalW = (uint)Math.Round(orientedW * scale);
+            var finalH = (uint)Math.Round(orientedH * scale);
 
-            var transform = new BitmapTransform { ScaledWidth = newW, ScaledHeight = newH, InterpolationMode = BitmapInterpolationMode.Fant };
+            bool axisSwapped = orientedW != decoder.PixelWidth;
+            var transformW = axisSwapped ? finalH : finalW;
+            var transformH = axisSwapped ? finalW : finalH;
+
+            var transform = new BitmapTransform { ScaledWidth = transformW, ScaledHeight = transformH, InterpolationMode = BitmapInterpolationMode.Fant };
             var pixelData = await decoder.GetPixelDataAsync(
                 BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore, transform,
                 ExifOrientationMode.RespectExifOrientation, ColorManagementMode.DoNotColorManage).AsTask(ct).ConfigureAwait(false);
             var pixels = pixelData.DetachPixelData();
 
-            using var fileStream = new FileStream(destPath, FileMode.Create, FileAccess.ReadWrite, FileShare.None, 4096, useAsync: true);
-            using var outStream = fileStream.AsRandomAccessStream();
-            var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.JpegEncoderId, outStream).AsTask(ct).ConfigureAwait(false);
-            encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore, newW, newH, 96, 96, pixels);
-            await encoder.FlushAsync().AsTask(ct).ConfigureAwait(false);
+            var fileStream = new FileStream(destPath, FileMode.Create, FileAccess.ReadWrite, FileShare.None, 4096, useAsync: true);
+            IRandomAccessStream? outStream = null;
+            try
+            {
+                outStream = fileStream.AsRandomAccessStream();
+                var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.JpegEncoderId, outStream).AsTask(ct).ConfigureAwait(false);
+                encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore, finalW, finalH, 96, 96, pixels);
+                await encoder.FlushAsync().AsTask(ct).ConfigureAwait(false);
+                await fileStream.FlushAsync(ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                outStream?.Dispose();
+                fileStream.Dispose();
+            }
         }
         catch (Exception ex)
         {

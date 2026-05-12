@@ -20,7 +20,6 @@ public partial class PhotoThumbnailItem : UiThreadSafeObservableObject
     [ObservableProperty] private string? world_id;
     [ObservableProperty] private string? world_name;
     [ObservableProperty] private string timestamp = string.Empty;
-    [ObservableProperty] private string memo = string.Empty;
     [ObservableProperty] private string? phash;
     [ObservableProperty] private string? orientation;
     [ObservableProperty] private long? image_width;
@@ -163,7 +162,7 @@ public partial class PhotoThumbnailItem : UiThreadSafeObservableObject
             var path = !string.IsNullOrEmpty(display_thumb_path) ? display_thumb_path
                      : !string.IsNullOrEmpty(resolved_photo_path) ? resolved_photo_path
                      : photo_path;
-            return string.IsNullOrEmpty(path) ? path : path.Replace('/', '\\');
+            return string.IsNullOrEmpty(path) ? null : path.Replace('/', '\\');
         }
     }
 
@@ -178,7 +177,6 @@ public partial class PhotoThumbnailItem : UiThreadSafeObservableObject
         world_id = photo.world_id,
         world_name = photo.world_name,
         timestamp = photo.timestamp,
-        memo = photo.memo,
         phash = photo.phash,
         orientation = photo.orientation,
         image_width = photo.image_width,
@@ -201,7 +199,6 @@ public partial class PhotoThumbnailItem : UiThreadSafeObservableObject
         world_id = world_id,
         world_name = world_name,
         timestamp = timestamp,
-        memo = memo,
         phash = phash,
         orientation = orientation,
         image_width = image_width,

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Threading.Tasks;
 using Alpheratz.Core;
 using Alpheratz.Features.Gallery;
@@ -8,6 +9,7 @@ using Alpheratz.Features.PhotoModal;
 using Alpheratz.Features.Settings;
 using Alpheratz.Features.TagMaster;
 using Alpheratz.Features.Template;
+using Alpheratz.Features.WorldResolve;
 using Alpheratz.Shared.Animations;
 using Alpheratz.Shared.Models;
 using Microsoft.UI.Xaml;
@@ -29,15 +31,8 @@ public sealed partial class ShellPage : Page
     public ShellPage(ShellViewModel viewModel)
     {
         AppLogger.Trace("ShellPage.ctor: enter");
-        try
-        {
-            InitializeComponent();
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Error($"ShellPage.ctor: InitializeComponent failed: {ex}");
-            throw;
-        }
+        try { InitializeComponent(); }
+        catch (Exception ex) { AppLogger.Error($"ShellPage.ctor: InitializeComponent failed: {ex}"); throw; }
         AppLogger.Trace("ShellPage.ctor: InitializeComponent done");
         this.viewModel = viewModel;
         DataContext = viewModel;
@@ -46,7 +41,6 @@ public sealed partial class ShellPage : Page
         {
             HeaderBar.OnToggleFilter = ToggleFilter;
             HeaderBar.OnShowSettings = ShowSettings;
-
             LeftRail.OnShowGallery = ShowGallery;
             LeftRail.OnShowTagMaster = ShowTagMaster;
             LeftRail.OnShowTemplate = ShowTemplate;
@@ -55,12 +49,10 @@ public sealed partial class ShellPage : Page
                 viewModel.galleryViewModel.selectionState.handleToggleMultiSelectMode();
                 LeftRail.SetMultiSelectActive(viewModel.galleryViewModel.selectionState.IsMultiSelectMode);
             };
-            LeftRail.OnGroupingChange = mode =>
+            LeftRail.OnGroupingChange = async mode =>
             {
                 if (mode != GroupingMode.none && viewModel.ViewMode == ViewMode.gallery)
-                {
-                    _ = viewModel.handleSetViewMode(ViewMode.standard);
-                }
+                    await viewModel.handleSetViewMode(ViewMode.standard).ConfigureAwait(true);
                 viewModel.galleryViewModel.displayState.prepareGroupingModeChange(
                     viewModel.galleryViewModel.filtersState.GroupingMode, mode,
                     m => viewModel.galleryViewModel.filtersState.GroupingMode = m);
@@ -75,14 +67,15 @@ public sealed partial class ShellPage : Page
             viewModel.galleryViewModel.selectionState.PropertyChanged += OnSelectionStateChanged;
             viewModel.PropertyChanged += OnShellViewModelChanged;
 
+            // drill-down 中の写真コレクションを GalleryViewModel.updatePhoto に
+            // 共有し、PhotoModal 経由のタグ/お気に入り更新が drill-down
+            // 一覧にも即時反映されるようにする。
+            viewModel.galleryViewModel.drillDownPhotosProvider = () => drillDownPhotos;
+
             Stage.OnBackToGallery = ShowGallery;
             Stage.ScanningOverlayControlRef.OnCancelScan = viewModel.cancelScan;
         }
-        catch (Exception ex)
-        {
-            AppLogger.Error($"ShellPage.ctor: wiring failed: {ex}");
-            throw;
-        }
+        catch (Exception ex) { AppLogger.Error($"ShellPage.ctor: wiring failed: {ex}"); throw; }
 
         AppLogger.Trace("ShellPage.ctor: wiring done, calling ShowGallery");
         ShowGallery();
@@ -96,15 +89,9 @@ public sealed partial class ShellPage : Page
         try
         {
             if (e.PropertyName == nameof(viewModel.galleryViewModel.selectionState.IsMultiSelectMode))
-            {
-                AppLogger.Trace("ShellPage.OnSelectionStateChanged: branch=IsMultiSelectMode");
                 LeftRail.SetMultiSelectActive(viewModel.galleryViewModel.selectionState.IsMultiSelectMode);
-            }
         }
-        catch (Exception ex)
-        {
-            AppLogger.Error($"ShellPage.OnSelectionStateChanged: threw: {ex}");
-        }
+        catch (Exception ex) { AppLogger.Error($"ShellPage.OnSelectionStateChanged: threw: {ex}"); }
         AppLogger.Trace("ShellPage.OnSelectionStateChanged: exit");
     }
 
@@ -118,31 +105,12 @@ public sealed partial class ShellPage : Page
                 LeftRail.SetViewMode(viewModel.ViewMode);
                 LeftRail.SetGroupingMode(viewModel.galleryViewModel.filtersState.GroupingMode);
             }
-            else if (e.PropertyName == nameof(viewModel.ScanStatus))
-            {
-                UpdateScanningOverlayVisibility();
-            }
-            else if (e.PropertyName == nameof(viewModel.PendingFolderPath) && viewModel.PendingFolderPath is not null)
-            {
-                _ = ShowFolderChangeConfirmAsync();
-            }
-            else if (e.PropertyName == nameof(viewModel.PendingResetRequest) && viewModel.PendingResetRequest is not null)
-            {
-                _ = ShowResetConfirmAsync();
-            }
-            else if (e.PropertyName == nameof(viewModel.PendingRestoreCandidate) && viewModel.PendingRestoreCandidate is not null)
-            {
-                _ = ShowRestoreCandidateAsync();
-            }
-            else if (e.PropertyName == nameof(viewModel.ThemeMode))
-            {
-                ApplyTheme(viewModel.ThemeMode);
-            }
+            else if (e.PropertyName == nameof(viewModel.ScanStatus)) UpdateScanningOverlayVisibility();
+            else if (e.PropertyName == nameof(viewModel.PendingFolderPath) && viewModel.PendingFolderPath is not null) _ = ShowFolderChangeConfirmAsync();
+            else if (e.PropertyName == nameof(viewModel.PendingResetRequest) && viewModel.PendingResetRequest is not null) _ = ShowResetConfirmAsync();
+            else if (e.PropertyName == nameof(viewModel.ThemeMode)) ApplyTheme(viewModel.ThemeMode);
         }
-        catch (Exception ex)
-        {
-            AppLogger.Error($"ShellPage.OnShellViewModelChanged: threw: {ex}");
-        }
+        catch (Exception ex) { AppLogger.Error($"ShellPage.OnShellViewModelChanged: threw: {ex}"); }
         AppLogger.Trace("ShellPage.OnShellViewModelChanged: exit");
     }
 
@@ -152,12 +120,9 @@ public sealed partial class ShellPage : Page
         {
             var dialog = new Microsoft.UI.Xaml.Controls.ContentDialog
             {
-                Title = title,
-                Content = message,
-                PrimaryButtonText = yesText,
-                SecondaryButtonText = noText,
-                CloseButtonText = cancelText ?? string.Empty,
-                XamlRoot = this.XamlRoot,
+                Title = title, Content = message,
+                PrimaryButtonText = yesText, SecondaryButtonText = noText,
+                CloseButtonText = cancelText ?? string.Empty, XamlRoot = this.XamlRoot,
                 DefaultButton = Microsoft.UI.Xaml.Controls.ContentDialogButton.Primary,
             };
             var result = await dialog.ShowAsync();
@@ -168,11 +133,7 @@ public sealed partial class ShellPage : Page
                 _ => null,
             };
         }
-        catch (Exception ex)
-        {
-            AppLogger.Error($"ShellPage.ShowConfirmDialogAsync: threw: {ex}");
-            return null;
-        }
+        catch (Exception ex) { AppLogger.Error($"ShellPage.ShowConfirmDialogAsync: threw: {ex}"); return null; }
     }
 
     private async Task ShowFolderChangeConfirmAsync()
@@ -180,67 +141,26 @@ public sealed partial class ShellPage : Page
         AppLogger.Trace($"ShellPage.ShowFolderChangeConfirmAsync: enter pending={viewModel.PendingFolderPath}");
         var newPath = viewModel.PendingFolderPath;
         if (string.IsNullOrEmpty(newPath)) return;
-
         var answer = await ShowConfirmDialogAsync(
             title: "写真フォルダの変更",
-            message: $"新しい写真フォルダ:\n{newPath}\n\n既存のキャッシュをバックアップしますか？\n（バックアップしない場合、現在のメモ・タグなどが失われる可能性があります）",
-            yesText: "バックアップして変更",
-            noText: "バックアップせず変更",
-            cancelText: "キャンセル").ConfigureAwait(true);
-
-        if (answer is null)
-        {
-            viewModel.PendingFolderPath = null;
-            return;
-        }
-        await viewModel.handleFolderChangeBackupDecision(answer.Value).ConfigureAwait(false);
+            message: $"新しい写真フォルダ:\n{newPath}\n\n既存のキャッシュをリセットして変更しますか？\n（タグは失われる可能性があります）",
+            yesText: "変更する",
+            noText: "キャンセル").ConfigureAwait(true);
+        if (answer != true) { viewModel.PendingFolderPath = null; return; }
+        await viewModel.applyFolderChange(newPath).ConfigureAwait(false);
     }
 
     private async Task ShowResetConfirmAsync()
     {
         AppLogger.Trace("ShellPage.ShowResetConfirmAsync: enter");
         if (viewModel.PendingResetRequest is null) return;
-
         var answer = await ShowConfirmDialogAsync(
             title: "写真フォルダのリセット",
-            message: "現在の写真フォルダ設定とキャッシュをリセットします。\nバックアップを作成しますか？",
-            yesText: "バックアップしてリセット",
-            noText: "バックアップせずリセット",
-            cancelText: "キャンセル").ConfigureAwait(true);
-
-        if (answer is null)
-        {
-            viewModel.PendingResetRequest = null;
-            return;
-        }
-        await viewModel.handleResetBackupDecision(answer.Value).ConfigureAwait(false);
-    }
-
-    private async Task ShowRestoreCandidateAsync()
-    {
-        AppLogger.Trace("ShellPage.ShowRestoreCandidateAsync: enter");
-        var candidate = viewModel.PendingRestoreCandidate;
-        if (candidate is null) return;
-
-        var answer = await ShowConfirmDialogAsync(
-            title: "バックアップを発見",
-            message: $"このフォルダに対応するバックアップが見つかりました。\n復元しますか？",
-            yesText: "復元する",
-            noText: "復元しない",
-            cancelText: "キャンセル").ConfigureAwait(true);
-
-        if (answer is null)
-        {
-            viewModel.PendingRestoreCandidate = null;
-            return;
-        }
-        var newPath = viewModel.PendingFolderPath;
-        if (string.IsNullOrEmpty(newPath))
-        {
-            viewModel.PendingRestoreCandidate = null;
-            return;
-        }
-        await viewModel.handleFinalizeFolderSelection(newPath, answer.Value).ConfigureAwait(false);
+            message: "現在の写真フォルダ設定とキャッシュをリセットします。",
+            yesText: "リセットする",
+            noText: "キャンセル").ConfigureAwait(true);
+        if (answer != true) { viewModel.PendingResetRequest = null; return; }
+        await viewModel.executeResetFolder(viewModel.PendingResetRequest.slot).ConfigureAwait(false);
     }
 
     public void ShowGallery()
@@ -260,9 +180,7 @@ public sealed partial class ShellPage : Page
                     OnDismissFilter = () => { if (isFilterOpen) ToggleFilter(); },
                 };
                 galleryPage.SetMasterTags(viewModel.tagMasterViewModel.masterTags);
-                AppLogger.Trace("ShellPage.ShowGallery: GalleryPage created");
             }
-
             Stage.MainContent = galleryPage;
             Stage.SetBackButtonVisible(false);
             LeftRail.SetActiveScreen(MainScreen.gallery);
@@ -270,10 +188,7 @@ public sealed partial class ShellPage : Page
             LeftRail.SetGroupingMode(viewModel.galleryViewModel.filtersState.GroupingMode);
             HeaderBar.SetGalleryControlsEnabled(true);
         }
-        catch (Exception ex)
-        {
-            AppLogger.Error($"ShellPage.ShowGallery: threw: {ex}");
-        }
+        catch (Exception ex) { AppLogger.Error($"ShellPage.ShowGallery: threw: {ex}"); }
         AppLogger.Trace("ShellPage.ShowGallery: exit");
     }
 
@@ -287,36 +202,22 @@ public sealed partial class ShellPage : Page
         {
             var groupKey = groupItem.GroupKey;
             if (string.IsNullOrEmpty(groupKey)) return;
-
             var photos = await viewModel.galleryViewModel.getGroupPhotosAsync(groupKey).ConfigureAwait(true);
             if (photos.Count == 0) return;
-
             drillDownPhotos = photos;
-
-            if (drillDownPage is null)
-                drillDownPage = new GroupDrillDownPage();
-
-            drillDownPage.OnBack = () =>
-            {
-                drillDownPhotos = null;
-                ShowGallery();
-            };
+            if (drillDownPage is null) drillDownPage = new GroupDrillDownPage();
+            drillDownPage.OnBack = () => { drillDownPhotos = null; ShowGallery(); };
             drillDownPage.OnPhotoActivated = photo =>
             {
                 if (drillDownPhotos is not null)
                     if (viewModel.createPhotoModalViewModelFromList(photo, drillDownPhotos) is { } vm)
                         ShowPhotoModal(vm);
             };
-
             var displayName = groupItem.Photo?.WorldName ?? groupKey;
             drillDownPage.SetGroupInfo(displayName, photos);
-
             Stage.MainContent = drillDownPage;
         }
-        catch (Exception ex)
-        {
-            AppLogger.Error($"ShellPage.ShowGroupDrillDown: threw: {ex}");
-        }
+        catch (Exception ex) { AppLogger.Error($"ShellPage.ShowGroupDrillDown: threw: {ex}"); }
         AppLogger.Trace("ShellPage.ShowGroupDrillDown: exit");
     }
 
@@ -333,37 +234,72 @@ public sealed partial class ShellPage : Page
                     {
                         var path = await viewModel.settingsViewModel.handleChooseFolderPathOnly().ConfigureAwait(false);
                         if (string.IsNullOrWhiteSpace(path)) return;
-
                         var currentPath = slot == 1 ? viewModel.PhotoFolderPath : viewModel.SecondaryPhotoFolderPath;
                         if (string.Equals(path, currentPath, StringComparison.Ordinal)) return;
-
                         if (slot == 1 && !string.IsNullOrEmpty(currentPath))
-                        {
                             viewModel.promptFolderChange(slot, path);
-                        }
                         else
                         {
                             viewModel.PendingFolderSlot = slot;
-                            await viewModel.applyFolderChange(path, false).ConfigureAwait(false);
+                            await viewModel.applyFolderChange(path).ConfigureAwait(false);
                         }
                     },
                     OnResetFolder = viewModel.handleResetFolder,
                     OnStartupPreferenceChanged = viewModel.handleStartupPreference,
+                    OnMasonryPreferenceChanged = viewModel.handleMasonryPreference,
                     OnThemeChanged = isDark => viewModel.handleThemeChange(isDark ? Alpheratz.Shared.Models.ThemeMode.dark : Alpheratz.Shared.Models.ThemeMode.light),
-                    OnStartWorldAnalysis = viewModel.handleStartUnknownWorldAnalysisFromArchive,
+                    OnStartWorldAnalysis = ShowWorldResolveModalAsync,
+                    OnReviewMissingPhotos = ShowMissingPhotosDialogAsync,
                 };
             }
-
             Stage.MainContent = settingsPage;
             Stage.SetBackButtonVisible(true);
             LeftRail.SetActiveScreen(MainScreen.settings);
             HeaderBar.SetGalleryControlsEnabled(false);
         }
-        catch (Exception ex)
-        {
-            AppLogger.Error($"ShellPage.ShowSettings: threw: {ex}");
-        }
+        catch (Exception ex) { AppLogger.Error($"ShellPage.ShowSettings: threw: {ex}"); }
         AppLogger.Trace("ShellPage.ShowSettings: exit");
+    }
+
+    /// <summary>
+    /// 「不在の写真」を確認するシンプルなダイアログ。件数を表示し、
+    /// ユーザーが選んだら DB から一括削除する（最小実装）。
+    /// </summary>
+    private async Task ShowMissingPhotosDialogAsync()
+    {
+        AppLogger.Trace("ShellPage.ShowMissingPhotosDialogAsync: enter");
+        try
+        {
+            var missing = await viewModel.getMissingPhotosAsync().ConfigureAwait(true);
+            if (missing.Count == 0)
+            {
+                var info = new Microsoft.UI.Xaml.Controls.ContentDialog
+                {
+                    Title = "不在の写真",
+                    Content = "不在の写真はありません。",
+                    CloseButtonText = "閉じる",
+                    XamlRoot = this.XamlRoot,
+                };
+                await info.ShowAsync();
+                return;
+            }
+
+            var preview = string.Join("\n", missing.Take(10).Select(p => p.photo_path));
+            var more = missing.Count > 10 ? $"\n... 他 {missing.Count - 10} 件" : "";
+            var answer = await ShowConfirmDialogAsync(
+                title: "不在の写真を確認",
+                message: $"DB に登録されているが見つからない写真が {missing.Count} 件あります:\n\n{preview}{more}\n\nDB から完全に削除しますか？",
+                yesText: $"DB から削除：{missing.Count} 件",
+                noText: "閉じる").ConfigureAwait(true);
+
+            if (answer == true)
+            {
+                var paths = missing.Select(p => p.photo_path).ToArray();
+                await viewModel.deleteMissingPhotosAsync(paths).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex) { AppLogger.Error($"ShellPage.ShowMissingPhotosDialogAsync: threw: {ex}"); }
+        AppLogger.Trace("ShellPage.ShowMissingPhotosDialogAsync: exit");
     }
 
     public void ShowTagMaster()
@@ -379,16 +315,12 @@ public sealed partial class ShellPage : Page
                     OnDeleteTag = viewModel.tagMasterViewModel.deleteTag,
                 };
             }
-
             Stage.MainContent = tagMasterPage;
             Stage.SetBackButtonVisible(true);
             LeftRail.SetActiveScreen(MainScreen.tagMaster);
             HeaderBar.SetGalleryControlsEnabled(false);
         }
-        catch (Exception ex)
-        {
-            AppLogger.Error($"ShellPage.ShowTagMaster: threw: {ex}");
-        }
+        catch (Exception ex) { AppLogger.Error($"ShellPage.ShowTagMaster: threw: {ex}"); }
         AppLogger.Trace("ShellPage.ShowTagMaster: exit");
     }
 
@@ -403,7 +335,8 @@ public sealed partial class ShellPage : Page
                 {
                     OnCancelEdit = viewModel.templatePageViewModel.cancelEdit,
                     OnStartEdit = viewModel.templatePageViewModel.startEdit,
-                    OnDeleteTemplate = viewModel.templatePageViewModel.deleteTemplate,
+                    // R2-A-2: deleteTemplate は currentSetting を要求するため、ここで現在の設定を取って渡す。
+                    OnDeleteTemplate = template => viewModel.templatePageViewModel.deleteTemplate(template, viewModel.buildSettingPayload()),
                     OnSaveTemplate = () => viewModel.templatePageViewModel.saveTemplate(viewModel.buildSettingPayload()),
                     OnSelectTemplate = async template =>
                     {
@@ -412,16 +345,12 @@ public sealed partial class ShellPage : Page
                     },
                 };
             }
-
             Stage.MainContent = templatePage;
             Stage.SetBackButtonVisible(true);
             LeftRail.SetActiveScreen(MainScreen.template);
             HeaderBar.SetGalleryControlsEnabled(false);
         }
-        catch (Exception ex)
-        {
-            AppLogger.Error($"ShellPage.ShowTemplate: threw: {ex}");
-        }
+        catch (Exception ex) { AppLogger.Error($"ShellPage.ShowTemplate: threw: {ex}"); }
         AppLogger.Trace("ShellPage.ShowTemplate: exit");
     }
 
@@ -436,30 +365,25 @@ public sealed partial class ShellPage : Page
                 cachedModalPage.OnAddTag = (photoPath, tag) => viewModel.galleryViewModel.addTag(photoPath, tag);
                 cachedModalPage.OnRemoveTag = (photoPath, tag) => viewModel.galleryViewModel.removeTag(photoPath, tag);
             }
-            else
-            {
-                cachedModalPage.UpdateViewModel(modalViewModel);
-            }
-
+            else cachedModalPage.UpdateViewModel(modalViewModel);
             var page = cachedModalPage;
-            page.OnClose = () =>
+            page.OnClose = () => { modalViewModel.closePhotoModal(); CloseModal(); };
+            page.OnOpenWorld = modalViewModel.handleOpenWorld;
+            page.OnOpenExplorer = modalViewModel.handleOpenExplorer;
+            // PhotoModal からタグマスタ画面への導線。
+            page.OnOpenTagMaster = () =>
             {
                 modalViewModel.closePhotoModal();
                 CloseModal();
+                ShowTagMaster();
             };
-            page.OnSaveMemo = modalViewModel.handleSaveMemo;
-            page.OnOpenWorld = modalViewModel.handleOpenWorld;
-            page.OnOpenExplorer = modalViewModel.handleOpenExplorer;
-            page.OnApplySimilarWorldCandidate = modalViewModel.applySimilarWorldCandidate;
             page.OnToggleFavorite = async () =>
             {
                 var selectedPhoto = modalViewModel.state.SelectedPhoto;
                 if (selectedPhoto is not null)
                 {
                     var newValue = !selectedPhoto.IsFavorite;
-                    await viewModel.galleryViewModel
-                        .toggleFavorite(selectedPhoto.PhotoPath, selectedPhoto.IsFavorite)
-                        .ConfigureAwait(false);
+                    await viewModel.galleryViewModel.toggleFavorite(selectedPhoto.PhotoPath, selectedPhoto.IsFavorite).ConfigureAwait(false);
                     DispatcherQueue?.TryEnqueue(() => selectedPhoto.IsFavorite = newValue);
                 }
             };
@@ -467,27 +391,44 @@ public sealed partial class ShellPage : Page
             {
                 var selectedPhoto = modalViewModel.state.SelectedPhoto;
                 if (selectedPhoto is not null)
-                {
                     await viewModel.templatePageViewModel.openTweetIntent(selectedPhoto).ConfigureAwait(false);
-                }
             };
             page.OnGoBack = () => modalViewModel.goBackPhoto();
             page.OnGoPrev = () => modalViewModel.state.goPrevPhoto();
             page.OnGoNext = () => modalViewModel.state.goNextPhoto();
             page.SetMasterTags(viewModel.tagMasterViewModel.masterTags);
-
             Stage.ModalContent = page;
             Stage.ModalVisibility = Visibility.Visible;
             isModalOpen = true;
             HeaderBar.Opacity = 0.4;
             LeftRail.Opacity = 0.4;
-            _ = modalViewModel.findSimilarWorldCandidates();
         }
-        catch (Exception ex)
-        {
-            AppLogger.Error($"ShellPage.ShowPhotoModal: threw: {ex}");
-        }
+        catch (Exception ex) { AppLogger.Error($"ShellPage.ShowPhotoModal: threw: {ex}"); }
         AppLogger.Trace("ShellPage.ShowPhotoModal: exit");
+    }
+
+    private async Task ShowWorldResolveModalAsync()
+    {
+        AppLogger.Trace("ShellPage.ShowWorldResolveModalAsync: enter");
+        try
+        {
+            var vm = viewModel.CreateWorldResolveViewModel();
+            var page = new WorldResolvePage(vm);
+            page.OnClose = CloseModal;
+            page.OnApplied = async () =>
+            {
+                await viewModel.galleryViewModel.photosState.loadPhotos().ConfigureAwait(false);
+                viewModel.toastService.addToast("ワールド情報を適用しました");
+            };
+            Stage.ModalContent = page;
+            Stage.ModalVisibility = Visibility.Visible;
+            isModalOpen = true;
+            HeaderBar.Opacity = 0.4;
+            LeftRail.Opacity = 0.4;
+            await vm.InitializeAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex) { AppLogger.Error($"ShellPage.ShowWorldResolveModalAsync: threw: {ex}"); }
+        AppLogger.Trace("ShellPage.ShowWorldResolveModalAsync: exit");
     }
 
     public void CloseModal()
@@ -501,25 +442,15 @@ public sealed partial class ShellPage : Page
             HeaderBar.Opacity = 1.0;
             LeftRail.Opacity = 1.0;
         }
-        catch (Exception ex)
-        {
-            AppLogger.Error($"ShellPage.CloseModal: threw: {ex}");
-        }
+        catch (Exception ex) { AppLogger.Error($"ShellPage.CloseModal: threw: {ex}"); }
         AppLogger.Trace("ShellPage.CloseModal: exit");
     }
 
     private void ToggleFilter()
     {
         AppLogger.Trace($"ShellPage.ToggleFilter: enter isFilterOpen={isFilterOpen}");
-        try
-        {
-            isFilterOpen = !isFilterOpen;
-            SetFilterOverlayOpen(isFilterOpen);
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Error($"ShellPage.ToggleFilter: threw: {ex}");
-        }
+        try { isFilterOpen = !isFilterOpen; SetFilterOverlayOpen(isFilterOpen); }
+        catch (Exception ex) { AppLogger.Error($"ShellPage.ToggleFilter: threw: {ex}"); }
         AppLogger.Trace($"ShellPage.ToggleFilter: exit isFilterOpen={isFilterOpen}");
     }
 
@@ -528,9 +459,7 @@ public sealed partial class ShellPage : Page
         if (isOpen)
         {
             if (FilterPanelHost.Content is null && galleryPage is not null)
-            {
                 FilterPanelHost.Content = galleryPage.GetFilterPanel();
-            }
             FilterOverlay.Visibility = Visibility.Visible;
             AnimationHelper.FadeIn(FilterBackdrop, 250);
             AnimationHelper.SlideIn(FilterPanelContainer, fromX: -16f, durationMs: 180);

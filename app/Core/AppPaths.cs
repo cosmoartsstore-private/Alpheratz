@@ -42,8 +42,6 @@ public static class AppPaths
 
     public static string? GetDbPath() => GetDbDir() is { } d ? Path.Combine(d, "Alpheratz.db") : null;
 
-    public static string? GetDbBackupDir() => EnsureDir(GetDbDir() is { } d ? Path.Combine(d, "backup") : null);
-
     public static string? GetImgCacheDir(long sourceSlot = 1)
     {
         var slotName = sourceSlot == 2 ? "2nd-cache" : "1st-cache";

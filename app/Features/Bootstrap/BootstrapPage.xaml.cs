@@ -31,6 +31,26 @@ public sealed partial class BootstrapPage : Page
         AppLogger.Trace("BootstrapPage.ctor: exit");
     }
 
+    /// <summary>
+    /// R2-A-14: ページが Unloaded でも DispatcherTimer と Tick ハンドラ参照が生き残り、
+    /// ページ本体が GC されずリークしていた。Unloaded で Stop + Tick -= で参照を切る。
+    /// </summary>
+    private void Page_Unloaded(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (_anim is not null)
+            {
+                _anim.Stop();
+                _anim.Tick -= OnAnimTick;
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"BootstrapPage.Page_Unloaded: threw: {ex}");
+        }
+    }
+
     public void SetPhase(AppLifecyclePhase phase)
     {
         try

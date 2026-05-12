@@ -54,6 +54,27 @@ public sealed partial class GalleryFilterPanel : UserControl
         AppLogger.Trace("GalleryFilterPanel.ctor: exit");
     }
 
+    /// <summary>
+    /// R2-A-23: コントロールが Unloaded された後も boundFiltersState の PropertyChanged が
+    /// このパネルを参照し続けると、フィルタ更新のたびに再描画コードが死んだコントロール上で
+    /// 走ってリーク・例外を発生させる。Unloaded で確実にデタッチする。
+    /// </summary>
+    private void UserControl_Unloaded(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (boundFiltersState is not null)
+            {
+                boundFiltersState.PropertyChanged -= OnFiltersChanged;
+                boundFiltersState = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"GalleryFilterPanel.UserControl_Unloaded: threw: {ex}");
+        }
+    }
+
     public void setWorldFilterOptions(UiObservableCollection<WorldFilterOptionDto> options)
     {
         AppLogger.Trace($"GalleryFilterPanel.setWorldFilterOptions: enter count={options.Count}");

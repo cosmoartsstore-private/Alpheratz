@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Alpheratz.Shared.Models;
 
 namespace Alpheratz.Core.Database;
 
@@ -19,4 +20,5 @@ public sealed class PhotoQueryParams
     public int? Limit { get; init; }
     public int? Offset { get; init; }
     public bool IncludePhash { get; init; }
+    public SortMode Sort { get; init; } = SortMode.dateDesc;
 }

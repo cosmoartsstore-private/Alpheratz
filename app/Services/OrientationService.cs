@@ -89,7 +89,8 @@ public sealed class OrientationService
         finally
         {
             Interlocked.Exchange(ref isRunning, 0);
-            UpdateProgress(currentProgress.processed, currentProgress.total, false);
+            var snapshot = currentProgress;
+            UpdateProgress(snapshot.processed, snapshot.total, false);
             await eventBus.PublishAsync("orientation_complete", new object()).ConfigureAwait(false);
         }
 
@@ -98,7 +99,11 @@ public sealed class OrientationService
 
     private void UpdateProgress(int processed, int total, bool running)
     {
-        currentProgress = new OrientationProgressEvent { processed = processed, total = total, running = running };
-        _ = eventBus.PublishAsync("orientation_progress", currentProgress);
+        // ローカル変数 snapshot にコピーしてから PublishAsync へ渡す。
+        // 旧実装では currentProgress フィールドが先に上書きされて、後段の
+        // PublishAsync が新しいスナップショットを発火するパスがあった。
+        var snapshot = new OrientationProgressEvent { processed = processed, total = total, running = running };
+        currentProgress = snapshot;
+        _ = eventBus.PublishAsync("orientation_progress", snapshot);
     }
 }

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Specialized;
 using System.Threading.Tasks;
 using Alpheratz.Core;
 using Alpheratz.Shared.Animations;
@@ -8,7 +7,6 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
-using Alpheratz.Features.Gallery;
 using System.ComponentModel;
 
 namespace Alpheratz.Features.PhotoModal;
@@ -22,12 +20,10 @@ public sealed partial class PhotoModalPage : Page
     public Action? OnGoBack { get; set; }
     public Action? OnGoPrev { get; set; }
     public Action? OnGoNext { get; set; }
-    public Func<Task>? OnSaveMemo { get; set; }
     public Func<Task>? OnOpenWorld { get; set; }
     public Func<Task>? OnOpenExplorer { get; set; }
     public Func<Task>? OnTweet { get; set; }
     public Func<Task>? OnToggleFavorite { get; set; }
-    public Func<object?, Task>? OnApplySimilarWorldCandidate { get; set; }
     public Func<string, string, Task>? OnAddTag { get; set; }
     public Func<string, string, Task>? OnRemoveTag { get; set; }
     public Action? OnOpenTagMaster { get; set; }
@@ -62,7 +58,6 @@ public sealed partial class PhotoModalPage : Page
         DataContext = viewModel;
 
         viewModel.state.PropertyChanged += OnStatePropertyChanged;
-        viewModel.similarWorldCandidates.CollectionChanged += OnSimilarCandidatesChanged;
 
         AppLogger.Trace("PhotoModalPage.ctor: exit");
     }
@@ -70,11 +65,9 @@ public sealed partial class PhotoModalPage : Page
     public void UpdateViewModel(PhotoModalViewModel next)
     {
         viewModel.state.PropertyChanged -= OnStatePropertyChanged;
-        viewModel.similarWorldCandidates.CollectionChanged -= OnSimilarCandidatesChanged;
         viewModel = next;
         DataContext = next;
         next.state.PropertyChanged += OnStatePropertyChanged;
-        next.similarWorldCandidates.CollectionChanged += OnSimilarCandidatesChanged;
         syncWorldName();
         syncMatchSource();
         syncEmptyTagNote();
@@ -103,6 +96,10 @@ public sealed partial class PhotoModalPage : Page
                 ModalImage.Source = null;
                 return;
             }
+            // DB の正規化済みパスは forward-slash を含む可能性があるため、
+            // BitmapImage に渡す前にネイティブのディレクトリセパレータへ変換する
+            // (ThumbnailService.GenerateThumbnailAsync と同じ正規化)。
+            path = path.Replace('/', System.IO.Path.DirectorySeparatorChar);
             ModalImage.Source = new BitmapImage { CreateOptions = BitmapCreateOptions.IgnoreImageCache, UriSource = new Uri(path, UriKind.Absolute) };
         }
         catch (Exception ex)
@@ -182,6 +179,11 @@ public sealed partial class PhotoModalPage : Page
         e.Handled = true;
     }
 
+    private void Page_Unloaded(object sender, RoutedEventArgs e)
+    {
+        viewModel.state.PropertyChanged -= OnStatePropertyChanged;
+    }
+
     private void Page_Loaded(object sender, RoutedEventArgs e)
     {
         try
@@ -231,16 +233,6 @@ public sealed partial class PhotoModalPage : Page
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.BackButton_Click: {ex}"); }
     }
 
-
-    private async void SaveMemo_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            if (OnSaveMemo is not null)
-                await OnSaveMemo().ConfigureAwait(false);
-        }
-        catch (Exception ex) { AppLogger.Error($"PhotoModalPage.SaveMemo_Click: {ex}"); }
-    }
 
     private async void OpenWorld_Click(object sender, RoutedEventArgs e)
     {
@@ -294,17 +286,6 @@ public sealed partial class PhotoModalPage : Page
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.Favorite_Click: {ex}"); }
     }
 
-    private async void ApplySimilarWorld_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            if (OnApplySimilarWorldCandidate is null) return;
-            var candidate = (sender as FrameworkElement)?.DataContext;
-            await OnApplySimilarWorldCandidate(candidate).ConfigureAwait(false);
-        }
-        catch (Exception ex) { AppLogger.Error($"PhotoModalPage.ApplySimilarWorld_Click: {ex}"); }
-    }
-
     private async void AddExistingTag_Click(object sender, RoutedEventArgs e)
     {
         try
@@ -314,7 +295,7 @@ public sealed partial class PhotoModalPage : Page
                 var photoPath = viewModel.state.SelectedPhoto?.PhotoPath;
                 if (photoPath is not null && OnAddTag is not null)
                 {
-                    await OnAddTag(photoPath, tag).ConfigureAwait(false);
+                    await OnAddTag(photoPath, tag);
                     ExistingTagCombo.SelectedIndex = -1;
                     syncEmptyTagNote();
                 }
@@ -346,71 +327,10 @@ public sealed partial class PhotoModalPage : Page
             var tag = (sender as FrameworkElement)?.Tag as string;
             var photoPath = viewModel.state.SelectedPhoto?.PhotoPath;
             if (string.IsNullOrEmpty(tag) || photoPath is null || OnRemoveTag is null) return;
-            await OnRemoveTag(photoPath, tag).ConfigureAwait(false);
+            await OnRemoveTag(photoPath, tag);
             syncEmptyTagNote();
         }
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.RemoveTag_Click: {ex}"); }
-    }
-
-    // -----------------------------------------------------------------------
-    // Similar photos strip slide-up animation
-    // -----------------------------------------------------------------------
-
-    private void OnSimilarCandidatesChanged(object? sender, NotifyCollectionChangedEventArgs e)
-    {
-        try
-        {
-            var candidates = viewModel.similarWorldCandidates;
-            if (candidates.Count > 0)
-            {
-                SimilarPhotosHint.Text = $"類似写真 ({candidates.Count}枚)";
-                SimilarPhotosList.Children.Clear();
-
-                foreach (var item in candidates)
-                {
-                    var thumb = new Button
-                    {
-                        Width = 64,
-                        Height = 64,
-                        Padding = new Thickness(0),
-                        CornerRadius = new CornerRadius(8),
-                        BorderThickness = new Thickness(1),
-                        BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
-                        Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
-                        DataContext = item,
-                    };
-                    thumb.Click += ApplySimilarWorld_Click;
-
-                    var bmp = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage
-                    {
-                        CreateOptions = Microsoft.UI.Xaml.Media.Imaging.BitmapCreateOptions.IgnoreImageCache,
-                        DecodePixelWidth = 64,
-                        DecodePixelHeight = 64,
-                        UriSource = new Uri(item.Photo.EffectiveDisplayPath ?? item.Photo.PhotoPath),
-                    };
-                    var img = new Microsoft.UI.Xaml.Controls.Image
-                    {
-                        Source = bmp,
-                        Stretch = Microsoft.UI.Xaml.Media.Stretch.UniformToFill,
-                    };
-                    thumb.Content = img;
-                    SimilarPhotosList.Children.Add(thumb);
-                }
-
-                if (SimilarPhotosStrip.Visibility != Visibility.Visible)
-                {
-                    SimilarPhotosStrip.Visibility = Visibility.Visible;
-                    AnimationHelper.SlideUpFadeIn(SimilarPhotosStrip, fromY: 10f, durationMs: 250);
-                }
-            }
-            else
-            {
-                SimilarPhotosStrip.Visibility = Visibility.Collapsed;
-                SimilarPhotosList.Children.Clear();
-                AnimationHelper.ResetVisual(SimilarPhotosStrip);
-            }
-        }
-        catch (Exception ex) { AppLogger.Error($"PhotoModalPage.OnSimilarCandidatesChanged: {ex}"); }
     }
 
     // -----------------------------------------------------------------------

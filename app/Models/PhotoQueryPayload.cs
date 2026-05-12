@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Alpheratz.Shared.Models;
 
 namespace Alpheratz.Models;
 
@@ -13,4 +14,5 @@ public sealed record PhotoQueryPayload(
     long? sourceSlot,
     int? limit,
     int? offset,
-    bool? includePhash = null);
+    bool? includePhash = null,
+    SortMode sortMode = SortMode.dateDesc);

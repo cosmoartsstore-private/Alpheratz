@@ -205,17 +205,46 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
     /// </summary>
     private void kickThumbnailGeneration(IReadOnlyDictionary<string, PhotoThumbnailItem> photoMap, bool cancelPrevious = true)
     {
+        CancellationTokenSource cts;
         if (cancelPrevious)
         {
-            thumbnailCts?.Cancel();
-            thumbnailCts?.Dispose();
-            thumbnailCts = new CancellationTokenSource();
+            // Cancel/Dispose をアトミックに置換して、旧 CTS の Dispose と
+            // バックグラウンドの ct.IsCancellationRequested 参照が交差しないようにする。
+            var nextCts = new CancellationTokenSource();
+            var prevCts = Interlocked.Exchange(ref thumbnailCts, nextCts);
+            if (prevCts is not null)
+            {
+                try { prevCts.Cancel(); } catch { }
+                prevCts.Dispose();
+            }
+            cts = nextCts;
         }
         else
         {
-            thumbnailCts ??= new CancellationTokenSource();
+            // `??=` は読み込み→比較→代入が直列でないため、Visible thumbnails 要求が
+            // 連続して飛んでくると複数の CTS が同時生成され、片方が即 GC される race がある。
+            // CompareExchange で「null のときだけ自分の作った CTS を代入」を原子化する。
+            var existing = Volatile.Read(ref thumbnailCts);
+            if (existing is null)
+            {
+                var candidate = new CancellationTokenSource();
+                var prior = Interlocked.CompareExchange(ref thumbnailCts, candidate, null);
+                if (prior is null)
+                {
+                    cts = candidate;
+                }
+                else
+                {
+                    candidate.Dispose();
+                    cts = prior;
+                }
+            }
+            else
+            {
+                cts = existing;
+            }
         }
-        var ct = thumbnailCts.Token;
+        var ct = cts.Token;
 
         var targets = photoMap.Values
             .Where(p => string.IsNullOrEmpty(p.GridThumbPath) && !string.IsNullOrEmpty(p.PhotoPath))
@@ -224,6 +253,8 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
         if (targets.Count == 0) return;
 
         AppLogger.Trace($"GalleryPhotosState.kickThumbnailGeneration: dispatching count={targets.Count} cancel={cancelPrevious}");
+        // Task.Run の第二引数に ct を渡すと、Task.Run 起動前に CTS が Dispose された場合
+        // ObjectDisposedException が発生する race がある。token は内部で参照するだけにする。
         _ = Task.Run(async () =>
         {
             try
@@ -240,7 +271,7 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
             {
                 AppLogger.Error($"GalleryPhotosState.kickThumbnailGeneration: threw: {ex}");
             }
-        }, ct);
+        });
     }
 
     private PhotoQueryPayload buildQueryParams()
@@ -256,7 +287,8 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
             sourceSlot: filters.sourceSlot,
             limit: null,
             offset: null,
-            includePhash: null);
+            includePhash: null,
+            sortMode: filters.sortMode);
     }
 
     private async Task<IReadOnlyList<PhotoThumbnailItem>> fetchAllPhotos()
@@ -315,9 +347,13 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
         var token = transitionToken + 1;
         transitionToken = token;
 
-        thumbnailCts?.Cancel();
-        thumbnailCts?.Dispose();
-        thumbnailCts = null;
+        // 既存のサムネイル生成 CTS をアトミックに引き抜いてキャンセル + Dispose。
+        var prevCts = Interlocked.Exchange(ref thumbnailCts, null);
+        if (prevCts is not null)
+        {
+            try { prevCts.Cancel(); } catch { }
+            prevCts.Dispose();
+        }
 
         await dispatcherService.RunOnUiThread(() =>
         {
@@ -379,9 +415,12 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
         try { await dispose(scanEnrichCompletedUnlisten).ConfigureAwait(false); }
         catch (Exception ex) { AppLogger.Error($"GalleryPhotosState.DisposeAsync: scanEnrichCompleted unlisten threw: {ex}"); }
 
-        thumbnailCts?.Cancel();
-        thumbnailCts?.Dispose();
-        thumbnailCts = null;
+        var prevCts = Interlocked.Exchange(ref thumbnailCts, null);
+        if (prevCts is not null)
+        {
+            try { prevCts.Cancel(); } catch { }
+            prevCts.Dispose();
+        }
         transitionToken += 1;
         AppLogger.Trace("GalleryPhotosState.DisposeAsync: exit");
 

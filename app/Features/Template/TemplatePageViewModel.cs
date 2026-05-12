@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -55,7 +55,7 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
             text = replaceTemplateToken(text, "{date}", date);
             text = replaceTemplateToken(text, "{timestamp}", photo.Timestamp);
             text = replaceTemplateToken(text, "{file}", photo.PhotoFilename);
-            text = replaceTemplateToken(text, "{memo}", photo.Memo ?? "");
+            text = replaceTemplateToken(text, "{memo}", "");
             text = replaceTemplateToken(text, "{tags}", tags);
             AppLogger.Trace("TemplatePageViewModel.buildTweetText: exit");
             return text;
@@ -108,7 +108,12 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("TemplatePageViewModel.cancelEdit: exit");
     }
 
-    public void deleteTemplate(string template)
+    /// <summary>
+    /// テンプレートを削除して即座に永続化する。
+    /// 旧実装: コレクションから消すだけで saveTemplates を呼ばないため、
+    /// アプリ再起動で削除が消えてしまう永続化漏れがあった。
+    /// </summary>
+    public async Task deleteTemplate(string template, AlpheratzSettingDto currentSetting)
     {
         AppLogger.Trace($"TemplatePageViewModel.deleteTemplate: enter template={template}");
         try
@@ -127,6 +132,9 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
             {
                 cancelEdit();
             }
+
+            // コレクション変更後に即時保存することで、アプリ再起動でも削除を保持する。
+            await saveTemplates(currentSetting).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

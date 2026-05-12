@@ -41,6 +41,15 @@
             <Grid>
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                 <StackPanel>
+                    <TextBlock Text="メイソンリー レイアウト" FontWeight="SemiBold"/>
+                    <TextBlock Text="ギャラリーで写真の縦横比に合わせた段組み表示を有効にします。" Style="{StaticResource HintTextStyle}"/>
+                </StackPanel>
+                <ToggleSwitch Grid.Column="1" IsOn="{Binding IsMasonryEnabled, Mode=TwoWay}" Toggled="MasonryToggle_Toggled"/>
+            </Grid>
+
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <StackPanel>
                     <TextBlock Text="テーマ" FontWeight="SemiBold"/>
                     <TextBlock Text="アプリの外観テーマを切り替えます。" Style="{StaticResource HintTextStyle}"/>
                 </StackPanel>
@@ -61,8 +70,14 @@
 
             <StackPanel Spacing="10">
                 <TextBlock Text="ワールド情報の一括解決" FontWeight="SemiBold"/>
-                <TextBlock Text="ワールドが不明な写真に対して pHash 解析でワールドを推定します。処理には時間がかかる場合があります。" Style="{StaticResource HintTextStyle}"/>
-                <Button Content="解析を開始" Style="{StaticResource PrimaryButtonStyle}" Click="StartWorldAnalysis_Click"/>
+                <TextBlock Text="ワールドが不明な写真を、同じフォルダ内の類似写真と照合してワールド情報を復元します。適用前に1件ずつ確認できます。" Style="{StaticResource HintTextStyle}"/>
+                <Button Content="確認付きで解決" Style="{StaticResource PrimaryButtonStyle}" Click="StartWorldAnalysis_Click"/>
+            </StackPanel>
+
+            <StackPanel Spacing="10">
+                <TextBlock Text="不在の写真を確認" FontWeight="SemiBold"/>
+                <TextBlock Text="ファイルが見つからなくなった写真を DB から確認し、必要に応じて一括削除できます。" Style="{StaticResource HintTextStyle}"/>
+                <Button Content="不在の写真を確認" Style="{StaticResource GhostButtonStyle}" Click="ReviewMissingPhotos_Click"/>
             </StackPanel>
 
             <Border Padding="20"

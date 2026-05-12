@@ -1,13 +1,11 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Alpheratz.Core;
 using Alpheratz.Core.Database;
 using Alpheratz.Core.Imaging.Pdq;
 using Alpheratz.Core.Scanner;
-using Alpheratz.Models;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 using Windows.Storage.Streams;
@@ -74,7 +72,17 @@ public sealed class WorldService
         try
         {
             var normalizedPath = System.IO.Path.GetFullPath(path.Replace('/', '\\'));
-            System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{normalizedPath}\"");
+            // 文字列連結で /select,"..." を組むとパス内のダブルクォートやコマンド区切りで
+            // 任意のシェルコマンドが実行できてしまう。ProcessStartInfo.ArgumentList を使い、
+            // OS 側に引数エスケープを任せる。
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                UseShellExecute = false,
+            };
+            psi.ArgumentList.Add("/select,");
+            psi.ArgumentList.Add(normalizedPath);
+            System.Diagnostics.Process.Start(psi);
         }
         catch (Exception ex)
         {
@@ -157,45 +165,15 @@ public sealed class WorldService
         return resolved;
     }
 
-    public async Task<IReadOnlyList<SimilarWorldCandidateDto>> FindSimilarWorldCandidatesAsync(string photoPath, int limit, CancellationToken ct = default)
+    private static (string WorldName, string? WorldId)? FindBestMatch(string targetPhash, IReadOnlyList<AlpheratzDb.KnownWorldRow> candidates)
     {
-        AppLogger.Trace($"WorldService.FindSimilarWorldCandidatesAsync: enter path={photoPath} limit={limit}");
-        var src = await _db.GetPhotoPhashRowAsync(photoPath, ct).ConfigureAwait(false);
-        if (src is null) return [];
-
-        var srcVariants = PdqHasher.ParseHashVariants(src.Phash);
-        if (srcVariants.Count == 0) return [];
-
-        var known = await _db.GetKnownWorldPhotosAsync(src.SourceSlot, photoPath, ct).ConfigureAwait(false);
-
-        var scored = new List<(AlpheratzDb.KnownWorldRow Row, int Distance)>();
-        foreach (var k in known)
-        {
-            var candVariants = PdqHasher.ParseHashVariants(k.Phash);
-            var d = PdqHasher.ClosestHashDistance(srcVariants, candVariants);
-            if (d is null || d.Value > WorldMatchDistanceThreshold) continue;
-            scored.Add((k, d.Value));
-        }
-        scored.Sort((a, b) => a.Distance.CompareTo(b.Distance));
-
-        var top = scored.Take(limit).ToList();
-        var dtos = new List<SimilarWorldCandidateDto>(top.Count);
-        foreach (var (row, distance) in top)
-        {
-            var record = await _db.GetPhotoRecordAsync(row.PhotoPath, includePhash: false, ct).ConfigureAwait(false);
-            if (record is null) continue;
-            dtos.Add(new SimilarWorldCandidateDto
-            {
-                photo = record,
-                distance = distance,
-                similarity = 1.0 - (double)distance / 256.0,
-            });
-        }
-        AppLogger.Trace($"WorldService.FindSimilarWorldCandidatesAsync: exit count={dtos.Count}");
-        return dtos;
+        var result = FindBestMatchWithDetails(targetPhash, candidates);
+        if (result is null) return null;
+        return (result.Value.Row.WorldName, result.Value.Row.WorldId);
     }
 
-    private static (string WorldName, string? WorldId)? FindBestMatch(string targetPhash, IReadOnlyList<AlpheratzDb.KnownWorldRow> candidates)
+    internal static (AlpheratzDb.KnownWorldRow Row, int Distance)? FindBestMatchWithDetails(
+        string targetPhash, IReadOnlyList<AlpheratzDb.KnownWorldRow> candidates)
     {
         var targetVariants = PdqHasher.ParseHashVariants(targetPhash);
         if (targetVariants.Count == 0) return null;
@@ -213,6 +191,24 @@ public sealed class WorldService
             if (bestDistance == 0) break;
         }
         if (best is null) return null;
-        return (best.WorldName, best.WorldId);
+        return (best, bestDistance);
+    }
+
+    internal static List<(AlpheratzDb.KnownWorldRow Row, int Distance)> RankCandidatesByDistance(
+        string targetPhash, IReadOnlyList<AlpheratzDb.KnownWorldRow> candidates)
+    {
+        var targetVariants = PdqHasher.ParseHashVariants(targetPhash);
+        if (targetVariants.Count == 0) return [];
+
+        var ranked = new List<(AlpheratzDb.KnownWorldRow Row, int Distance)>();
+        foreach (var candidate in candidates)
+        {
+            var candVariants = PdqHasher.ParseHashVariants(candidate.Phash);
+            var d = PdqHasher.ClosestHashDistance(targetVariants, candVariants);
+            if (d is null) continue;
+            ranked.Add((candidate, d.Value));
+        }
+        ranked.Sort((a, b) => a.Distance.CompareTo(b.Distance));
+        return ranked;
     }
 }

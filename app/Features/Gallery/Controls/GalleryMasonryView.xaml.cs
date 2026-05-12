@@ -46,6 +46,8 @@ public sealed partial class GalleryMasonryView : UserControl
         public bool IsLoaded;
         public DispatcherQueueTimer? PendingReleaseTimer;
         public System.ComponentModel.PropertyChangedEventHandler? PhotoSubscription;
+        // R2-A-19: ImageFailed 時に該当カード固有の shimmer を停止できるよう、生成時の Visual を保持する。
+        public Action? StopShimmer;
     }
 
     /// <summary>現在 Canvas 上に実体化されているカード（キーはレイアウトインデックス）。</summary>
@@ -511,6 +513,18 @@ public sealed partial class GalleryMasonryView : UserControl
         var imageVisual = ElementCompositionPreview.GetElementVisual(image);
         imageVisual.Opacity = 0f;
 
+        // shimmer 停止ロジックを ImageOpened / ImageFailed の双方から呼べるようローカル関数にする。
+        void StopShimmer()
+        {
+            try
+            {
+                shimmerVisual.StopAnimation("Offset.X");
+                shimmerBase.Opacity = 0;
+                shimmerHighlight.Opacity = 0;
+            }
+            catch (Exception ex) { AppLogger.Error($"GalleryMasonryView.StopShimmer: threw: {ex}"); }
+        }
+
         // Image fade-in on load + stop shimmer
         image.ImageOpened += (_, _) =>
         {
@@ -522,9 +536,15 @@ public sealed partial class GalleryMasonryView : UserControl
             imageVisual.StartAnimation("Opacity", fadeIn);
 
             // Hide shimmer
-            shimmerVisual.StopAnimation("Offset.X");
-            shimmerBase.Opacity = 0;
-            shimmerHighlight.Opacity = 0;
+            StopShimmer();
+        };
+
+        // R2-A-19: ImageOpened/ImageFailed のどちらか一方が必ず発火する。
+        //          失敗時に shimmer を放置すると永久にシマー演出が回り続け、CPU/コンポジターを浪費する。
+        image.ImageFailed += (_, args) =>
+        {
+            AppLogger.Warn($"GalleryMasonryView.ImageFailed: {args.ErrorMessage}");
+            StopShimmer();
         };
 
         // --- Info overlay (WorldName + Timestamp) ---
@@ -626,6 +646,7 @@ public sealed partial class GalleryMasonryView : UserControl
             Container = border,
             Image = image,
             Photo = item.Photo,
+            StopShimmer = StopShimmer,
         };
 
         // サムネイル生成完了時に GridThumbPath が更新されるので、自動で画像を差し替える

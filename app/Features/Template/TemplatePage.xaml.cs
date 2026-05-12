@@ -16,7 +16,8 @@ public sealed partial class TemplatePage : Page
     public Action? OnCancelEdit { get; set; }
     public Func<Task>? OnSaveTemplate { get; set; }
     public Action<string>? OnStartEdit { get; set; }
-    public Action<string>? OnDeleteTemplate { get; set; }
+    // R2-A-2: 削除は永続化を伴うため async コールバックに変更。
+    public Func<string, Task>? OnDeleteTemplate { get; set; }
     public Func<string, Task>? OnSelectTemplate { get; set; }
 
     public TemplatePage(TemplatePageViewModel viewModel)
@@ -121,7 +122,7 @@ public sealed partial class TemplatePage : Page
         AppLogger.Trace("TemplatePage.EditTemplate_Click: exit");
     }
 
-    private void DeleteTemplate_Click(object sender, RoutedEventArgs e)
+    private async void DeleteTemplate_Click(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("TemplatePage.DeleteTemplate_Click: enter");
         try
@@ -130,11 +131,14 @@ public sealed partial class TemplatePage : Page
             {
                 if (OnDeleteTemplate is not null)
                 {
-                    OnDeleteTemplate(template);
+                    await OnDeleteTemplate(template).ConfigureAwait(false);
                 }
                 else
                 {
-                    viewModel.deleteTemplate(template);
+                    // フォールバック: ハンドラ未登録のときはコレクション操作だけ行う。
+                    // 通常は ShellPage で OnDeleteTemplate を設定するルートを通る。
+                    AppLogger.Warn("TemplatePage.DeleteTemplate_Click: OnDeleteTemplate not wired; collection-only delete");
+                    if (viewModel.tweetTemplates.Contains(template)) viewModel.tweetTemplates.Remove(template);
                 }
             }
         }

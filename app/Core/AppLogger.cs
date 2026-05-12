@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
@@ -40,18 +41,30 @@ public static class AppLogger
 
     private static void Flush()
     {
+        // dequeue したログ行は writer の Dispose 直前まで保持しておく。
+        // ファイル I/O 例外で writer が落ちたとき、キューから消えたまま捨てられないように
+        // pending に積んでおき、失敗時には ConcurrentQueue へ戻す。
+        var pending = new List<string>();
         try
         {
             var logDir = AppPaths.GetLogDir();
             var path = logDir is not null ? Path.Combine(logDir, "info.log") : _fallbackLogPath;
 
-            using var writer = new StreamWriter(path, append: true, System.Text.Encoding.UTF8);
+            // 同一プロセス内のリーダー（外部ツールでの tail 等）が握っていてもログを書き続けたい。
+            using var fs = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+            using var writer = new StreamWriter(fs, System.Text.Encoding.UTF8);
             while (_queue.TryDequeue(out var line))
             {
+                pending.Add(line);
                 writer.WriteLine(line);
             }
         }
-        catch { }
+        catch
+        {
+            // 書き込みに失敗した分はキューへ戻して次回 Flush に再挑戦する。
+            // 失敗時にここで握りつぶしていた行が永久に失われていたのを修正。
+            foreach (var line in pending) _queue.Enqueue(line);
+        }
         finally
         {
             Interlocked.Exchange(ref _flushing, 0);

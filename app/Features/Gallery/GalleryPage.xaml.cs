@@ -367,6 +367,18 @@ public sealed partial class GalleryPage : Page
         viewModel.selectionState.PropertyChanged -= OnSelectionStateChanged;
         viewModel.selectionState.selectedPhotoPaths.CollectionChanged -= OnSelectedPathsChanged;
         viewModel.displayState.PropertyChanged -= OnDisplayStateChanged;
+
+        viewModel.photosState.OnMonthGroupsChanged = null;
+        if (GridStage.MasonryViewControlRef is { } masonry)
+        {
+            masonry.OnPhotoTapped = null;
+            masonry.OnThumbnailsNeeded = null;
+            masonry.OnFirstVisibleIndexChanged = null;
+        }
+        if (GridStage.MonthNavControlRef is { } monthNav)
+        {
+            monthNav.OnJumpToMonth = null;
+        }
     }
 
     /// <summary>フォルダ選択ダイアログを表示し、選択写真を一括コピーする。</summary>

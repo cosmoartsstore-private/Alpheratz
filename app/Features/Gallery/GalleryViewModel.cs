@@ -36,6 +36,12 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
 
     private CancellationTokenSource? searchDebounceCts;
 
+    /// <summary>
+    /// drill-down 用に外部（ShellPage）で保持される写真リスト。
+    /// updatePhoto がここにも更新を反映できるように、ShellPage が登録する。
+    /// </summary>
+    public Func<IReadOnlyList<PhotoThumbnailItem>?>? drillDownPhotosProvider { get; set; }
+
     public GalleryViewModel(
         PhotoService photoService,
         WorldService worldService,
@@ -62,6 +68,13 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         filtersState.worldFilters.CollectionChanged += onFiltersCollectionChanged;
         filtersState.tagFilters.CollectionChanged += onFiltersCollectionChanged;
         AppLogger.Trace("GalleryViewModel.ctor: exit");
+    }
+
+    public void Cleanup()
+    {
+        filtersState.PropertyChanged -= onFiltersChanged;
+        filtersState.worldFilters.CollectionChanged -= onFiltersCollectionChanged;
+        filtersState.tagFilters.CollectionChanged -= onFiltersCollectionChanged;
     }
 
     /// <summary>
@@ -93,6 +106,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
                 case nameof(GalleryFiltersState.OrientationFilter):
                 case nameof(GalleryFiltersState.FavoritesOnly):
                 case nameof(GalleryFiltersState.DisplayFolderMode):
+                case nameof(GalleryFiltersState.SortMode):
                     AppLogger.Trace("GalleryViewModel.onFiltersChanged: branch=reload");
                     _ = applyFiltersAndReload();
                     break;
@@ -131,10 +145,28 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
     private async Task debounceAndApplySearch()
     {
         AppLogger.Trace("GalleryViewModel.debounceAndApplySearch: enter");
-        searchDebounceCts?.Cancel();
-        searchDebounceCts?.Dispose();
-        searchDebounceCts = new CancellationTokenSource();
-        var token = searchDebounceCts.Token;
+        var newCts = new CancellationTokenSource();
+        var oldCts = Interlocked.Exchange(ref searchDebounceCts, newCts);
+        if (oldCts is not null)
+        {
+            try { oldCts.Cancel(); }
+            catch (ObjectDisposedException) { }
+            catch (Exception ex) { AppLogger.Warn($"GalleryViewModel.debounceAndApplySearch: cancel threw: {ex}"); }
+            try { oldCts.Dispose(); }
+            catch (Exception ex) { AppLogger.Warn($"GalleryViewModel.debounceAndApplySearch: dispose threw: {ex}"); }
+        }
+
+        CancellationToken token;
+        try
+        {
+            token = newCts.Token;
+        }
+        catch (ObjectDisposedException)
+        {
+            AppLogger.Trace("GalleryViewModel.debounceAndApplySearch: token disposed, skip");
+            return;
+        }
+
         try
         {
             await Task.Delay(400, token).ConfigureAwait(false);
@@ -143,6 +175,10 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         catch (OperationCanceledException)
         {
             AppLogger.Trace("GalleryViewModel.debounceAndApplySearch: cancelled");
+        }
+        catch (ObjectDisposedException)
+        {
+            AppLogger.Trace("GalleryViewModel.debounceAndApplySearch: token disposed mid-delay");
         }
         catch (Exception ex)
         {
@@ -181,13 +217,13 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
                 DisplayFolderMode.secondary => 2L,
                 _ => null,
             },
-            groupingMode: filtersState.GroupingMode
+            groupingMode: filtersState.GroupingMode,
+            sortMode: filtersState.SortMode
         );
         AppLogger.Trace("GalleryViewModel.buildCurrentFilters: exit");
         return filters;
     }
 
-    /// <summary>ワールドフィルタのドロップダウン候補を DB から取得する。</summary>
     public async Task loadWorldFilterOptions()
     {
         AppLogger.Trace("GalleryViewModel.loadWorldFilterOptions: enter");
@@ -205,7 +241,6 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryViewModel.loadWorldFilterOptions: exit");
     }
 
-    /// <summary>指定写真のお気に入り状態をトグルする。</summary>
     public async Task toggleFavorite(string photoPath, bool current)
     {
         AppLogger.Trace($"GalleryViewModel.toggleFavorite: enter photoPath={photoPath} current={current}");
@@ -223,7 +258,6 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryViewModel.toggleFavorite: exit");
     }
 
-    /// <summary>指定写真にタグを追加する。重複・長さ超過はスキップ。</summary>
     public async Task addTag(string photoPath, string tag)
     {
         AppLogger.Trace($"GalleryViewModel.addTag: enter photoPath={photoPath} tag={tag}");
@@ -265,7 +299,6 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryViewModel.addTag: exit");
     }
 
-    /// <summary>指定写真からタグを削除する。</summary>
     public async Task removeTag(string photoPath, string tag)
     {
         AppLogger.Trace($"GalleryViewModel.removeTag: enter photoPath={photoPath} tag={tag}");
@@ -284,10 +317,6 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryViewModel.removeTag: exit");
     }
 
-    /// <summary>
-    /// 類似ワールド候補を選択写真に適用する。
-    /// sourcePhoto のワールド情報を selectedPhotoView にコピーし DB に記録する。
-    /// </summary>
     public async Task applySimilarWorldMatch(
         PhotoThumbnailItem sourcePhoto,
         PhotoThumbnailItem? selectedPhotoView,
@@ -331,7 +360,6 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryViewModel.applySimilarWorldMatch: exit");
     }
 
-    /// <summary>ワールド不明写真の一括 PDQ 分析を開始する。</summary>
     public async Task handleStartUnknownWorldAnalysis()
     {
         AppLogger.Trace("GalleryViewModel.handleStartUnknownWorldAnalysis: enter");
@@ -348,10 +376,6 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryViewModel.handleStartUnknownWorldAnalysis: exit");
     }
 
-    /// <summary>
-    /// 写真カードのクリック/タップ時のハンドラ。
-    /// マルチセレクトモード中は選択トグル、通常時は PhotoModal を開く。
-    /// </summary>
     public void handlePhotoActivate(PhotoGridItem item, bool shiftKey, Action<PhotoThumbnailItem> onSelectPhoto)
     {
         AppLogger.Trace($"GalleryViewModel.handlePhotoActivate: enter shiftKey={shiftKey}");
@@ -373,7 +397,6 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryViewModel.handlePhotoActivate: exit");
     }
 
-    /// <summary>全フィルタをデフォルト値にリセットする。</summary>
     public void resetFilters()
     {
         AppLogger.Trace("GalleryViewModel.resetFilters: enter");
@@ -381,16 +404,11 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryViewModel.resetFilters: exit");
     }
 
-    /// <summary>選択中の写真を一括でお気に入り設定/解除する。</summary>
     public async Task bulkSetFavorite(bool isFavorite)
     {
         AppLogger.Trace($"GalleryViewModel.bulkSetFavorite: enter isFavorite={isFavorite}");
         var refs = selectionState.selectedPhotoRefs.ToList();
-        if (refs.Count == 0)
-        {
-            AppLogger.Trace("GalleryViewModel.bulkSetFavorite: skip (no refs)");
-            return;
-        }
+        if (refs.Count == 0) return;
         try
         {
             await photoService.BulkSetPhotoFavoriteAsync(refs, isFavorite).ConfigureAwait(false);
@@ -406,16 +424,11 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryViewModel.bulkSetFavorite: exit");
     }
 
-    /// <summary>選択中の写真に一括でタグを追加する。</summary>
     public async Task bulkAddTag(string tag)
     {
         AppLogger.Trace($"GalleryViewModel.bulkAddTag: enter tag={tag}");
         var refs = selectionState.selectedPhotoRefs.ToList();
-        if (refs.Count == 0 || string.IsNullOrWhiteSpace(tag))
-        {
-            AppLogger.Trace("GalleryViewModel.bulkAddTag: skip (no refs or empty tag)");
-            return;
-        }
+        if (refs.Count == 0 || string.IsNullOrWhiteSpace(tag)) return;
         try
         {
             await photoService.BulkAddPhotoTagAsync(refs, tag).ConfigureAwait(false);
@@ -429,20 +442,20 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryViewModel.bulkAddTag: exit");
     }
 
-    /// <summary>選択中の写真を指定フォルダにコピーする。</summary>
     public async Task bulkCopyPhotos(string destinationFolder)
     {
         AppLogger.Trace($"GalleryViewModel.bulkCopyPhotos: enter destinationFolder={destinationFolder}");
         var refs = selectionState.selectedPhotoRefs.ToList();
-        if (refs.Count == 0 || string.IsNullOrWhiteSpace(destinationFolder))
-        {
-            AppLogger.Trace("GalleryViewModel.bulkCopyPhotos: skip (no refs or empty folder)");
-            return;
-        }
+        if (refs.Count == 0 || string.IsNullOrWhiteSpace(destinationFolder)) return;
         try
         {
-            await photoService.BulkCopyPhotosAsync(refs, destinationFolder).ConfigureAwait(false);
-            toastService.addToast($"{refs.Count} 枚のファイルをコピーしました");
+            // R2-A-7: BulkCopyPhotosAsync が (copied, skipped) を返すようになったので、
+            // スキップが発生した場合はトースト文言にも反映する。
+            var (copied, skipped) = await photoService.BulkCopyPhotosAsync(refs, destinationFolder).ConfigureAwait(false);
+            if (skipped == 0)
+                toastService.addToast($"{copied} 枚のファイルをコピーしました");
+            else
+                toastService.addToast($"{copied} 枚をコピーしました ({skipped} 枚はスキップ)", ToastType.info);
         }
         catch (Exception err)
         {
@@ -452,7 +465,11 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryViewModel.bulkCopyPhotos: exit");
     }
 
-    /// <summary>指定グループの写真一覧を取得する（ドリルダウン用）。</summary>
+    /// <summary>
+    /// 指定グループの写真一覧を取得する（ドリルダウン用）。
+    /// photosState.photos に同一パスの既存インスタンスがあればそれを返し、
+    /// 後続の updatePhoto がドリルダウン側にも反映されるようにする。
+    /// </summary>
     public async Task<IReadOnlyList<PhotoThumbnailItem>> getGroupPhotosAsync(string groupKey)
     {
         AppLogger.Trace($"GalleryViewModel.getGroupPhotosAsync: enter groupKey={groupKey}");
@@ -468,7 +485,14 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
                 filters.favoritesOnly ? true : null,
                 filters.tagFilters.Count > 0 ? filters.tagFilters : null
             ).ConfigureAwait(false);
-            var items = photos.Select(PhotoThumbnailItem.FromDto).ToArray();
+
+            var pathToExisting = photosState.photos.ToDictionary(p => p.PhotoPath, p => p);
+            var items = photos.Select(dto =>
+            {
+                if (pathToExisting.TryGetValue(dto.photo_path, out var existing))
+                    return existing;
+                return PhotoThumbnailItem.FromDto(dto);
+            }).ToArray();
             AppLogger.Trace($"GalleryViewModel.getGroupPhotosAsync: exit count={items.Length}");
             return items;
         }
@@ -480,8 +504,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
     }
 
     /// <summary>
-    /// photoPath に一致する写真を photos / displayItems から探し、updater を適用する。
-    /// 同一写真が複数コレクションに存在しうるため全てを走査する。
+    /// photoPath に一致する写真を photos / displayItems / drillDownPhotos から探し、updater を適用する。
     /// </summary>
     private void updatePhoto(string photoPath, Action<PhotoThumbnailItem> updater)
     {
@@ -495,6 +518,15 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
             foreach (var item in photosState.displayItems.Where(item => item.Photo.PhotoPath == photoPath))
             {
                 updater(item.Photo);
+            }
+
+            var drill = drillDownPhotosProvider?.Invoke();
+            if (drill is not null)
+            {
+                foreach (var photo in drill.Where(photo => photo.PhotoPath == photoPath))
+                {
+                    updater(photo);
+                }
             }
         }
         catch (Exception ex)

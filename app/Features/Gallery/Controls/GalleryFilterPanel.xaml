@@ -2,7 +2,8 @@
     x:Class="Alpheratz.Features.Gallery.Controls.GalleryFilterPanel"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:shared="using:Alpheratz.Shared.Controls">
+    xmlns:shared="using:Alpheratz.Shared.Controls"
+    Unloaded="UserControl_Unloaded">
     <Border Style="{StaticResource SidebarBorderStyle}" Padding="0">
         <Grid>
             <Grid.RowDefinitions>

@@ -41,6 +41,12 @@ public sealed class PhashService
             return;
         }
 
+        // R2-A-16: 旧実装は finally で常に phash_complete を発火していたため、
+        //          例外で中断した場合も「完了したように」UI が見えていた。
+        //          成否を変数で追跡し、success のときだけ phash_complete を出す。
+        //          失敗時は phash_error を出して上位で再走査などの判断ができるようにする。
+        var succeeded = false;
+        string? errorMessage = null;
         try
         {
             var total = await db.GetPendingPhashCountAsync(ct).ConfigureAwait(false);
@@ -48,6 +54,7 @@ public sealed class PhashService
             if (total == 0)
             {
                 AppLogger.Trace("PhashService.StartPdqAnalysisAsync: nothing pending");
+                succeeded = true;
                 return;
             }
 
@@ -90,16 +97,29 @@ public sealed class PhashService
                     UpdateProgress(done, total, item.PhotoFilename);
                 }
             }
+            // ループを break で抜けたかキャンセルされたかを判定。
+            // キャンセル時は success にしない（UI に「完了」と誤認させない）。
+            succeeded = !ct.IsCancellationRequested;
+        }
+        catch (OperationCanceledException)
+        {
+            AppLogger.Trace("PhashService.StartPdqAnalysisAsync: cancelled");
+            errorMessage = "中断されました";
         }
         catch (Exception ex)
         {
             AppLogger.Error($"PhashService.StartPdqAnalysisAsync: threw: {ex}");
+            errorMessage = ex.Message;
         }
         finally
         {
             Interlocked.Exchange(ref isRunning, 0);
-            UpdateProgress(currentProgress.done, currentProgress.total, null);
-            await eventBus.PublishAsync("phash_complete", new object()).ConfigureAwait(false);
+            var snapshot = currentProgress;
+            UpdateProgress(snapshot.done, snapshot.total, null);
+            if (succeeded)
+                await eventBus.PublishAsync("phash_complete", new object()).ConfigureAwait(false);
+            else
+                await eventBus.PublishAsync("phash_error", errorMessage ?? "phash analysis failed").ConfigureAwait(false);
         }
 
         AppLogger.Trace("PhashService.StartPdqAnalysisAsync: exit");
@@ -107,7 +127,11 @@ public sealed class PhashService
 
     private void UpdateProgress(int done, int total, string? current)
     {
-        currentProgress = new PhashProgressEvent { done = done, total = total, current = current };
-        _ = eventBus.PublishAsync("phash_progress", currentProgress);
+        // ローカル変数 snapshot にコピーしてから PublishAsync へ渡す。
+        // 旧実装ではフィールド更新と PublishAsync の引数評価の間に別スレッドの
+        // UpdateProgress が割り込むことができ、同じ値が二重発火する race があった。
+        var snapshot = new PhashProgressEvent { done = done, total = total, current = current };
+        currentProgress = snapshot;
+        _ = eventBus.PublishAsync("phash_progress", snapshot);
     }
 }

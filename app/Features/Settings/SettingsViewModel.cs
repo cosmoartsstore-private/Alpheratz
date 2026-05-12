@@ -19,7 +19,6 @@ public partial class SettingsViewModel : UiThreadSafeObservableObject
     [ObservableProperty] private string secondaryPhotoFolderPath = string.Empty;
     [ObservableProperty] private string? pendingFolderPath;
     [ObservableProperty] private int pendingFolderSlot = 1;
-    [ObservableProperty] private BackupCandidateDto? pendingRestoreCandidate;
     [ObservableProperty] private bool isApplyingFolderChange;
     [ObservableProperty] private bool startupEnabled;
     [ObservableProperty] private ThemeMode themeMode = ThemeMode.light;

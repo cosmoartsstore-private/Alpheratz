@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
@@ -183,10 +183,19 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
             return;
         }
 
-        selectedPhotoRefsCancellation?.Cancel();
-        selectedPhotoRefsCancellation?.Dispose();
-        selectedPhotoRefsCancellation = new CancellationTokenSource();
-        var token = selectedPhotoRefsCancellation.Token;
+        // 旧実装: Cancel(); Dispose(); selectedPhotoRefsCancellation = new(...) は
+        // 3 ステップが直列でないため、別スレッドの loadSelectedPhotoRefs が同じ CTS を
+        // 参照したまま走り抜けて Dispose 済み CTS にアクセスする race があった。
+        // 新規 CTS を作ってから Interlocked.Exchange で原子的に差し替え、旧 CTS を
+        // ローカル参照で受け取って Cancel/Dispose する。
+        var newCts = new CancellationTokenSource();
+        var oldCts = Interlocked.Exchange(ref selectedPhotoRefsCancellation, newCts);
+        if (oldCts is not null)
+        {
+            try { oldCts.Cancel(); } catch (ObjectDisposedException) { }
+            try { oldCts.Dispose(); } catch (ObjectDisposedException) { }
+        }
+        var token = newCts.Token;
         var photoPaths = selectedPhotoPaths.ToArray();
 
         try
@@ -219,8 +228,12 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
         try
         {
             selectedPhotoPaths.CollectionChanged -= selectedPhotoPathsChanged;
-            selectedPhotoRefsCancellation?.Cancel();
-            selectedPhotoRefsCancellation?.Dispose();
+            var cts = Interlocked.Exchange(ref selectedPhotoRefsCancellation, null);
+            if (cts is not null)
+            {
+                try { cts.Cancel(); } catch (ObjectDisposedException) { }
+                try { cts.Dispose(); } catch (ObjectDisposedException) { }
+            }
         }
         catch (Exception ex)
         {

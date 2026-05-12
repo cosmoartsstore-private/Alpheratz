@@ -13,6 +13,10 @@ namespace Alpheratz.Services;
 public sealed class PhotoService
 {
     private readonly AlpheratzDb _db;
+    // SQLite への並列書込を直列化するためのセマフォ。
+    // BulkSet*/BulkAdd* など複数行更新では Task.WhenAll で並列発行すると
+    // SQLite が SQLITE_BUSY を返してパーシャル更新になるため、1 件ずつ走らせる。
+    private readonly SemaphoreSlim _bulkWriteGate = new(1, 1);
 
     public PhotoService(AlpheratzDb db)
     {
@@ -34,6 +38,7 @@ public sealed class PhotoService
         Limit = p.limit,
         Offset = p.offset,
         IncludePhash = includePhash,
+        Sort = p.sortMode,
     };
 
     public async Task<PhotoPageDto> GetPhotosAsync(PhotoQueryPayload payload, CancellationToken ct = default)
@@ -160,12 +165,23 @@ public sealed class PhotoService
         return task;
     }
 
-    public Task BulkSetPhotoFavoriteAsync(IReadOnlyList<SelectedPhotoRefDto> photos, bool isFavorite, CancellationToken ct = default)
+    public async Task BulkSetPhotoFavoriteAsync(IReadOnlyList<SelectedPhotoRefDto> photos, bool isFavorite, CancellationToken ct = default)
     {
         AppLogger.Trace($"PhotoService.BulkSetPhotoFavoriteAsync: enter count={photos.Count} isFavorite={isFavorite}");
-        var task = Task.WhenAll(photos.Select(p => _db.SetPhotoFavoriteAsync(p.photo_path, isFavorite, ct)));
+        await _bulkWriteGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            foreach (var p in photos)
+            {
+                ct.ThrowIfCancellationRequested();
+                await _db.SetPhotoFavoriteAsync(p.photo_path, isFavorite, ct).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _bulkWriteGate.Release();
+        }
         AppLogger.Trace("PhotoService.BulkSetPhotoFavoriteAsync: exit");
-        return task;
     }
 
     public Task AddPhotoTagAsync(string photoPath, string tag, long sourceSlot, CancellationToken ct = default)
@@ -176,12 +192,23 @@ public sealed class PhotoService
         return task;
     }
 
-    public Task BulkAddPhotoTagAsync(IReadOnlyList<SelectedPhotoRefDto> photos, string tag, CancellationToken ct = default)
+    public async Task BulkAddPhotoTagAsync(IReadOnlyList<SelectedPhotoRefDto> photos, string tag, CancellationToken ct = default)
     {
         AppLogger.Trace($"PhotoService.BulkAddPhotoTagAsync: enter count={photos.Count} tag={tag}");
-        var task = Task.WhenAll(photos.Select(p => _db.AddPhotoTagAsync(p.photo_path, tag, ct)));
+        await _bulkWriteGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            foreach (var p in photos)
+            {
+                ct.ThrowIfCancellationRequested();
+                await _db.AddPhotoTagAsync(p.photo_path, tag, ct).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _bulkWriteGate.Release();
+        }
         AppLogger.Trace("PhotoService.BulkAddPhotoTagAsync: exit");
-        return task;
     }
 
     public Task RemovePhotoTagAsync(string photoPath, string tag, long sourceSlot, CancellationToken ct = default)
@@ -189,22 +216,6 @@ public sealed class PhotoService
         AppLogger.Trace($"PhotoService.RemovePhotoTagAsync: enter tag={tag}");
         var task = _db.RemovePhotoTagAsync(photoPath, tag, ct);
         AppLogger.Trace("PhotoService.RemovePhotoTagAsync: exit");
-        return task;
-    }
-
-    public Task SavePhotoMemoAsync(string photoPath, string memo, long sourceSlot, CancellationToken ct = default)
-    {
-        AppLogger.Trace("PhotoService.SavePhotoMemoAsync: enter");
-        var task = _db.SavePhotoMemoAsync(photoPath, memo, ct);
-        AppLogger.Trace("PhotoService.SavePhotoMemoAsync: exit");
-        return task;
-    }
-
-    public Task<string> GetPhotoMemoAsync(string photoPath, long sourceSlot, CancellationToken ct = default)
-    {
-        AppLogger.Trace("PhotoService.GetPhotoMemoAsync: enter");
-        var task = _db.GetPhotoMemoAsync(photoPath, ct);
-        AppLogger.Trace("PhotoService.GetPhotoMemoAsync: exit");
         return task;
     }
 
@@ -216,7 +227,14 @@ public sealed class PhotoService
         return task;
     }
 
-    public Task BulkCopyPhotosAsync(IReadOnlyList<SelectedPhotoRefDto> photos, string destinationFolder, CancellationToken ct = default)
+    /// <summary>
+    /// 選択した写真を destinationFolder にコピーする。
+    /// R2-A-7: copied / skipped 件数を返すことで呼出側のメッセージを実態に合わせる。
+    /// R2-A-8: DB に格納された photo_path は forward-slash 区切りである可能性があるため、
+    ///         File.Copy に渡す前にネイティブのディレクトリセパレータへ正規化する
+    ///         （UNC \\server\share 形式での失敗を防ぐ）。
+    /// </summary>
+    public Task<(int copied, int skipped)> BulkCopyPhotosAsync(IReadOnlyList<SelectedPhotoRefDto> photos, string destinationFolder, CancellationToken ct = default)
     {
         AppLogger.Trace($"PhotoService.BulkCopyPhotosAsync: enter count={photos.Count} dest={destinationFolder}");
         var task = Task.Run(() =>
@@ -226,13 +244,34 @@ public sealed class PhotoService
                 if (!Directory.Exists(destinationFolder))
                     throw new DirectoryNotFoundException($"コピー先フォルダが見つかりません: {destinationFolder}");
 
+                var skipped = 0;
+                var copied = 0;
                 foreach (var photo in photos)
                 {
                     ct.ThrowIfCancellationRequested();
-                    var filename = Path.GetFileName(photo.photo_path);
+                    var nativeSource = photo.photo_path.Replace('/', Path.DirectorySeparatorChar);
+                    var filename = Path.GetFileName(nativeSource);
                     var dest = Path.Combine(destinationFolder, filename);
-                    File.Copy(photo.photo_path, dest, overwrite: false);
+                    try
+                    {
+                        File.Copy(nativeSource, dest, overwrite: false);
+                        copied++;
+                    }
+                    catch (IOException ex)
+                    {
+                        // 既に同名ファイルが存在する場合などは個別にスキップして処理を継続する。
+                        // 1 件の失敗で全体が中断されると、複数選択コピーが事実上使えなくなるため。
+                        AppLogger.Warn($"PhotoService.BulkCopyPhotosAsync: skip [{nativeSource}] -> [{dest}]: {ex.Message}");
+                        skipped++;
+                    }
+                    catch (UnauthorizedAccessException ex)
+                    {
+                        AppLogger.Warn($"PhotoService.BulkCopyPhotosAsync: skip [{nativeSource}] -> [{dest}]: {ex.Message}");
+                        skipped++;
+                    }
                 }
+                AppLogger.Trace($"PhotoService.BulkCopyPhotosAsync.work: copied={copied} skipped={skipped}");
+                return (copied, skipped);
             }
             catch (Exception ex)
             {
@@ -241,6 +280,24 @@ public sealed class PhotoService
             }
         }, ct);
         AppLogger.Trace("PhotoService.BulkCopyPhotosAsync: exit (dispatched)");
+        return task;
+    }
+
+    /// <summary>紛失写真の救済 UI 用。is_missing=1 の写真を返す。</summary>
+    public Task<IReadOnlyList<PhotoRecordDto>> GetMissingPhotosAsync(CancellationToken ct = default)
+    {
+        AppLogger.Trace("PhotoService.GetMissingPhotosAsync: enter");
+        var task = _db.GetMissingPhotosAsync(ct);
+        AppLogger.Trace("PhotoService.GetMissingPhotosAsync: exit");
+        return task;
+    }
+
+    /// <summary>紛失写真の救済 UI 用。指定パスを DB から完全削除する。</summary>
+    public Task DeletePhotosByPathsAsync(IReadOnlyList<string> photoPaths, CancellationToken ct = default)
+    {
+        AppLogger.Trace($"PhotoService.DeletePhotosByPathsAsync: enter count={photoPaths.Count}");
+        var task = _db.DeletePhotosByPathsAsync(photoPaths, ct);
+        AppLogger.Trace("PhotoService.DeletePhotosByPathsAsync: exit");
         return task;
     }
 }

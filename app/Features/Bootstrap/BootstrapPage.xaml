@@ -3,7 +3,8 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:shared="using:Alpheratz.Shared.Controls"
-    Background="{ThemeResource ABg}">
+    Background="{ThemeResource ABg}"
+    Unloaded="Page_Unloaded">
 
     <Grid Background="{ThemeResource ABg}">
         <StackPanel x:Name="SplashContent"

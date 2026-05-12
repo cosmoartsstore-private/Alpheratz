@@ -15,4 +15,5 @@ public sealed record PhotoQueryFilters(
     bool pagingEnabled,
     ViewMode viewMode,
     long? sourceSlot,
-    GroupingMode groupingMode);
+    GroupingMode groupingMode,
+    SortMode sortMode = SortMode.dateDesc);
