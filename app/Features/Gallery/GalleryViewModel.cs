@@ -467,8 +467,11 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
 
     /// <summary>
     /// 指定グループの写真一覧を取得する（ドリルダウン用）。
-    /// photosState.photos に同一パスの既存インスタンスがあればそれを返し、
-    /// 後続の updatePhoto がドリルダウン側にも反映されるようにする。
+    /// 既存の photosState.photos 参照を再利用せず、毎回 SQL を発行して
+    /// 新規メモリの PhotoThumbnailItem を生成する。これにより
+    /// メインビューの状態変化（並べ替え・差し替え）の影響を受けず、
+    /// ドリルダウンは独立したコレクションとして振る舞える。
+    /// 表示はメインと同じパイプライン（FromDto → サムネイル遅延生成）。
     /// </summary>
     public async Task<IReadOnlyList<PhotoThumbnailItem>> getGroupPhotosAsync(string groupKey)
     {
@@ -486,13 +489,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
                 filters.tagFilters.Count > 0 ? filters.tagFilters : null
             ).ConfigureAwait(false);
 
-            var pathToExisting = photosState.photos.ToDictionary(p => p.PhotoPath, p => p);
-            var items = photos.Select(dto =>
-            {
-                if (pathToExisting.TryGetValue(dto.photo_path, out var existing))
-                    return existing;
-                return PhotoThumbnailItem.FromDto(dto);
-            }).ToArray();
+            var items = photos.Select(PhotoThumbnailItem.FromDto).ToArray();
             AppLogger.Trace($"GalleryViewModel.getGroupPhotosAsync: exit count={items.Length}");
             return items;
         }

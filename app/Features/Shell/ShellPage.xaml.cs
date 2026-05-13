@@ -195,6 +195,11 @@ public sealed partial class ShellPage : Page
     private GroupDrillDownPage? drillDownPage;
     private IReadOnlyList<PhotoThumbnailItem>? drillDownPhotos;
 
+    /// <summary>
+    /// グループカードをクリックしたときの遷移。
+    /// 毎回新しい GroupDrillDownPage と PhotoThumbnailItem リストを確保し、
+    /// SQL を発行して取得したデータをメインと同じ PhotoGrid で描画する。
+    /// </summary>
     private async Task ShowGroupDrillDown(PhotoGridItem groupItem)
     {
         AppLogger.Trace($"ShellPage.ShowGroupDrillDown: enter groupKey={groupItem.GroupKey}");
@@ -203,16 +208,25 @@ public sealed partial class ShellPage : Page
             var groupKey = groupItem.GroupKey;
             if (string.IsNullOrEmpty(groupKey)) return;
             var photos = await viewModel.galleryViewModel.getGroupPhotosAsync(groupKey).ConfigureAwait(true);
-            if (photos.Count == 0) return;
+
+            // 新規メモリ：毎回 Page を作り直すことで残留状態（スクロール位置、
+            // 旧サムネイル購読、旧 GridView Item recycling キャッシュ）を遮断する。
             drillDownPhotos = photos;
-            if (drillDownPage is null) drillDownPage = new GroupDrillDownPage();
-            drillDownPage.OnBack = () => { drillDownPhotos = null; ShowGallery(); };
-            drillDownPage.OnPhotoActivated = photo =>
+            drillDownPage = new GroupDrillDownPage
             {
-                if (drillDownPhotos is not null)
-                    if (viewModel.createPhotoModalViewModelFromList(photo, drillDownPhotos) is { } vm)
+                OnBack = () => { drillDownPhotos = null; ShowGallery(); },
+                OnPhotoActivated = photo =>
+                {
+                    if (drillDownPhotos is not null
+                        && viewModel.createPhotoModalViewModelFromList(photo, drillDownPhotos) is { } vm)
                         ShowPhotoModal(vm);
+                },
+                OnFavoriteClicked = photo =>
+                    _ = viewModel.galleryViewModel.toggleFavorite(photo.PhotoPath, photo.IsFavorite),
+                OnThumbnailsNeeded = items =>
+                    viewModel.galleryViewModel.photosState.kickThumbnailsForExternal(items),
             };
+
             var displayName = groupItem.Photo?.WorldName ?? groupKey;
             drillDownPage.SetGroupInfo(displayName, photos);
             Stage.MainContent = drillDownPage;

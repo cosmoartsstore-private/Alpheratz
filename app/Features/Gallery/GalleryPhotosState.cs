@@ -185,6 +185,23 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
     }
 
     /// <summary>
+    /// ドリルダウン等、photos に含まれない外部リスト向けにサムネイル生成を要求する。
+    /// メイン側の進行中生成をキャンセルしないので、メインの表示は維持される。
+    /// </summary>
+    public void kickThumbnailsForExternal(IReadOnlyList<PhotoThumbnailItem> items)
+    {
+        if (items.Count == 0) return;
+        var photoMap = new Dictionary<string, PhotoThumbnailItem>(items.Count);
+        foreach (var p in items)
+        {
+            if (!string.IsNullOrEmpty(p.PhotoPath))
+                photoMap.TryAdd(p.PhotoPath, p);
+        }
+        if (photoMap.Count == 0) return;
+        kickThumbnailGeneration(photoMap, cancelPrevious: false);
+    }
+
+    /// <summary>
     /// MasonryView のビューポート内に入った写真のサムネイル生成を要求する。
     /// 既にサムネイルがある写真はスキップされる。
     /// </summary>
