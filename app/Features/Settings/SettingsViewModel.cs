@@ -17,13 +17,9 @@ public partial class SettingsViewModel : UiThreadSafeObservableObject
 
     [ObservableProperty] private string photoFolderPath = string.Empty;
     [ObservableProperty] private string secondaryPhotoFolderPath = string.Empty;
-    [ObservableProperty] private string? pendingFolderPath;
-    [ObservableProperty] private int pendingFolderSlot = 1;
-    [ObservableProperty] private bool isApplyingFolderChange;
     [ObservableProperty] private bool startupEnabled;
     [ObservableProperty] private ThemeMode themeMode = ThemeMode.light;
     [ObservableProperty] private ViewMode viewMode = ViewMode.standard;
-    [ObservableProperty] private bool isMasonryEnabled;
     public UiObservableCollection<string> tweetTemplates { get; } = [];
     [ObservableProperty] private string activeTweetTemplate = string.Empty;
 
@@ -40,14 +36,13 @@ public partial class SettingsViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("SettingsViewModel.buildSettingPayload: enter");
         var payload = new AlpheratzSettingDto
         {
-            photoFolderPath = overrides?.photoFolderPath ?? photoFolderPath,
-            secondaryPhotoFolderPath = overrides?.secondaryPhotoFolderPath ?? secondaryPhotoFolderPath,
-            enableStartup = overrides?.enableStartup ?? startupEnabled,
-            themeMode = overrides?.themeMode ?? themeMode,
-            viewMode = overrides?.viewMode ?? viewMode,
-            enableMasonryLayout = overrides?.enableMasonryLayout ?? isMasonryEnabled,
+            photoFolderPath = overrides?.photoFolderPath ?? PhotoFolderPath,
+            secondaryPhotoFolderPath = overrides?.secondaryPhotoFolderPath ?? SecondaryPhotoFolderPath,
+            enableStartup = overrides?.enableStartup ?? StartupEnabled,
+            themeMode = overrides?.themeMode ?? ThemeMode,
+            viewMode = overrides?.viewMode ?? ViewMode,
             tweetTemplates = overrides?.tweetTemplates ?? tweetTemplates,
-            activeTweetTemplate = overrides?.activeTweetTemplate ?? activeTweetTemplate,
+            activeTweetTemplate = overrides?.activeTweetTemplate ?? ActiveTweetTemplate,
         };
         AppLogger.Trace("SettingsViewModel.buildSettingPayload: exit");
         return payload;
@@ -64,7 +59,6 @@ public partial class SettingsViewModel : UiThreadSafeObservableObject
             StartupEnabled = setting.enableStartup ?? false;
             ThemeMode = setting.themeMode ?? ThemeMode.light;
             ViewMode = setting.viewMode ?? ViewMode.standard;
-            IsMasonryEnabled = setting.enableMasonryLayout ?? false;
             ActiveTweetTemplate = setting.activeTweetTemplate ?? string.Empty;
 
             tweetTemplates.Clear();

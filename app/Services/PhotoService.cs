@@ -73,22 +73,6 @@ public sealed class PhotoService
         }
     }
 
-    public async Task<GroupedPhotoPageDto> GetWorldGroupedPhotosAsync(PhotoQueryPayload payload, CancellationToken ct = default)
-    {
-        AppLogger.Trace("PhotoService.GetWorldGroupedPhotosAsync: enter");
-        try
-        {
-            var result = await _db.GetWorldGroupedPageAsync(ToParams(payload with { includePhash = null }), ct).ConfigureAwait(false);
-            AppLogger.Trace($"PhotoService.GetWorldGroupedPhotosAsync: exit groups={result.items.Count} total={result.total}");
-            return result;
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Error($"PhotoService.GetWorldGroupedPhotosAsync: threw: {ex}");
-            throw;
-        }
-    }
-
     public async Task<IReadOnlyList<PhotoRecordDto>> GetWorldGroupPhotosAsync(
         string groupKey, string? startDate, string? endDate, long? sourceSlot,
         string? orientation, bool? favoritesOnly, IReadOnlyList<string>? tagFilters,
@@ -283,21 +267,4 @@ public sealed class PhotoService
         return task;
     }
 
-    /// <summary>紛失写真の救済 UI 用。is_missing=1 の写真を返す。</summary>
-    public Task<IReadOnlyList<PhotoRecordDto>> GetMissingPhotosAsync(CancellationToken ct = default)
-    {
-        AppLogger.Trace("PhotoService.GetMissingPhotosAsync: enter");
-        var task = _db.GetMissingPhotosAsync(ct);
-        AppLogger.Trace("PhotoService.GetMissingPhotosAsync: exit");
-        return task;
-    }
-
-    /// <summary>紛失写真の救済 UI 用。指定パスを DB から完全削除する。</summary>
-    public Task DeletePhotosByPathsAsync(IReadOnlyList<string> photoPaths, CancellationToken ct = default)
-    {
-        AppLogger.Trace($"PhotoService.DeletePhotosByPathsAsync: enter count={photoPaths.Count}");
-        var task = _db.DeletePhotosByPathsAsync(photoPaths, ct);
-        AppLogger.Trace("PhotoService.DeletePhotosByPathsAsync: exit");
-        return task;
-    }
 }

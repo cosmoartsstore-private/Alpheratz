@@ -14,10 +14,10 @@ public partial class PhotoGridItem : UiThreadSafeObservableObject
     [ObservableProperty] private IReadOnlyList<PhotoThumbnailItem>? groupPhotos;
 
     public Visibility GroupCountVisibility =>
-        groupCount is > 1 ? Visibility.Visible : Visibility.Collapsed;
+        GroupCount is > 1 ? Visibility.Visible : Visibility.Collapsed;
 
     public string GroupCountLabel =>
-        groupCount is > 1 ? $"{groupCount}枚" : "";
+        GroupCount is > 1 ? $"{GroupCount}枚" : "";
 
     partial void OnGroupCountChanged(int? value)
     {

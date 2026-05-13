@@ -72,7 +72,7 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
     public async Task openTweetIntent(PhotoThumbnailItem photo)
     {
         AppLogger.Trace("TemplatePageViewModel.openTweetIntent: enter");
-        if (string.IsNullOrWhiteSpace(activeTweetTemplate))
+        if (string.IsNullOrWhiteSpace(ActiveTweetTemplate))
         {
             AppLogger.Trace("TemplatePageViewModel.openTweetIntent: skip (no active template)");
             return;
@@ -80,7 +80,7 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
 
         try
         {
-            var text = Uri.EscapeDataString(buildTweetText(activeTweetTemplate, photo));
+            var text = Uri.EscapeDataString(buildTweetText(ActiveTweetTemplate, photo));
             var intentUrl = $"https://twitter.com/intent/tweet?text={text}";
             await worldService.CopyImageToClipboardAsync(photo.PhotoPath).ConfigureAwait(false);
             await worldService.OpenTweetIntentAsync(intentUrl).ConfigureAwait(false);
@@ -205,7 +205,7 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
             await settingsService.SaveSettingAsync(currentSetting with
             {
                 tweetTemplates = tweetTemplates,
-                activeTweetTemplate = activeTweetTemplate,
+                activeTweetTemplate = ActiveTweetTemplate,
             }).ConfigureAwait(false);
             toastService.addToast("テンプレートを保存しました。");
         }

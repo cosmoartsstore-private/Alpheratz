@@ -143,6 +143,20 @@ public sealed partial class GalleryPage : Page
             };
 
             viewModel.displayState.PropertyChanged += OnDisplayStateChanged;
+
+            viewModel.photosState.OnPhotosReplaced = () =>
+            {
+                try
+                {
+                    if (DispatcherQueue is not { } dq) return;
+                    dq.TryEnqueue(() =>
+                    {
+                        GridStage.MasonryViewControlRef?.ScrollToTop();
+                        GridStage.PhotoGridControlRef?.ScrollToTop();
+                    });
+                }
+                catch (Exception ex) { AppLogger.Error($"GalleryPage.OnPhotosReplaced: threw: {ex}"); }
+            };
         }
         catch (Exception ex)
         {
@@ -369,6 +383,7 @@ public sealed partial class GalleryPage : Page
         viewModel.displayState.PropertyChanged -= OnDisplayStateChanged;
 
         viewModel.photosState.OnMonthGroupsChanged = null;
+        viewModel.photosState.OnPhotosReplaced = null;
         if (GridStage.MasonryViewControlRef is { } masonry)
         {
             masonry.OnPhotoTapped = null;

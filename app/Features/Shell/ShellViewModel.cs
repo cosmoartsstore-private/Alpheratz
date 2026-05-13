@@ -50,7 +50,6 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
 
     private const long PhashUiUpdateMinIntervalMs = 1000;
     private long lastPhashUiUpdateTicks;
-    private PhashProgressEvent latestPhashProgress = PhashProgressEvent.Empty;
 
     public GalleryViewModel galleryViewModel { get; }
     public SettingsViewModel settingsViewModel { get; }
@@ -76,7 +75,6 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     private bool startupEnabled;
     private ThemeMode themeMode = ThemeMode.light;
     private ViewMode viewMode = ViewMode.standard;
-    private bool isMasonryEnabled;
     public UiObservableCollection<string> tweetTemplates { get; } = [];
     private string activeTweetTemplate = "";
 
@@ -93,7 +91,6 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     public bool StartupEnabled { get => startupEnabled; set => SetProperty(ref startupEnabled, value); }
     public ThemeMode ThemeMode { get => themeMode; set => SetProperty(ref themeMode, value); }
     public ViewMode ViewMode { get => viewMode; set => SetProperty(ref viewMode, value); }
-    public bool IsMasonryEnabled { get => isMasonryEnabled; set => SetProperty(ref isMasonryEnabled, value); }
     public string ActiveTweetTemplate { get => activeTweetTemplate; set => SetProperty(ref activeTweetTemplate, value); }
 
     public ShellViewModel(
@@ -250,7 +247,6 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
                 var nextViewMode = setting.viewMode ?? ViewMode.standard;
                 ViewMode = nextViewMode;
                 galleryViewModel.displayState.ViewMode = nextViewMode;
-                IsMasonryEnabled = setting.enableMasonryLayout ?? false;
                 ActiveTweetTemplate = setting.activeTweetTemplate ?? "";
                 tweetTemplates.Clear();
                 foreach (var template in setting.tweetTemplates ?? []) tweetTemplates.Add(template);
@@ -349,7 +345,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         {
             phashUnlistenFns.Add(eventBus.Subscribe<PhashProgressEvent>("phash_progress", payload =>
             {
-                latestPhashProgress = payload; IsPdqRunning = true;
+                IsPdqRunning = true;
                 var nowTicks = Environment.TickCount64;
                 if (payload.done >= payload.total || nowTicks - lastPhashUiUpdateTicks >= PhashUiUpdateMinIntervalMs)
                 {
@@ -386,7 +382,6 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
             enableStartup = overrides?.enableStartup ?? StartupEnabled,
             themeMode = overrides?.themeMode ?? ThemeMode,
             viewMode = overrides?.viewMode ?? ViewMode,
-            enableMasonryLayout = overrides?.enableMasonryLayout ?? IsMasonryEnabled,
             tweetTemplates = overrides?.tweetTemplates ?? tweetTemplates,
             activeTweetTemplate = overrides?.activeTweetTemplate ?? ActiveTweetTemplate,
         };
@@ -511,51 +506,6 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         AppLogger.Trace("ShellViewModel.handleThemeChange: exit");
     }
 
-    public async Task handleMasonryPreference(bool enabled)
-    {
-        AppLogger.Trace($"ShellViewModel.handleMasonryPreference: enter enabled={enabled}");
-        try
-        {
-            await settingsService.SaveSettingAsync(buildSettingPayload(new AlpheratzSettingDto { enableMasonryLayout = enabled })).ConfigureAwait(false);
-            IsMasonryEnabled = enabled;
-        }
-        catch (Exception err)
-        {
-            AppLogger.Error($"ShellViewModel.handleMasonryPreference: threw: {err}");
-            toastService.addToast($"メイソンリー設定の更新に失敗しました: {err}", ToastType.error);
-        }
-        AppLogger.Trace("ShellViewModel.handleMasonryPreference: exit");
-    }
-
-    public async Task handleStartUnknownWorldAnalysisFromArchive()
-    {
-        AppLogger.Trace("ShellViewModel.handleStartUnknownWorldAnalysisFromArchive: enter");
-        try
-        {
-            var resolved = await worldService.ResolveUnknownWorldsFromArchiveAsync().ConfigureAwait(false);
-            if (resolved > 0)
-            {
-                await galleryViewModel.photosState.loadPhotos().ConfigureAwait(false);
-                toastService.addToast($"アーカイブから {resolved} 件のワールドを解決しました");
-            }
-            else
-            {
-                toastService.addToast("アーカイブで解決できるワールドはありませんでした");
-            }
-            _ = Task.Run(async () =>
-            {
-                try { await phashService.StartPdqAnalysisAsync().ConfigureAwait(false); }
-                catch (Exception ex) { AppLogger.Error($"ShellViewModel.handleStartUnknownWorldAnalysisFromArchive phash: threw: {ex}"); }
-            });
-        }
-        catch (Exception err)
-        {
-            AppLogger.Error($"ShellViewModel.handleStartUnknownWorldAnalysisFromArchive: threw: {err}");
-            toastService.addToast($"分析の開始に失敗しました: {err}", ToastType.error);
-        }
-        AppLogger.Trace("ShellViewModel.handleStartUnknownWorldAnalysisFromArchive: exit");
-    }
-
     public async Task handleStartupPreference(bool enabled)
     {
         AppLogger.Trace($"ShellViewModel.handleStartupPreference: enter enabled={enabled}");
@@ -571,31 +521,6 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
             toastService.addToast($"自動起動設定の更新に失敗しました: {err}", ToastType.error);
         }
         AppLogger.Trace("ShellViewModel.handleStartupPreference: exit");
-    }
-
-    /// <summary>紛失写真の救済 UI 用。is_missing=1 の写真を取得する。</summary>
-    public Task<IReadOnlyList<PhotoRecordDto>> getMissingPhotosAsync()
-    {
-        AppLogger.Trace("ShellViewModel.getMissingPhotosAsync: enter");
-        return db.GetMissingPhotosAsync();
-    }
-
-    /// <summary>紛失写真の救済 UI 用。指定パスを DB から完全削除する。</summary>
-    public async Task deleteMissingPhotosAsync(IReadOnlyList<string> photoPaths)
-    {
-        AppLogger.Trace($"ShellViewModel.deleteMissingPhotosAsync: enter count={photoPaths.Count}");
-        try
-        {
-            await db.DeletePhotosByPathsAsync(photoPaths).ConfigureAwait(false);
-            await galleryViewModel.photosState.loadPhotos().ConfigureAwait(false);
-            toastService.addToast($"{photoPaths.Count} 件の写真情報を DB から削除しました");
-        }
-        catch (Exception err)
-        {
-            AppLogger.Error($"ShellViewModel.deleteMissingPhotosAsync: threw: {err}");
-            toastService.addToast($"写真情報の削除に失敗しました: {err}", ToastType.error);
-        }
-        AppLogger.Trace("ShellViewModel.deleteMissingPhotosAsync: exit");
     }
 
     public async ValueTask DisposeAsync()

@@ -13,7 +13,7 @@
         <!-- Track rail (subtle pill behind the thumb) -->
         <Border x:Name="TrackRail"
                 Margin="4,0"
-                CornerRadius="999"
+                CornerRadius="{StaticResource ARadiusPill}"
                 Background="{ThemeResource AScrollbarTrack}"
                 Opacity="0"/>
         <!-- Thumb (pill, animated to thicker on hover) -->
@@ -21,7 +21,7 @@
                 Width="6"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Top"
-                CornerRadius="999"
+                CornerRadius="{StaticResource ARadiusPill}"
                 Background="{ThemeResource AScrollbarThumb}">
             <Border.RenderTransform>
                 <TranslateTransform x:Name="ThumbTransform"/>

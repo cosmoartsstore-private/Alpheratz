@@ -8,9 +8,9 @@
 
     <Grid Margin="28,58,28,0">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="1.1*"/>
+            <ColumnDefinition Width="1.1*" MinWidth="300"/>
             <ColumnDefinition Width="Auto"/>
-            <ColumnDefinition Width="0.9*" MinWidth="320"/>
+            <ColumnDefinition Width="0.9*" MinWidth="300"/>
         </Grid.ColumnDefinitions>
 
         <!-- Left: Editor panel -->
@@ -27,7 +27,7 @@
                              TextWrapping="Wrap"
                              MinHeight="320"
                              FontFamily="{StaticResource AFontMono}"
-                             FontSize="13"
+                             FontSize="{StaticResource AFontSizeMd}"
                              PlaceholderText="例:&#x0a;World: {}{world-name}&#x0a;Author:&#x0a;&#x0a;#VRChat_world紹介"/>
                 </StackPanel>
 
@@ -88,7 +88,7 @@
                                                    TextWrapping="Wrap"
                                                    MaxLines="8"
                                                    FontFamily="{StaticResource AFontMono}"
-                                                   FontSize="12"
+                                                   FontSize="{StaticResource AFontSizeSm}"
                                                    LineHeight="20"
                                                    Foreground="{ThemeResource AText}"/>
                                     </StackPanel>
@@ -99,7 +99,7 @@
                                                 Style="{StaticResource GhostButtonStyle}"
                                                 Padding="10,4"
                                                 MinWidth="0" MinHeight="0"
-                                                FontSize="12"
+                                                FontSize="{StaticResource AFontSizeSm}"
                                                 Click="EditTemplate_Click"/>
                                         <Button Content="削除"
                                                 Padding="10,4"
@@ -109,7 +109,7 @@
                                                 BorderBrush="{ThemeResource ADangerBorder}"
                                                 BorderThickness="1"
                                                 Foreground="{ThemeResource ADanger}"
-                                                FontSize="12"
+                                                FontSize="{StaticResource AFontSizeSm}"
                                                 FontWeight="SemiBold"
                                                 Click="DeleteTemplate_Click"/>
                                     </StackPanel>

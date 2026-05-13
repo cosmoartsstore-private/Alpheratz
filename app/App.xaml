@@ -1,13 +1,10 @@
 <Application
     x:Class="Alpheratz.App"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:converters="using:Alpheratz.Shared.Converters">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <Application.Resources>
         <ResourceDictionary>
-            <converters:IsoDateStringToDateTimeOffsetConverter x:Key="IsoDateStringToDateTimeOffsetConverter"/>
-
             <ResourceDictionary.MergedDictionaries>
                 <!-- WinUI3 stock theme resources (TabViewButtonBackground etc) -->
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls"/>
@@ -18,8 +15,6 @@
                 <ResourceDictionary Source="Themes/Typography.xaml"/>
                 <ResourceDictionary Source="Themes/Buttons.xaml"/>
                 <ResourceDictionary Source="Themes/Containers.xaml"/>
-
-                <ResourceDictionary Source="Shared/Controls/Icons.xaml"/>
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>

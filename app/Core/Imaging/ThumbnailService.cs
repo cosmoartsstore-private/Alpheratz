@@ -49,40 +49,6 @@ public sealed class ThumbnailService
         }
     }
 
-    public async Task<byte[]> ReadThumbBytesAsync(string photoPath, long sourceSlot, CancellationToken ct = default)
-    {
-        AppLogger.Trace($"ThumbnailService.ReadThumbBytesAsync: enter path={photoPath} slot={sourceSlot}");
-        try
-        {
-            var thumbPath = await EnsureGridThumbAsync(photoPath, sourceSlot, ct).ConfigureAwait(false);
-            var bytes = await File.ReadAllBytesAsync(thumbPath, ct).ConfigureAwait(false);
-            AppLogger.Trace($"ThumbnailService.ReadThumbBytesAsync: exit bytes={bytes.Length}");
-            return bytes;
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Error($"ThumbnailService.ReadThumbBytesAsync: threw: {ex}");
-            throw;
-        }
-    }
-
-    public async Task<byte[]> ReadDisplayThumbBytesAsync(string photoPath, long sourceSlot, CancellationToken ct = default)
-    {
-        AppLogger.Trace($"ThumbnailService.ReadDisplayThumbBytesAsync: enter path={photoPath} slot={sourceSlot}");
-        try
-        {
-            var thumbPath = await EnsureDisplayThumbAsync(photoPath, sourceSlot, ct).ConfigureAwait(false);
-            var bytes = await File.ReadAllBytesAsync(thumbPath, ct).ConfigureAwait(false);
-            AppLogger.Trace($"ThumbnailService.ReadDisplayThumbBytesAsync: exit bytes={bytes.Length}");
-            return bytes;
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Error($"ThumbnailService.ReadDisplayThumbBytesAsync: threw: {ex}");
-            throw;
-        }
-    }
-
     private static async Task<string> EnsureThumbAsync(string photoPath, long sourceSlot, uint maxSize, string version, CancellationToken ct)
     {
         AppLogger.Trace($"ThumbnailService.EnsureThumbAsync: enter version={version} maxSize={maxSize}");

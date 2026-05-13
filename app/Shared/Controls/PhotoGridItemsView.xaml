@@ -37,11 +37,11 @@
                                 <Border HorizontalAlignment="Left" VerticalAlignment="Top"
                                         Margin="9,9,0,0"
                                         MinWidth="44" Padding="7,3"
-                                        CornerRadius="999"
+                                        CornerRadius="{StaticResource ARadiusPill}"
                                         Background="{ThemeResource ASurface}"
                                         Visibility="{Binding GroupCountVisibility}">
                                     <TextBlock Text="{Binding GroupCountLabel}"
-                                               FontSize="11" FontWeight="ExtraBold"
+                                               FontSize="{StaticResource AFontSizeXs}" FontWeight="ExtraBold"
                                                HorizontalAlignment="Center"/>
                                 </Border>
 
@@ -57,13 +57,13 @@
                             <StackPanel Grid.Row="1" Margin="11,8,11,8" Spacing="2"
                                         VerticalAlignment="Center">
                                 <TextBlock Text="{Binding Photo.WorldName}"
-                                           FontSize="13"
+                                           FontSize="{StaticResource AFontSizeMd}"
                                            FontWeight="Bold"
                                            Foreground="{ThemeResource AText}"
                                            TextTrimming="CharacterEllipsis"/>
                                 <TextBlock Text="{Binding Photo.Timestamp}"
                                            FontFamily="{StaticResource AFontMono}"
-                                           FontSize="11"
+                                           FontSize="{StaticResource AFontSizeXs}"
                                            Foreground="{ThemeResource ATextDim}"
                                            TextTrimming="CharacterEllipsis"/>
                             </StackPanel>

@@ -41,15 +41,6 @@
             <Grid>
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                 <StackPanel>
-                    <TextBlock Text="メイソンリー レイアウト" FontWeight="SemiBold"/>
-                    <TextBlock Text="ギャラリーで写真の縦横比に合わせた段組み表示を有効にします。" Style="{StaticResource HintTextStyle}"/>
-                </StackPanel>
-                <ToggleSwitch Grid.Column="1" IsOn="{Binding IsMasonryEnabled, Mode=TwoWay}" Toggled="MasonryToggle_Toggled"/>
-            </Grid>
-
-            <Grid>
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                <StackPanel>
                     <TextBlock Text="テーマ" FontWeight="SemiBold"/>
                     <TextBlock Text="アプリの外観テーマを切り替えます。" Style="{StaticResource HintTextStyle}"/>
                 </StackPanel>
@@ -74,12 +65,6 @@
                 <Button Content="確認付きで解決" Style="{StaticResource PrimaryButtonStyle}" Click="StartWorldAnalysis_Click"/>
             </StackPanel>
 
-            <StackPanel Spacing="10">
-                <TextBlock Text="不在の写真を確認" FontWeight="SemiBold"/>
-                <TextBlock Text="ファイルが見つからなくなった写真を DB から確認し、必要に応じて一括削除できます。" Style="{StaticResource HintTextStyle}"/>
-                <Button Content="不在の写真を確認" Style="{StaticResource GhostButtonStyle}" Click="ReviewMissingPhotos_Click"/>
-            </StackPanel>
-
             <Border Padding="20"
                     CornerRadius="{StaticResource ARadiusLg}"
                     BorderBrush="{ThemeResource ABorder}"
@@ -92,7 +77,7 @@
                         </Border.Background>
                     </Border>
                     <StackPanel VerticalAlignment="Center" Spacing="2">
-                        <TextBlock Text="CosmoArtsStore" FontSize="15" FontWeight="SemiBold"/>
+                        <TextBlock Text="CosmoArtsStore" FontSize="{StaticResource AFontSizeLg}" FontWeight="SemiBold"/>
                         <TextBlock Text="by ぷらねっと" Style="{StaticResource HintTextStyle}"/>
                     </StackPanel>
                 </StackPanel>

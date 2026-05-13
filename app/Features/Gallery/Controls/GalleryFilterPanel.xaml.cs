@@ -387,15 +387,22 @@ public sealed partial class GalleryFilterPanel : UserControl
     private void PresetOneYear_Click(object sender, RoutedEventArgs e) => applyPresetToDraft("oneYear");
 
     // ── Calendar navigation ──
+    private static readonly DateTime CalendarMinMonth = new(2000, 1, 1);
+    private static readonly DateTime CalendarMaxMonth = new(DateTime.Now.Year + 2, 1, 1);
+
     private void MonthPrev_Click(object sender, RoutedEventArgs e)
     {
-        visibleMonth = visibleMonth.AddMonths(-1);
+        var prev = visibleMonth.AddMonths(-1);
+        if (prev < CalendarMinMonth) return;
+        visibleMonth = prev;
         buildCalendar();
     }
 
     private void MonthNext_Click(object sender, RoutedEventArgs e)
     {
-        visibleMonth = visibleMonth.AddMonths(1);
+        var next = visibleMonth.AddMonths(1);
+        if (next > CalendarMaxMonth) return;
+        visibleMonth = next;
         buildCalendar();
     }
 

@@ -51,8 +51,8 @@ public partial class TagMasterViewModel : UiThreadSafeObservableObject
 
     public async Task createTag()
     {
-        AppLogger.Trace($"TagMasterViewModel.createTag: enter draft={tagDraft}");
-        var normalized = tagDraft.Trim();
+        AppLogger.Trace($"TagMasterViewModel.createTag: enter draft={TagDraft}");
+        var normalized = TagDraft.Trim();
         if (string.IsNullOrEmpty(normalized))
         {
             AppLogger.Trace("TagMasterViewModel.createTag: skip (empty)");

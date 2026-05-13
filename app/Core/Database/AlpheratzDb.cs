@@ -170,41 +170,6 @@ CREATE INDEX IF NOT EXISTS idx_archive_world_visits_source_log_name ON archive_w
         return list;
     }
 
-    /// <summary>
-    /// R2-A-24: photo_path IN (...) 形式で 500 件ずつバルク UPDATE する。
-    /// SQLite のパラメータ上限 999 を超えないよう ChunkSize=500 を用いる。
-    /// sqlTemplate は "UPDATE ... SET ..." までを含み、" WHERE photo_path IN (...)" 部分は本メソッドが追加する。
-    /// </summary>
-    private static void BulkUpdateIsMissing(
-        SqliteConnection conn,
-        SqliteTransaction tx,
-        List<string> paths,
-        string sqlTemplate,
-        CancellationToken ct)
-    {
-        const int ChunkSize = 500;
-        for (var offset = 0; offset < paths.Count; offset += ChunkSize)
-        {
-            ct.ThrowIfCancellationRequested();
-            var count = Math.Min(ChunkSize, paths.Count - offset);
-            using var cmd = conn.CreateCommand();
-            cmd.Transaction = tx;
-            var sb = new StringBuilder();
-            sb.Append(sqlTemplate);
-            sb.Append(" WHERE photo_path IN (");
-            for (var i = 0; i < count; i++)
-            {
-                if (i > 0) sb.Append(',');
-                var pn = $"@p{i}";
-                sb.Append(pn);
-                cmd.Parameters.AddWithValue(pn, paths[offset + i]);
-            }
-            sb.Append(')');
-            cmd.CommandText = sb.ToString();
-            cmd.ExecuteNonQuery();
-        }
-    }
-
     private static string? NullableString(SqliteDataReader r, int ordinal)
         => r.IsDBNull(ordinal) ? null : r.GetString(ordinal);
 
@@ -488,122 +453,6 @@ ORDER BY {orderClause}");
         catch (Exception ex)
         {
             AppLogger.Error($"AlpheratzDb.GetPhotosPageAsync: threw: {ex}");
-            throw;
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // 2a. GetWorldGroupedPageAsync – SQL-level GROUP BY world_name
-    // -----------------------------------------------------------------------
-    public Task<GroupedPhotoPageDto> GetWorldGroupedPageAsync(PhotoQueryParams q, CancellationToken ct = default)
-    {
-        AppLogger.Trace($"AlpheratzDb.GetWorldGroupedPageAsync: enter limit={q.Limit} offset={q.Offset}");
-        try
-        {
-            ct.ThrowIfCancellationRequested();
-            using var conn = OpenConnection();
-
-            // --- COUNT: number of unique groups ---
-            int totalGroups;
-            {
-                using var countCmd = conn.CreateCommand();
-                var where = BuildPhotoWhereClause(q, countCmd);
-                countCmd.CommandText = $@"
-SELECT COUNT(*) FROM (
-    SELECT COALESCE(world_name, photo_path) AS gk
-    FROM photos
-    WHERE {where}
-    GROUP BY gk
-)";
-                totalGroups = Convert.ToInt32(countCmd.ExecuteScalar() ?? 0);
-            }
-
-            if (totalGroups == 0)
-                return Task.FromResult(new GroupedPhotoPageDto { items = [], total = 0 });
-
-            // --- SELECT grouped results with deterministic representative (latest photo per group) ---
-            using var selCmd = conn.CreateCommand();
-            var whereSelect = BuildPhotoWhereClause(q, selCmd);
-
-            var sql = $@"
-SELECT
-    g.group_key,
-    g.group_count,
-    rep.photo_filename, rep.photo_path, rep.world_id, rep.world_name, rep.timestamp,
-    NULL AS phash,
-    rep.orientation, rep.image_width, rep.image_height, rep.source_slot, rep.is_favorite,
-    rep.match_source, rep.is_missing
-FROM (
-    SELECT
-        COALESCE(world_name, photo_path) AS group_key,
-        COUNT(*) AS group_count,
-        MAX(timestamp) AS max_ts
-    FROM photos
-    WHERE {whereSelect}
-    GROUP BY COALESCE(world_name, photo_path)
-) g
-JOIN photos rep ON rep.rowid = (
-    SELECT r2.rowid FROM photos r2
-    WHERE COALESCE(r2.world_name, r2.photo_path) = g.group_key
-      AND r2.is_missing = 0
-    ORDER BY r2.timestamp DESC
-    LIMIT 1
-)
-ORDER BY g.max_ts DESC";
-
-            if (q.Limit.HasValue)
-            {
-                sql += " LIMIT @limit";
-                selCmd.Parameters.AddWithValue("@limit", q.Limit.Value);
-            }
-            if (q.Offset.HasValue)
-            {
-                sql += " OFFSET @offset";
-                selCmd.Parameters.AddWithValue("@offset", q.Offset.Value);
-            }
-
-            selCmd.CommandText = sql;
-
-            var results = new List<GroupedPhotoRecordDto>();
-            using (var r = selCmd.ExecuteReader())
-            {
-                while (r.Read())
-                {
-                    var groupKey = r.GetString(0);
-                    var groupCount = r.GetInt32(1);
-                    // columns 2..14 map to the standard photo columns (offset by 2)
-                    var photo = new PhotoRecordDto
-                    {
-                        photo_filename = r.GetString(2),
-                        photo_path     = r.GetString(3),
-                        world_id       = NullableString(r, 4),
-                        world_name     = NullableString(r, 5),
-                        timestamp      = r.GetString(6),
-                        phash          = null,
-                        orientation    = NullableString(r, 8),
-                        image_width    = NullableLong(r, 9),
-                        image_height   = NullableLong(r, 10),
-                        source_slot    = r.IsDBNull(11) ? 1L : r.GetInt64(11),
-                        is_favorite    = !r.IsDBNull(12) && r.GetInt64(12) != 0,
-                        match_source   = NullableString(r, 13),
-                        is_missing     = !r.IsDBNull(14) && r.GetInt64(14) != 0,
-                        tags           = [],
-                    };
-                    results.Add(new GroupedPhotoRecordDto
-                    {
-                        photo = photo,
-                        group_count = groupCount,
-                        group_key = groupKey,
-                    });
-                }
-            }
-
-            AppLogger.Trace($"AlpheratzDb.GetWorldGroupedPageAsync: exit totalGroups={totalGroups} returned={results.Count}");
-            return Task.FromResult(new GroupedPhotoPageDto { items = results, total = totalGroups });
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Error($"AlpheratzDb.GetWorldGroupedPageAsync: threw: {ex}");
             throw;
         }
     }
@@ -928,94 +777,6 @@ WHERE photo_path = @p
     }
 
     // -----------------------------------------------------------------------
-    // 13. ResetPhotoCacheAsync
-    // DELETE photo_tags, tags, photos; VACUUM; clear imgCache dirs.
-    // -----------------------------------------------------------------------
-    public Task ResetPhotoCacheAsync(CancellationToken ct = default)
-    {
-        AppLogger.Trace("AlpheratzDb.ResetPhotoCacheAsync: enter");
-        try
-        {
-            ct.ThrowIfCancellationRequested();
-
-            using (var conn = OpenConnection())
-            {
-                using var tx = conn.BeginTransaction();
-
-                using var del1 = conn.CreateCommand();
-                del1.Transaction = tx;
-                del1.CommandText = "DELETE FROM photo_tags";
-                del1.ExecuteNonQuery();
-
-                using var del2 = conn.CreateCommand();
-                del2.Transaction = tx;
-                del2.CommandText = "DELETE FROM tags";
-                del2.ExecuteNonQuery();
-
-                using var del3 = conn.CreateCommand();
-                del3.Transaction = tx;
-                del3.CommandText = "DELETE FROM photos";
-                del3.ExecuteNonQuery();
-
-                tx.Commit();
-            }
-
-            // VACUUM は WAL モード中の同一接続では失敗しやすいので、
-            // 一旦すべての接続を閉じてからプール経由でない新規接続で
-            // journal_mode を一時的に DELETE に切り替えて実行する。
-            try
-            {
-                SqliteConnection.ClearAllPools();
-                using var vacConn = OpenConnection();
-                using (var pragmaDelete = vacConn.CreateCommand())
-                {
-                    pragmaDelete.CommandText = "PRAGMA journal_mode=DELETE;";
-                    pragmaDelete.ExecuteNonQuery();
-                }
-                using (var vacCmd = vacConn.CreateCommand())
-                {
-                    vacCmd.CommandText = "VACUUM";
-                    vacCmd.ExecuteNonQuery();
-                }
-                using (var pragmaWal = vacConn.CreateCommand())
-                {
-                    pragmaWal.CommandText = "PRAGMA journal_mode=WAL;";
-                    pragmaWal.ExecuteNonQuery();
-                }
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Warn($"写真キャッシュの VACUUM に失敗しました: {ex.Message}");
-            }
-
-            // Clear imgCache directories for all source slots (1 and 2).
-            foreach (var slot in new long[] { 1L, 2L })
-            {
-                var imgDir = AppPaths.GetImgCacheDir(slot);
-                if (imgDir is not null)
-                {
-                    try { ClearDirectoryContents(imgDir); }
-                    catch (Exception ex)
-                    {
-                        AppLogger.Warn($"imgCache のリセットに失敗しました [{imgDir}]: {ex.Message}");
-                    }
-                }
-            }
-
-            // R2-A-13: 写真キャッシュのリセットでログまで消去すると、リセットの原因となった
-            //          直前のエラーログ自体が失われ、再現調査ができなくなるため、
-            //          ログディレクトリは保持する。
-            AppLogger.Trace("AlpheratzDb.ResetPhotoCacheAsync: exit");
-            return Task.CompletedTask;
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Error($"AlpheratzDb.ResetPhotoCacheAsync: threw: {ex}");
-            throw;
-        }
-    }
-
-    // -----------------------------------------------------------------------
     // 16b. ResetPhotoCacheBySlotAsync
     // DELETE photos/photo_tags for a specific source_slot only.
     // -----------------------------------------------------------------------
@@ -1129,172 +890,85 @@ ON CONFLICT(photo_path) DO UPDATE SET
     }
 
     // -----------------------------------------------------------------------
-    // 19. MarkMissingPhotosAsync
-    // Sets is_missing=1 for all paths NOT in foundPaths, and clears
-    // is_missing=0 for paths that ARE in foundPaths (i.e. resurrected
-    // photos that had previously been flagged missing).
+    // 19. DeleteMissingPhotosAsync
+    // Deletes photos from DB whose paths are NOT in foundPaths (i.e. the
+    // file no longer exists on disk). Also removes their photo_tags rows.
     // -----------------------------------------------------------------------
-    public Task MarkMissingPhotosAsync(
+    public Task<int> DeleteMissingPhotosAsync(
         IEnumerable<string> foundPaths, CancellationToken ct = default)
     {
-        AppLogger.Trace("AlpheratzDb.MarkMissingPhotosAsync: enter");
+        AppLogger.Trace("AlpheratzDb.DeleteMissingPhotosAsync: enter");
         try
         {
             ct.ThrowIfCancellationRequested();
 
-            // Collect all photo_path values from DB, then mark those not in foundPaths.
-            // Use case-insensitive comparison so Windows path-case variance does not
-            // cause false "missing" marks (e.g. C:\Foo vs c:\foo).
             var foundSet = new HashSet<string>(foundPaths, StringComparer.OrdinalIgnoreCase);
 
             using var conn = OpenConnection();
 
-            // Gather existing paths and their current is_missing flag.
-            // R2-A-3: 大量データ時に SELECT 結果のロード自体で長時間ブロックされうるので、
-            //         一定行ごとに ct を確認して中断要求に応じられるようにする。
-            var rows = new List<(string path, int isMissing)>();
+            var allPaths = new List<string>();
             using (var selCmd = conn.CreateCommand())
             {
-                selCmd.CommandText = "SELECT photo_path, is_missing FROM photos";
+                selCmd.CommandText = "SELECT photo_path FROM photos";
                 using var r = selCmd.ExecuteReader();
                 var rowIdx = 0;
                 while (r.Read())
                 {
                     if ((rowIdx++ & 0x3FF) == 0)
-                        ct.ThrowIfCancellationRequested(); // 1024 行ごとに ct チェック
-                    rows.Add((r.GetString(0), r.GetInt32(1)));
+                        ct.ThrowIfCancellationRequested();
+                    allPaths.Add(r.GetString(0));
                 }
             }
 
             var missing = new List<string>();
-            var resurrected = new List<string>();
-            foreach (var (p, isMissing) in rows)
+            foreach (var p in allPaths)
             {
-                if (foundSet.Contains(p))
-                {
-                    if (isMissing != 0) resurrected.Add(p);
-                }
-                else
-                {
-                    if (isMissing == 0) missing.Add(p);
-                }
+                if (!foundSet.Contains(p))
+                    missing.Add(p);
             }
 
-            if (missing.Count == 0 && resurrected.Count == 0)
+            if (missing.Count == 0)
             {
-                AppLogger.Trace("AlpheratzDb.MarkMissingPhotosAsync: exit (no changes)");
-                return Task.CompletedTask;
+                AppLogger.Trace("AlpheratzDb.DeleteMissingPhotosAsync: exit (no missing)");
+                return Task.FromResult(0);
             }
 
-            // R2-A-24: 旧実装は WHERE photo_path = @p を 1 件ずつ ExecuteNonQuery で発行しており、
-            //          1 万件を超えると SQLITE_BUSY 多発・書込が極端に遅くなる問題があった。
-            //          IN (...) で 500 件ずつバルク UPDATE する。SQLite のパラメータ上限 999 内。
             using var tx = conn.BeginTransaction();
 
-            if (resurrected.Count > 0)
-            {
-                BulkUpdateIsMissing(conn, tx, resurrected,
-                    "UPDATE photos SET is_missing = 0", ct);
-            }
-
-            if (missing.Count > 0)
-            {
-                BulkUpdateIsMissing(conn, tx, missing,
-                    "UPDATE photos SET is_missing = 1", ct);
-            }
+            BulkDeleteByPaths(conn, tx, missing, "DELETE FROM photo_tags", ct);
+            BulkDeleteByPaths(conn, tx, missing, "DELETE FROM photos", ct);
 
             tx.Commit();
 
-            if (resurrected.Count > 0)
-                AppLogger.Info($"AlpheratzDb.MarkMissingPhotosAsync: resurrected {resurrected.Count} photo(s) (is_missing cleared)");
-            AppLogger.Trace($"AlpheratzDb.MarkMissingPhotosAsync: exit missing={missing.Count} resurrected={resurrected.Count}");
-
-            return Task.CompletedTask;
+            AppLogger.Info($"AlpheratzDb.DeleteMissingPhotosAsync: deleted {missing.Count} photo(s)");
+            return Task.FromResult(missing.Count);
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"AlpheratzDb.MarkMissingPhotosAsync: threw: {ex}");
+            AppLogger.Error($"AlpheratzDb.DeleteMissingPhotosAsync: threw: {ex}");
             throw;
         }
     }
 
-    // -----------------------------------------------------------------------
-    // 19a. GetMissingPhotosAsync
-    // Returns photos flagged is_missing=1. Used by 紛失写真の救済 UI.
-    // -----------------------------------------------------------------------
-    public Task<IReadOnlyList<PhotoRecordDto>> GetMissingPhotosAsync(CancellationToken ct = default)
+    private static void BulkDeleteByPaths(
+        SqliteConnection conn, SqliteTransaction tx,
+        List<string> paths, string deletePrefix, CancellationToken ct)
     {
-        AppLogger.Trace("AlpheratzDb.GetMissingPhotosAsync: enter");
-        try
+        const int ChunkSize = 500;
+        for (int i = 0; i < paths.Count; i += ChunkSize)
         {
             ct.ThrowIfCancellationRequested();
-            using var conn = OpenConnection();
+            var chunk = paths.GetRange(i, Math.Min(ChunkSize, paths.Count - i));
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-SELECT photo_filename, photo_path, world_id, world_name, timestamp,
-       NULL AS phash,
-       orientation, image_width, image_height, source_slot, is_favorite,
-       match_source, is_missing
-FROM photos
-WHERE is_missing = 1
-ORDER BY timestamp DESC";
-            var list = new List<PhotoRecordDto>();
-            using (var r = cmd.ExecuteReader())
+            cmd.Transaction = tx;
+            var paramNames = new string[chunk.Count];
+            for (int j = 0; j < chunk.Count; j++)
             {
-                while (r.Read()) list.Add(MapPhotoRow(r));
+                paramNames[j] = $"@p{j}";
+                cmd.Parameters.AddWithValue(paramNames[j], chunk[j]);
             }
-            AppLogger.Trace($"AlpheratzDb.GetMissingPhotosAsync: exit count={list.Count}");
-            return Task.FromResult<IReadOnlyList<PhotoRecordDto>>(list);
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Error($"AlpheratzDb.GetMissingPhotosAsync: threw: {ex}");
-            throw;
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // 19b. DeletePhotosByPathsAsync
-    // 完全に DB から消去する。photo_tags も併せて削除。
-    // -----------------------------------------------------------------------
-    public Task DeletePhotosByPathsAsync(IReadOnlyList<string> photoPaths, CancellationToken ct = default)
-    {
-        AppLogger.Trace($"AlpheratzDb.DeletePhotosByPathsAsync: enter count={photoPaths.Count}");
-        try
-        {
-            ct.ThrowIfCancellationRequested();
-            if (photoPaths.Count == 0) return Task.CompletedTask;
-
-            using var conn = OpenConnection();
-            using var tx = conn.BeginTransaction();
-
-            using var delLinks = conn.CreateCommand();
-            delLinks.Transaction = tx;
-            delLinks.CommandText = "DELETE FROM photo_tags WHERE photo_path = @p";
-            var pLinks = delLinks.Parameters.Add("@p", SqliteType.Text);
-
-            using var delPhoto = conn.CreateCommand();
-            delPhoto.Transaction = tx;
-            delPhoto.CommandText = "DELETE FROM photos WHERE photo_path = @p";
-            var pPhoto = delPhoto.Parameters.Add("@p", SqliteType.Text);
-
-            foreach (var path in photoPaths)
-            {
-                ct.ThrowIfCancellationRequested();
-                pLinks.Value = path;
-                delLinks.ExecuteNonQuery();
-                pPhoto.Value = path;
-                delPhoto.ExecuteNonQuery();
-            }
-
-            tx.Commit();
-            AppLogger.Trace("AlpheratzDb.DeletePhotosByPathsAsync: exit");
-            return Task.CompletedTask;
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Error($"AlpheratzDb.DeletePhotosByPathsAsync: threw: {ex}");
-            throw;
+            cmd.CommandText = $"{deletePrefix} WHERE photo_path IN ({string.Join(',', paramNames)})";
+            cmd.ExecuteNonQuery();
         }
     }
 
@@ -1589,38 +1263,8 @@ ORDER BY cnt DESC, world_name COLLATE NOCASE ASC";
     // Similar-photo / world inference helpers
     // -----------------------------------------------------------------------
 
-    public sealed record SimilarSourceRow(string PhotoPath, string PhotoFilename, string Phash, long SourceSlot);
     public sealed record KnownWorldRow(string PhotoPath, string PhotoFilename, string WorldName, string? WorldId, string Phash, long SourceSlot);
     public sealed record UnknownPhashRow(string PhotoPath, string PhotoFilename, string Phash, long SourceSlot);
-
-    public Task<SimilarSourceRow?> GetPhotoPhashRowAsync(string photoPath, CancellationToken ct = default)
-    {
-        AppLogger.Trace($"AlpheratzDb.GetPhotoPhashRowAsync: enter path={photoPath}");
-        try
-        {
-            ct.ThrowIfCancellationRequested();
-            using var conn = OpenConnection();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"SELECT photo_path, photo_filename, phash, source_slot FROM photos
-                                 WHERE photo_path = @path AND is_missing = 0
-                                   AND phash IS NOT NULL AND phash <> ''";
-            cmd.Parameters.AddWithValue("@path", photoPath);
-            using var r = cmd.ExecuteReader();
-            if (!r.Read())
-            {
-                AppLogger.Trace("AlpheratzDb.GetPhotoPhashRowAsync: exit (not found)");
-                return Task.FromResult<SimilarSourceRow?>(null);
-            }
-            AppLogger.Trace("AlpheratzDb.GetPhotoPhashRowAsync: exit");
-            return Task.FromResult<SimilarSourceRow?>(
-                new SimilarSourceRow(r.GetString(0), r.GetString(1), r.GetString(2), r.GetInt64(3)));
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Error($"AlpheratzDb.GetPhotoPhashRowAsync: threw: {ex}");
-            throw;
-        }
-    }
 
     public Task<IReadOnlyList<KnownWorldRow>> GetKnownWorldPhotosAsync(long sourceSlot, string? excludePhotoPath, CancellationToken ct = default)
     {
@@ -1792,32 +1436,6 @@ ORDER BY cnt DESC, world_name COLLATE NOCASE ASC";
         catch (Exception ex)
         {
             AppLogger.Error($"AlpheratzDb.UpdatePhotoPhashAsync: threw: {ex}");
-            throw;
-        }
-    }
-
-    public Task<IReadOnlyList<(string PhotoPath, string Phash)>> GetAllPhashesAsync(CancellationToken ct = default)
-    {
-        AppLogger.Trace("AlpheratzDb.GetAllPhashesAsync: enter");
-        try
-        {
-            ct.ThrowIfCancellationRequested();
-            using var conn = OpenConnection();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"SELECT photo_path, phash FROM photos
-                                 WHERE is_missing = 0 AND phash IS NOT NULL AND phash <> ''";
-            var items = new List<(string, string)>();
-            using var r = cmd.ExecuteReader();
-            while (r.Read())
-            {
-                items.Add((r.GetString(0), r.GetString(1)));
-            }
-            AppLogger.Trace($"AlpheratzDb.GetAllPhashesAsync: exit count={items.Count}");
-            return Task.FromResult<IReadOnlyList<(string, string)>>(items);
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Error($"AlpheratzDb.GetAllPhashesAsync: threw: {ex}");
             throw;
         }
     }

@@ -106,6 +106,12 @@ public sealed partial class GalleryMasonryView : UserControl
         Rebuild();
     }
 
+    public void ScrollToTop()
+    {
+        try { ScrollHost.ChangeView(null, 0, null); }
+        catch (Exception ex) { AppLogger.Error($"GalleryMasonryView.ScrollToTop: threw: {ex}"); }
+    }
+
     /// <summary>指定インデックスの写真までスクロールする（月ナビゲーション用）。</summary>
     public void ScrollToPhotoIndex(int index)
     {
@@ -539,12 +545,22 @@ public sealed partial class GalleryMasonryView : UserControl
             StopShimmer();
         };
 
-        // R2-A-19: ImageOpened/ImageFailed のどちらか一方が必ず発火する。
-        //          失敗時に shimmer を放置すると永久にシマー演出が回り続け、CPU/コンポジターを浪費する。
         image.ImageFailed += (_, args) =>
         {
             AppLogger.Warn($"GalleryMasonryView.ImageFailed: {args.ErrorMessage}");
             StopShimmer();
+            shimmerBase.Background = (Brush)Application.Current.Resources["ASurfaceSoft"];
+            shimmerBase.Opacity = 1;
+            var errorIcon = new TextBlock
+            {
+                Text = "",
+                FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                FontSize = 24,
+                Foreground = (Brush)Application.Current.Resources["ATextDisabled"],
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            cardGrid.Children.Add(errorIcon);
         };
 
         // --- Info overlay (WorldName + Timestamp) ---

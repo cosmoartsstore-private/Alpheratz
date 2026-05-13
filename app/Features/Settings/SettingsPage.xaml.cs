@@ -17,9 +17,6 @@ public sealed partial class SettingsPage : Page
     public Func<bool, Task>? OnStartupPreferenceChanged { get; set; }
     public Func<bool, Task>? OnThemeChanged { get; set; }
     public Func<Task>? OnStartWorldAnalysis { get; set; }
-    public Func<bool, Task>? OnMasonryPreferenceChanged { get; set; }
-    public Func<Task>? OnReviewMissingPhotos { get; set; }
-
     public SettingsPage(SettingsViewModel viewModel)
     {
         AppLogger.Trace("SettingsPage.ctor: enter");
@@ -81,18 +78,6 @@ public sealed partial class SettingsPage : Page
         AppLogger.Trace("SettingsPage.StartupToggle_Toggled: exit");
     }
 
-    private async void MasonryToggle_Toggled(object sender, RoutedEventArgs e)
-    {
-        AppLogger.Trace("SettingsPage.MasonryToggle_Toggled: enter");
-        try
-        {
-            if (sender is ToggleSwitch toggleSwitch && OnMasonryPreferenceChanged is not null)
-                await OnMasonryPreferenceChanged(toggleSwitch.IsOn).ConfigureAwait(false);
-        }
-        catch (Exception ex) { AppLogger.Error($"SettingsPage.MasonryToggle_Toggled: threw: {ex}"); }
-        AppLogger.Trace("SettingsPage.MasonryToggle_Toggled: exit");
-    }
-
     private async void ThemeLight_Click(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("SettingsPage.ThemeLight_Click: enter");
@@ -135,11 +120,4 @@ public sealed partial class SettingsPage : Page
         AppLogger.Trace("SettingsPage.StartWorldAnalysis_Click: exit");
     }
 
-    private async void ReviewMissingPhotos_Click(object sender, RoutedEventArgs e)
-    {
-        AppLogger.Trace("SettingsPage.ReviewMissingPhotos_Click: enter");
-        try { if (OnReviewMissingPhotos is not null) await OnReviewMissingPhotos().ConfigureAwait(false); }
-        catch (Exception ex) { AppLogger.Error($"SettingsPage.ReviewMissingPhotos_Click: threw: {ex}"); }
-        AppLogger.Trace("SettingsPage.ReviewMissingPhotos_Click: exit");
-    }
 }

@@ -15,17 +15,11 @@ public sealed record AlpheratzSettingDto
     [JsonPropertyName("enableStartup")]
     public bool? enableStartup { get; init; }
 
-    [JsonPropertyName("startupPreferenceSet")]
-    public bool? startupPreferenceSet { get; init; }
-
     [JsonPropertyName("themeMode")]
     public ThemeMode? themeMode { get; init; }
 
     [JsonPropertyName("viewMode")]
     public ViewMode? viewMode { get; init; }
-
-    [JsonPropertyName("enableMasonryLayout")]
-    public bool? enableMasonryLayout { get; init; }
 
     [JsonPropertyName("tweetTemplates")]
     public IReadOnlyList<string>? tweetTemplates { get; init; }

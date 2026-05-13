@@ -23,8 +23,8 @@
                     VerticalAlignment="Center">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <shared:AppIcon IconName="search" IconSize="16" Foreground="{ThemeResource ATextDim}"/>
-                    <TextBlock Text="検索条件" FontSize="12" FontWeight="ExtraBold"/>
-                    <Border MinWidth="18" Height="18" CornerRadius="9" Background="{ThemeResource APrimary}">
+                    <TextBlock Text="検索条件" FontSize="{StaticResource AFontSizeSm}" FontWeight="ExtraBold"/>
+                    <Border MinWidth="18" Height="18" CornerRadius="{StaticResource ARadiusMd}" Background="{ThemeResource APrimary}">
                         <TextBlock
                             Text="{Binding galleryViewModel.filtersState.ActiveFilterCount}"
                             Foreground="White"
@@ -38,8 +38,8 @@
 
             <!-- Center: search box -->
             <Border x:Name="SearchBoxBorder" Grid.Column="1"
-                    Width="472"
-                    HorizontalAlignment="Center"
+                    MaxWidth="472"
+                    HorizontalAlignment="Stretch"
                     MinHeight="34"
                     CornerRadius="{StaticResource ARadiusMd}"
                     BorderBrush="{ThemeResource ABorder}"
@@ -59,7 +59,7 @@
                              Background="Transparent"
                              Text="{Binding galleryViewModel.filtersState.SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                              PlaceholderText="ワールド名で検索..."
-                             FontSize="13"
+                             FontSize="{StaticResource AFontSizeMd}"
                              VerticalAlignment="Center"/>
                 </Grid>
             </Border>

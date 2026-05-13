@@ -12,23 +12,23 @@ namespace Alpheratz.Features.Gallery;
 /// </summary>
 public partial class PhotoThumbnailItem : UiThreadSafeObservableObject
 {
-    [ObservableProperty] private string photo_filename = string.Empty;
-    [ObservableProperty] private string photo_path = string.Empty;
-    [ObservableProperty] private string? resolved_photo_path;
-    [ObservableProperty] private string? grid_thumb_path;
-    [ObservableProperty] private string? display_thumb_path;
-    [ObservableProperty] private string? world_id;
-    [ObservableProperty] private string? world_name;
+    private string photo_filename = string.Empty;
+    private string photo_path = string.Empty;
+    private string? resolved_photo_path;
+    private string? grid_thumb_path;
+    private string? display_thumb_path;
+    private string? world_id;
+    private string? world_name;
     [ObservableProperty] private string timestamp = string.Empty;
     [ObservableProperty] private string? phash;
     [ObservableProperty] private string? orientation;
-    [ObservableProperty] private long? image_width;
-    [ObservableProperty] private long? image_height;
-    [ObservableProperty] private long source_slot = 1;
-    [ObservableProperty] private bool is_favorite;
+    private long? image_width;
+    private long? image_height;
+    private long source_slot = 1;
+    private bool is_favorite;
     [ObservableProperty] private IReadOnlyList<string> tags = [];
-    [ObservableProperty] private string? match_source;
-    [ObservableProperty] private bool is_missing;
+    private string? match_source;
+    private bool is_missing;
     [ObservableProperty] private bool isSelected;
 
     public string PhotoFilename
@@ -176,14 +176,14 @@ public partial class PhotoThumbnailItem : UiThreadSafeObservableObject
         display_thumb_path = photo.display_thumb_path,
         world_id = photo.world_id,
         world_name = photo.world_name,
-        timestamp = photo.timestamp,
-        phash = photo.phash,
-        orientation = photo.orientation,
+        Timestamp = photo.timestamp,
+        Phash = photo.phash,
+        Orientation = photo.orientation,
         image_width = photo.image_width,
         image_height = photo.image_height,
         source_slot = photo.source_slot,
         is_favorite = photo.is_favorite,
-        tags = photo.tags,
+        Tags = photo.tags,
         match_source = photo.match_source,
         is_missing = photo.is_missing,
     };
@@ -198,14 +198,14 @@ public partial class PhotoThumbnailItem : UiThreadSafeObservableObject
         display_thumb_path = display_thumb_path,
         world_id = world_id,
         world_name = world_name,
-        timestamp = timestamp,
-        phash = phash,
-        orientation = orientation,
+        timestamp = Timestamp,
+        phash = Phash,
+        orientation = Orientation,
         image_width = image_width,
         image_height = image_height,
         source_slot = source_slot,
         is_favorite = is_favorite,
-        tags = tags,
+        tags = Tags,
         match_source = match_source,
         is_missing = is_missing,
     };

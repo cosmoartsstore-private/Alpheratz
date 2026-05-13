@@ -9,7 +9,4 @@ public sealed record SelectedPhotoRefDto
 
     [JsonPropertyName("source_slot")]
     public long source_slot { get; init; } = 1;
-
-    [JsonPropertyName("is_favorite")]
-    public bool is_favorite { get; init; }
 }

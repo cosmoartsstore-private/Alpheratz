@@ -246,10 +246,8 @@ public sealed partial class ShellPage : Page
                     },
                     OnResetFolder = viewModel.handleResetFolder,
                     OnStartupPreferenceChanged = viewModel.handleStartupPreference,
-                    OnMasonryPreferenceChanged = viewModel.handleMasonryPreference,
                     OnThemeChanged = isDark => viewModel.handleThemeChange(isDark ? Alpheratz.Shared.Models.ThemeMode.dark : Alpheratz.Shared.Models.ThemeMode.light),
                     OnStartWorldAnalysis = ShowWorldResolveModalAsync,
-                    OnReviewMissingPhotos = ShowMissingPhotosDialogAsync,
                 };
             }
             Stage.MainContent = settingsPage;
@@ -259,47 +257,6 @@ public sealed partial class ShellPage : Page
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowSettings: threw: {ex}"); }
         AppLogger.Trace("ShellPage.ShowSettings: exit");
-    }
-
-    /// <summary>
-    /// 「不在の写真」を確認するシンプルなダイアログ。件数を表示し、
-    /// ユーザーが選んだら DB から一括削除する（最小実装）。
-    /// </summary>
-    private async Task ShowMissingPhotosDialogAsync()
-    {
-        AppLogger.Trace("ShellPage.ShowMissingPhotosDialogAsync: enter");
-        try
-        {
-            var missing = await viewModel.getMissingPhotosAsync().ConfigureAwait(true);
-            if (missing.Count == 0)
-            {
-                var info = new Microsoft.UI.Xaml.Controls.ContentDialog
-                {
-                    Title = "不在の写真",
-                    Content = "不在の写真はありません。",
-                    CloseButtonText = "閉じる",
-                    XamlRoot = this.XamlRoot,
-                };
-                await info.ShowAsync();
-                return;
-            }
-
-            var preview = string.Join("\n", missing.Take(10).Select(p => p.photo_path));
-            var more = missing.Count > 10 ? $"\n... 他 {missing.Count - 10} 件" : "";
-            var answer = await ShowConfirmDialogAsync(
-                title: "不在の写真を確認",
-                message: $"DB に登録されているが見つからない写真が {missing.Count} 件あります:\n\n{preview}{more}\n\nDB から完全に削除しますか？",
-                yesText: $"DB から削除：{missing.Count} 件",
-                noText: "閉じる").ConfigureAwait(true);
-
-            if (answer == true)
-            {
-                var paths = missing.Select(p => p.photo_path).ToArray();
-                await viewModel.deleteMissingPhotosAsync(paths).ConfigureAwait(false);
-            }
-        }
-        catch (Exception ex) { AppLogger.Error($"ShellPage.ShowMissingPhotosDialogAsync: threw: {ex}"); }
-        AppLogger.Trace("ShellPage.ShowMissingPhotosDialogAsync: exit");
     }
 
     public void ShowTagMaster()
@@ -471,6 +428,14 @@ public sealed partial class ShellPage : Page
             {
                 DispatcherQueue?.TryEnqueue(() => FilterOverlay.Visibility = Visibility.Collapsed);
             });
+        }
+    }
+
+    private void ShellPage_KeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (e.Key == Windows.System.VirtualKey.Escape)
+        {
+            if (isFilterOpen) { ToggleFilter(); e.Handled = true; }
         }
     }
 

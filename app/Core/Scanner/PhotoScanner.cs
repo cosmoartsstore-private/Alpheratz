@@ -133,8 +133,8 @@ public sealed partial class PhotoScanner
         foreach (var (_, _, path) in foundFiles)
             foundPathSet.Add(AppPaths.NormalizePathForDb(path));
 
-        // Mark missing
-        await _db.MarkMissingPhotosAsync(foundPathSet, ct).ConfigureAwait(false);
+        // Delete photos whose files no longer exist on disk
+        await _db.DeleteMissingPhotosAsync(foundPathSet, ct).ConfigureAwait(false);
 
         // Filter to candidates needing update
         var candidates = new List<(long slot, string filename, string path, ScanRefreshKind kind)>();

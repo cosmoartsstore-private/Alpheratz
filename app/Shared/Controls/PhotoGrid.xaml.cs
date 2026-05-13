@@ -65,6 +65,12 @@ public sealed partial class PhotoGrid : UserControl
         AppLogger.Trace("PhotoGrid.ctor: exit");
     }
 
+    public void ScrollToTop()
+    {
+        try { ItemsViewControl.GridScrollViewerRef.ChangeView(null, 0, null); }
+        catch (Exception ex) { AppLogger.Error($"PhotoGrid.ScrollToTop: threw: {ex}"); }
+    }
+
     public void ScrollToPhotoIndex(int index)
     {
         try

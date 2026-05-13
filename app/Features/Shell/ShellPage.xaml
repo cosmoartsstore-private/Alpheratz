@@ -5,7 +5,8 @@
     xmlns:shellControls="using:Alpheratz.Features.Shell.Controls"
     Background="{ThemeResource ABg}"
     Loaded="ShellPage_Loaded"
-    Unloaded="ShellPage_Unloaded">
+    Unloaded="ShellPage_Unloaded"
+    KeyDown="ShellPage_KeyDown">
 
     <Grid Background="{ThemeResource ABg}">
         <Grid.RowDefinitions>
@@ -32,7 +33,7 @@
                     Background="{ThemeResource AOverlay}"
                     Tapped="FilterBackdrop_Tapped"/>
             <Border x:Name="FilterPanelContainer" HorizontalAlignment="Left"
-                    Width="540"
+                    MaxWidth="540" MinWidth="320"
                     Background="{ThemeResource ASurface}">
                 <ContentControl x:Name="FilterPanelHost"
                                 HorizontalContentAlignment="Stretch"

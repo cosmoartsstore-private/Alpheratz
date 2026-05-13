@@ -23,13 +23,9 @@
             <SolidColorBrush x:Key="ToggleSwitchKnobFillOffPointerOver" Color="#0F1419"/>
 
             <SolidColorBrush x:Key="AAccent" Color="#1D9BF0"/>
-            <SolidColorBrush x:Key="AAccentLight" Color="#1A8CD8"/>
             <SolidColorBrush x:Key="ABg" Color="#FFFFFF"/>
-            <SolidColorBrush x:Key="ABgElevated" Color="#F7F9FA"/>
             <SolidColorBrush x:Key="ASurface" Color="#FFFFFF"/>
-            <SolidColorBrush x:Key="ASurfaceStrong" Color="#FFFFFF"/>
             <SolidColorBrush x:Key="ASurfaceSoft" Color="#F7F9FA"/>
-            <SolidColorBrush x:Key="ASurfaceHover" Color="#F0F3F4"/>
             <SolidColorBrush x:Key="ASurfaceTop" Color="#FFFFFF"/>
             <SolidColorBrush x:Key="ASurfaceSide" Color="#FFFFFF"/>
             <SolidColorBrush x:Key="ABorder" Color="#1A000000"/>
@@ -43,14 +39,11 @@
             <SolidColorBrush x:Key="APrimarySoft" Color="#E8F4FD"/>
             <SolidColorBrush x:Key="AAccentSoft" Color="#DCF0FC"/>
             <SolidColorBrush x:Key="AWarn" Color="#D97706"/>
-            <SolidColorBrush x:Key="AWarnSoft" Color="#14D97706"/>
-            <SolidColorBrush x:Key="AWarnBorder" Color="#2ED97706"/>
             <SolidColorBrush x:Key="ADanger" Color="#DC2626"/>
             <SolidColorBrush x:Key="ADangerSolid" Color="#EF4444"/>
             <SolidColorBrush x:Key="ADangerSoft" Color="#0FDC2626"/>
             <SolidColorBrush x:Key="ADangerBorder" Color="#29DC2626"/>
             <SolidColorBrush x:Key="AFavorite" Color="#D97706"/>
-            <SolidColorBrush x:Key="AFavoriteGlow" Color="#50D97706"/>
             <SolidColorBrush x:Key="AFavoriteSoft" Color="#1ED97706"/>
             <SolidColorBrush x:Key="AFavoriteBorder" Color="#40D97706"/>
             <SolidColorBrush x:Key="AOverlay" Color="#66000000"/>
@@ -79,13 +72,9 @@
             <SolidColorBrush x:Key="ToggleSwitchKnobFillOffPointerOver" Color="#E7E9EA"/>
 
             <SolidColorBrush x:Key="AAccent" Color="#1D9BF0"/>
-            <SolidColorBrush x:Key="AAccentLight" Color="#1A8CD8"/>
             <SolidColorBrush x:Key="ABg" Color="#000000"/>
-            <SolidColorBrush x:Key="ABgElevated" Color="#16181C"/>
             <SolidColorBrush x:Key="ASurface" Color="#16181C"/>
-            <SolidColorBrush x:Key="ASurfaceStrong" Color="#1D2026"/>
             <SolidColorBrush x:Key="ASurfaceSoft" Color="#16181C"/>
-            <SolidColorBrush x:Key="ASurfaceHover" Color="#1D2026"/>
             <SolidColorBrush x:Key="ASurfaceTop" Color="#000000"/>
             <SolidColorBrush x:Key="ASurfaceSide" Color="#16181C"/>
             <SolidColorBrush x:Key="ABorder" Color="#1AFFFFFF"/>
@@ -99,14 +88,11 @@
             <SolidColorBrush x:Key="APrimarySoft" Color="#1A2A3A"/>
             <SolidColorBrush x:Key="AAccentSoft" Color="#1A2A3A"/>
             <SolidColorBrush x:Key="AWarn" Color="#FBBF24"/>
-            <SolidColorBrush x:Key="AWarnSoft" Color="#1FFBBF24"/>
-            <SolidColorBrush x:Key="AWarnBorder" Color="#4DFBBF24"/>
             <SolidColorBrush x:Key="ADanger" Color="#F87171"/>
             <SolidColorBrush x:Key="ADangerSolid" Color="#EF4444"/>
             <SolidColorBrush x:Key="ADangerSoft" Color="#1FF87171"/>
             <SolidColorBrush x:Key="ADangerBorder" Color="#47F87171"/>
             <SolidColorBrush x:Key="AFavorite" Color="#FBBF24"/>
-            <SolidColorBrush x:Key="AFavoriteGlow" Color="#55FBBF24"/>
             <SolidColorBrush x:Key="AFavoriteSoft" Color="#24FBBF24"/>
             <SolidColorBrush x:Key="AFavoriteBorder" Color="#55FBBF24"/>
             <SolidColorBrush x:Key="AOverlay" Color="#66000000"/>

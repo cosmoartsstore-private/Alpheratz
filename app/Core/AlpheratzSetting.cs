@@ -23,9 +23,6 @@ public sealed class AlpheratzSetting
     [JsonPropertyName("startupPreferenceSet")]
     public bool StartupPreferenceSet { get; set; }
 
-    [JsonPropertyName("enableMasonryLayout")]
-    public bool EnableMasonryLayout { get; set; }
-
     [JsonPropertyName("tweetTemplates")]
     public List<string> TweetTemplates { get; set; } =
     [

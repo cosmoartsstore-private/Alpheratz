@@ -10,15 +10,6 @@
         <Setter Property="Background" Value="{ThemeResource ASurface}"/>
     </Style>
 
-    <!-- Filter / tag chip frame -->
-    <Style x:Key="ChipBorderStyle" TargetType="Border">
-        <Setter Property="CornerRadius" Value="{StaticResource ARadiusPill}"/>
-        <Setter Property="Padding" Value="8,2"/>
-        <Setter Property="Background" Value="{ThemeResource APrimarySoft}"/>
-        <Setter Property="BorderBrush" Value="{ThemeResource ABorderStrong}"/>
-        <Setter Property="BorderThickness" Value="1"/>
-    </Style>
-
     <!-- Section panel inside Settings / Template / TagMaster -->
     <Style x:Key="SectionCardBorderStyle" TargetType="Border">
         <Setter Property="CornerRadius" Value="{StaticResource ARadiusLg}"/>
@@ -36,19 +27,4 @@
         <Setter Property="Padding" Value="14"/>
     </Style>
 
-    <!-- Top header bar (shell header) -->
-    <Style x:Key="HeaderBarBorderStyle" TargetType="Border">
-        <Setter Property="Background" Value="{ThemeResource ASurfaceTop}"/>
-        <Setter Property="BorderBrush" Value="{ThemeResource ABorder}"/>
-        <Setter Property="BorderThickness" Value="0,0,0,1"/>
-        <Setter Property="Padding" Value="{StaticResource AHeaderPadding}"/>
-    </Style>
-
-    <!-- Bulk-op floating bar (selection tray at bottom) -->
-    <Style x:Key="FloatingBarBorderStyle" TargetType="Border">
-        <Setter Property="Background" Value="{ThemeResource ASurface}"/>
-        <Setter Property="BorderBrush" Value="{ThemeResource ABorder}"/>
-        <Setter Property="BorderThickness" Value="0,1,0,0"/>
-        <Setter Property="Padding" Value="14,10"/>
-    </Style>
 </ResourceDictionary>

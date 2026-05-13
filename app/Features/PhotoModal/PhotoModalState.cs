@@ -38,8 +38,8 @@ public partial class PhotoModalState : UiThreadSafeObservableObject
     private List<PhotoThumbnailItem> photoList = [];
 
     public bool CanGoBack => photoHistory.Count > 0;
-    public bool CanGoPrev => selectedPhoto is not null && photoList.Count > 0 && photoList.IndexOf(selectedPhoto) > 0;
-    public bool CanGoNext => selectedPhoto is not null && photoList.Count > 0 && photoList.IndexOf(selectedPhoto) < photoList.Count - 1;
+    public bool CanGoPrev => SelectedPhoto is not null && photoList.Count > 0 && photoList.IndexOf(SelectedPhoto) > 0;
+    public bool CanGoNext => SelectedPhoto is not null && photoList.Count > 0 && photoList.IndexOf(SelectedPhoto) < photoList.Count - 1;
 
     /// <summary>前後ナビゲーション用の写真リストを設定する。</summary>
     public void setPhotoList(IReadOnlyList<PhotoThumbnailItem> list)

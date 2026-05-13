@@ -23,13 +23,13 @@
                                   Foreground="{ThemeResource ATextDim}"
                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
-                    <TextBlock Text="ギャラリーに戻る" FontSize="13" FontWeight="Bold"/>
+                    <TextBlock Text="ギャラリーに戻る" FontSize="{StaticResource AFontSizeMd}" FontWeight="Bold"/>
                 </StackPanel>
             </Button>
 
             <!-- 編集 -->
             <StackPanel Spacing="4">
-                <TextBlock Text="編集" FontSize="11" FontWeight="ExtraBold"
+                <TextBlock Text="編集" FontSize="{StaticResource AFontSizeXs}" FontWeight="ExtraBold"
                            Foreground="{ThemeResource ATextFaint}" Margin="12,0,0,6"/>
                 <Button x:Name="MultiSelectBtn"
                         Style="{StaticResource RailButtonStyle}"
@@ -40,7 +40,7 @@
                                             Foreground="{ThemeResource ATextDim}"
                                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
-                        <TextBlock Text="複数選択" FontSize="13" FontWeight="Bold"/>
+                        <TextBlock Text="複数選択" FontSize="{StaticResource AFontSizeMd}" FontWeight="Bold"/>
                     </StackPanel>
                 </Button>
                 <Button x:Name="TagMasterBtn"
@@ -52,7 +52,7 @@
                                             Foreground="{ThemeResource ATextDim}"
                                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
-                        <TextBlock Text="タグマスタ編集" FontSize="13" FontWeight="Bold"/>
+                        <TextBlock Text="タグマスタ編集" FontSize="{StaticResource AFontSizeMd}" FontWeight="Bold"/>
                     </StackPanel>
                 </Button>
                 <Button x:Name="TemplateBtn"
@@ -64,14 +64,14 @@
                                             Foreground="{ThemeResource ATextDim}"
                                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
-                        <TextBlock Text="テンプレート編集" FontSize="13" FontWeight="Bold"/>
+                        <TextBlock Text="テンプレート編集" FontSize="{StaticResource AFontSizeMd}" FontWeight="Bold"/>
                     </StackPanel>
                 </Button>
             </StackPanel>
 
             <!-- グループ化 -->
             <StackPanel x:Name="GroupingSection" Spacing="4">
-                <TextBlock Text="グループ化" FontSize="11" FontWeight="ExtraBold"
+                <TextBlock Text="グループ化" FontSize="{StaticResource AFontSizeXs}" FontWeight="ExtraBold"
                            Foreground="{ThemeResource ATextFaint}" Margin="12,0,0,6"/>
                 <Button x:Name="GroupNoneBtn"
                         Style="{StaticResource RailButtonStyle}"
@@ -82,7 +82,7 @@
                                             Foreground="{ThemeResource ATextDim}"
                                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
-                        <TextBlock Text="なし" FontSize="13" FontWeight="Bold"/>
+                        <TextBlock Text="なし" FontSize="{StaticResource AFontSizeMd}" FontWeight="Bold"/>
                     </StackPanel>
                 </Button>
                 <Button x:Name="GroupWorldBtn"
@@ -94,14 +94,14 @@
                                             Foreground="{ThemeResource ATextDim}"
                                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
-                        <TextBlock Text="ワールド" FontSize="13" FontWeight="Bold"/>
+                        <TextBlock Text="ワールド" FontSize="{StaticResource AFontSizeMd}" FontWeight="Bold"/>
                     </StackPanel>
                 </Button>
             </StackPanel>
 
             <!-- 表示形式 (gallery screen only) -->
             <StackPanel x:Name="ViewModeSection" Spacing="4">
-                <TextBlock Text="表示形式" FontSize="11" FontWeight="ExtraBold"
+                <TextBlock Text="表示形式" FontSize="{StaticResource AFontSizeXs}" FontWeight="ExtraBold"
                            Foreground="{ThemeResource ATextFaint}" Margin="12,0,0,6"/>
                 <Button x:Name="ViewGridBtn"
                         Style="{StaticResource RailButtonStyle}"
@@ -112,7 +112,7 @@
                                             Foreground="{ThemeResource ATextDim}"
                                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
-                        <TextBlock Text="グリッド" FontSize="13" FontWeight="Bold"/>
+                        <TextBlock Text="グリッド" FontSize="{StaticResource AFontSizeMd}" FontWeight="Bold"/>
                     </StackPanel>
                 </Button>
                 <Button x:Name="ViewGalleryBtn"
@@ -124,7 +124,7 @@
                                             Foreground="{ThemeResource ATextDim}"
                                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
-                        <TextBlock Text="ギャラリー" FontSize="13" FontWeight="Bold"/>
+                        <TextBlock Text="ギャラリー" FontSize="{StaticResource AFontSizeMd}" FontWeight="Bold"/>
                     </StackPanel>
                 </Button>
             </StackPanel>

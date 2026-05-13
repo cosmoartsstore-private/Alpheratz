@@ -44,7 +44,7 @@
                             Visibility="Collapsed">
                         <TextBlock Text="タグマスタはまだありません。"
                                    Foreground="{ThemeResource ATextFaint}"
-                                   FontSize="13"/>
+                                   FontSize="{StaticResource AFontSizeMd}"/>
                     </Border>
 
                     <!-- Tag flow list -->
@@ -64,7 +64,7 @@
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <TextBlock Text="{Binding}"
                                                    VerticalAlignment="Center"
-                                                   FontSize="13"
+                                                   FontSize="{StaticResource AFontSizeMd}"
                                                    FontWeight="SemiBold"
                                                    Foreground="{ThemeResource AText}"/>
                                         <Button Content="削除"
@@ -75,7 +75,7 @@
                                                 BorderBrush="{ThemeResource ADangerBorder}"
                                                 BorderThickness="1"
                                                 Foreground="{ThemeResource ADanger}"
-                                                FontSize="12"
+                                                FontSize="{StaticResource AFontSizeSm}"
                                                 FontWeight="SemiBold"
                                                 Click="DeleteTag_Click"/>
                                     </StackPanel>

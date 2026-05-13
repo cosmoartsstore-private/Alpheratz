@@ -40,13 +40,6 @@ public sealed class ThumbnailWorker
         CancellationToken ct = default)
         => RunAsync("Grid", targets, thumbnailService.EnsureGridThumbAsync, onReady, ct);
 
-    /// <summary>表示用（高解像度）サムネイルを並列生成する。</summary>
-    public Task GenerateDisplayAsync(
-        IReadOnlyList<(string path, long slot)> targets,
-        Action<ThumbnailResult> onReady,
-        CancellationToken ct = default)
-        => RunAsync("Display", targets, thumbnailService.EnsureDisplayThumbAsync, onReady, ct);
-
     /// <summary>
     /// SemaphoreSlim で同時実行数を制限しつつ全ターゲットを並列処理する。
     /// 個別の失敗はログに記録してスキップし、バッチ全体をキャンセルしない。

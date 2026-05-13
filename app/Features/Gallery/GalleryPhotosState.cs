@@ -53,6 +53,9 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
     /// <summary>月グループが更新されたときに発火するコールバック。</summary>
     public Action<IReadOnlyList<GalleryMonthGroup>>? OnMonthGroupsChanged { get; set; }
 
+    /// <summary>写真一覧が全置換されたときに発火する（scroll-to-top 用）。</summary>
+    public Action? OnPhotosReplaced { get; set; }
+
     public GalleryPhotosState(PhotoService photoService, LocalEventBus eventBus, ToastService toastService, DispatcherService dispatcherService, ThumbnailWorker thumbnailWorker)
     {
         AppLogger.Trace("GalleryPhotosState.ctor: enter");
@@ -382,6 +385,7 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
                 photos.ReplaceAll(allPhotos);
                 TotalCount = allPhotos.Count;
                 rebuildDisplayItems(filters.groupingMode);
+                OnPhotosReplaced?.Invoke();
 
                 var photoMap = allPhotos.ToDictionary(p => p.PhotoPath, p => p);
                 kickThumbnailGeneration(photoMap);

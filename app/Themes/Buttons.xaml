@@ -55,19 +55,7 @@
         <Setter Property="BorderBrush" Value="{ThemeResource ADangerSolid}"/>
     </Style>
 
-    <!-- Outline (transparent + colored border) -->
-    <Style x:Key="OutlineButtonStyle" TargetType="Button">
-        <Setter Property="MinHeight" Value="34"/>
-        <Setter Property="Padding" Value="12,7"/>
-        <Setter Property="CornerRadius" Value="{StaticResource ARadiusMd}"/>
-        <Setter Property="Background" Value="Transparent"/>
-        <Setter Property="BorderBrush" Value="{ThemeResource ABorderStrong}"/>
-        <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="Foreground" Value="{ThemeResource APrimary}"/>
-        <Setter Property="FontWeight" Value="SemiBold"/>
-    </Style>
-
-    <!-- Left rail nav button (legacy left-rail-button) -->
+    <!-- Left rail nav button (default / inactive) -->
     <Style x:Key="RailButtonStyle" TargetType="Button">
         <Setter Property="HorizontalAlignment" Value="Stretch"/>
         <Setter Property="HorizontalContentAlignment" Value="Left"/>
@@ -81,17 +69,33 @@
         <Setter Property="FontWeight" Value="Bold"/>
     </Style>
 
-    <!-- Active rail nav button (selected state) -->
-    <Style x:Key="RailButtonActiveStyle" TargetType="Button" BasedOn="{StaticResource RailButtonStyle}">
+    <!-- Left rail nav button (active / selected) — applied from code-behind -->
+    <Style x:Key="RailButtonActiveStyle" TargetType="Button">
+        <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        <Setter Property="MinHeight" Value="44"/>
+        <Setter Property="Padding" Value="12,10"/>
+        <Setter Property="CornerRadius" Value="{StaticResource ARadiusMd}"/>
         <Setter Property="Background" Value="{ThemeResource APrimarySoft}"/>
+        <Setter Property="BorderBrush" Value="{ThemeResource ABorderStrong}"/>
+        <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Foreground" Value="{ThemeResource APrimary}"/>
+        <Setter Property="FontWeight" Value="Bold"/>
     </Style>
 
-    <!-- Disabled rail nav button (non-interactive, visually muted) -->
-    <Style x:Key="RailButtonDisabledStyle" TargetType="Button" BasedOn="{StaticResource RailButtonStyle}">
+    <!-- Left rail nav button (disabled) — applied from code-behind -->
+    <Style x:Key="RailButtonDisabledStyle" TargetType="Button">
+        <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        <Setter Property="MinHeight" Value="44"/>
+        <Setter Property="Padding" Value="12,10"/>
+        <Setter Property="CornerRadius" Value="{StaticResource ARadiusMd}"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Foreground" Value="{ThemeResource ATextDisabled}"/>
+        <Setter Property="FontWeight" Value="Bold"/>
         <Setter Property="IsEnabled" Value="False"/>
-        <Setter Property="Opacity" Value="0.35"/>
-        <Setter Property="Foreground" Value="{ThemeResource ATextFaint}"/>
     </Style>
 
     <!-- Pill chip button (filter chip with × icon) -->

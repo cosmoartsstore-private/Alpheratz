@@ -64,11 +64,11 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
         try
         {
             var photoPath = item.Photo.PhotoPath;
-            if (shiftKey && selectionAnchorPhotoPath is not null)
+            if (shiftKey && SelectionAnchorPhotoPath is not null)
             {
                 AppLogger.Trace("GallerySelectionState.toggleSelectedPhoto: branch=range select");
                 var list = displayPhotoItems.ToList();
-                var anchorIndex = list.FindIndex(entry => entry.Photo.PhotoPath == selectionAnchorPhotoPath);
+                var anchorIndex = list.FindIndex(entry => entry.Photo.PhotoPath == SelectionAnchorPhotoPath);
                 var targetIndex = list.FindIndex(entry => entry.Photo.PhotoPath == photoPath);
                 if (anchorIndex >= 0 && targetIndex >= 0)
                 {

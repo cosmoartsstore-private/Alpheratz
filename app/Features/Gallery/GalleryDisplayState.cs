@@ -29,12 +29,12 @@ public partial class GalleryDisplayState : UiThreadSafeObservableObject
     private CancellationTokenSource? viewPreparationTimeoutRef;
 
     public string groupedPhotoLabel => "ワールド";
-    public bool isGroupingUnavailableInMasonry => viewMode == ViewMode.gallery;
+    public bool isGroupingUnavailableInMasonry => ViewMode == ViewMode.gallery;
 
-    public int measuredColumnCount => Math.Max(1, (int)Math.Floor(panelWidth / CARD_WIDTH));
-    public double gridHeight => Math.Max(200, gridWrapperHeight);
-    public int standardColumnCount => viewMode == ViewMode.standard ? STANDARD_GRID_COLUMN_COUNT : measuredColumnCount;
-    public int standardColumnWidth => Math.Max(180, (int)Math.Floor(panelWidth / Math.Max(1, standardColumnCount)));
+    public int measuredColumnCount => Math.Max(1, (int)Math.Floor(PanelWidth / CARD_WIDTH));
+    public double gridHeight => Math.Max(200, GridWrapperHeight);
+    public int standardColumnCount => ViewMode == ViewMode.standard ? STANDARD_GRID_COLUMN_COUNT : measuredColumnCount;
+    public int standardColumnWidth => Math.Max(180, (int)Math.Floor(PanelWidth / Math.Max(1, standardColumnCount)));
     public int standardRowHeight => Math.Max(150, (int)Math.Floor(gridHeight / STANDARD_GRID_VISIBLE_ROW_COUNT));
 
     // Hot path during binding refresh; tracing would drown the log.

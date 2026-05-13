@@ -10,13 +10,12 @@
     <Page.Resources>
         <converters:ThumbnailSourceConverter x:Key="ThumbConverter" DecodePixelWidth="120"/>
         <converters:ThumbnailSourceConverter x:Key="PickerThumbConverter" DecodePixelWidth="160"/>
-        <converters:BooleanToVisibilityConverter x:Key="BoolToVis"/>
     </Page.Resources>
 
     <Grid Background="Transparent" Tapped="Backdrop_Tapped">
-        <Border MaxWidth="1200" Margin="32"
+        <Border MaxWidth="1200" MinWidth="600" Margin="32"
                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                CornerRadius="28"
+                CornerRadius="{StaticResource ARadiusModal}"
                 Background="{ThemeResource ASurface}"
                 BorderBrush="{ThemeResource ABorder}"
                 BorderThickness="1"
@@ -38,8 +37,8 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel>
-                            <TextBlock Text="ワールド解決" FontSize="20" FontWeight="ExtraBold" Foreground="{ThemeResource AText}"/>
-                            <TextBlock x:Name="StatusText" FontSize="12" Foreground="{ThemeResource ATextFaint}" Margin="0,4,0,0"/>
+                            <TextBlock Text="ワールド解決" FontSize="{StaticResource AFontSize2Xl}" FontWeight="ExtraBold" Foreground="{ThemeResource AText}"/>
+                            <TextBlock x:Name="StatusText" FontSize="{StaticResource AFontSizeSm}" Foreground="{ThemeResource ATextFaint}" Margin="0,4,0,0"/>
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                             <Button Content="全て適用" Style="{StaticResource GhostButtonStyle}" Click="ApplyAll_Click"/>
@@ -72,11 +71,11 @@
 
                                         <!-- Target photo -->
                                         <StackPanel Grid.Column="0" Spacing="4">
-                                            <Border Height="80" CornerRadius="6" Background="{ThemeResource ABorder}">
+                                            <Border Height="80" CornerRadius="{StaticResource ARadiusSm}" Background="{ThemeResource ABorder}">
                                                 <Image Source="{x:Bind TargetThumbPath, Mode=OneWay, Converter={StaticResource ThumbConverter}}"
                                                        Stretch="UniformToFill"/>
                                             </Border>
-                                            <TextBlock Text="{x:Bind TargetPhotoFilename}" FontSize="9"
+                                            <TextBlock Text="{x:Bind TargetPhotoFilename}" FontSize="10"
                                                        Foreground="{ThemeResource ATextFaint}"
                                                        TextTrimming="CharacterEllipsis" MaxLines="1"
                                                        HorizontalAlignment="Center"/>
@@ -84,13 +83,13 @@
 
                                         <!-- Arrow + world info -->
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4" Padding="8,0">
-                                            <TextBlock Text="→" FontSize="18" HorizontalAlignment="Center"
+                                            <TextBlock Text="→" FontSize="{StaticResource AFontSizeXl}" HorizontalAlignment="Center"
                                                        Foreground="{ThemeResource ATextFaint}"/>
-                                            <TextBlock Text="{x:Bind MatchWorldName, Mode=OneWay}" FontSize="13"
+                                            <TextBlock Text="{x:Bind MatchWorldName, Mode=OneWay}" FontSize="{StaticResource AFontSizeMd}"
                                                        FontWeight="SemiBold" Foreground="{ThemeResource AText}"
                                                        TextTrimming="CharacterEllipsis" MaxLines="1"
                                                        HorizontalAlignment="Center"/>
-                                            <Border Padding="8,3" CornerRadius="6" HorizontalAlignment="Center"
+                                            <Border Padding="8,3" CornerRadius="{StaticResource ARadiusSm}" HorizontalAlignment="Center"
                                                     Background="{ThemeResource APrimarySoft}">
                                                 <TextBlock FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource APrimary}"
                                                            HorizontalAlignment="Center">
@@ -101,7 +100,7 @@
 
                                         <!-- Match photo + select different -->
                                         <StackPanel Grid.Column="2" Spacing="4">
-                                            <Border Height="80" CornerRadius="6" Background="{ThemeResource ABorder}">
+                                            <Border Height="80" CornerRadius="{StaticResource ARadiusSm}" Background="{ThemeResource ABorder}">
                                                 <Image Source="{x:Bind MatchThumbPath, Mode=OneWay, Converter={StaticResource ThumbConverter}}"
                                                        Stretch="UniformToFill"/>
                                             </Border>
@@ -116,7 +115,7 @@
                                                       IsChecked="{x:Bind IsApplied, Mode=TwoWay}"
                                                       Click="ToggleApply_Click" Tag="{x:Bind}"
                                                       MinWidth="64" MinHeight="32">
-                                            <TextBlock Text="適用" FontSize="12"/>
+                                            <TextBlock Text="適用" FontSize="{StaticResource AFontSizeSm}"/>
                                         </ToggleButton>
                                     </Grid>
                                 </Border>
@@ -127,7 +126,7 @@
                     <!-- Empty state -->
                     <StackPanel Grid.Row="1" x:Name="EmptyState" Visibility="Collapsed"
                                 VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8">
-                        <TextBlock Text="解決が必要な写真はありません" FontSize="14"
+                        <TextBlock Text="解決が必要な写真はありません" FontSize="{StaticResource AFontSizeLg}"
                                    Foreground="{ThemeResource ATextFaint}" HorizontalAlignment="Center"/>
                     </StackPanel>
 
@@ -138,7 +137,7 @@
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock x:Name="ApplyCountText" FontSize="12" Foreground="{ThemeResource ATextFaint}"
+                        <TextBlock x:Name="ApplyCountText" FontSize="{StaticResource AFontSizeSm}" Foreground="{ThemeResource ATextFaint}"
                                    VerticalAlignment="Center"/>
                         <Button Grid.Column="1" x:Name="ApplyConfirmedBtn"
                                 Style="{StaticResource PrimaryButtonStyle}"
@@ -152,7 +151,7 @@
                           Background="{ThemeResource ASurface}" Visibility="Collapsed">
                         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
                             <ProgressRing IsActive="True" Width="40" Height="40"/>
-                            <TextBlock Text="候補を検索中..." FontSize="13" Foreground="{ThemeResource ATextFaint}"
+                            <TextBlock Text="候補を検索中..." FontSize="{StaticResource AFontSizeMd}" Foreground="{ThemeResource ATextFaint}"
                                        HorizontalAlignment="Center"/>
                         </StackPanel>
                     </Grid>
@@ -174,14 +173,14 @@
                         </Grid.ColumnDefinitions>
                         <Button Content="← 戻る" Style="{StaticResource GhostButtonStyle}"
                                 Click="BackFromPicker_Click" VerticalAlignment="Center"/>
-                        <Border Grid.Column="1" Width="80" Height="60" CornerRadius="6"
+                        <Border Grid.Column="1" Width="80" Height="60" CornerRadius="{StaticResource ARadiusSm}"
                                 Background="{ThemeResource ABorder}" Margin="16,0,16,0">
                             <Image x:Name="PickerTargetImage" Stretch="UniformToFill"/>
                         </Border>
                         <StackPanel Grid.Column="2" VerticalAlignment="Center">
-                            <TextBlock x:Name="PickerTargetFilename" FontSize="13" FontWeight="SemiBold"
+                            <TextBlock x:Name="PickerTargetFilename" FontSize="{StaticResource AFontSizeMd}" FontWeight="SemiBold"
                                        Foreground="{ThemeResource AText}" TextTrimming="CharacterEllipsis"/>
-                            <TextBlock Text="類似度順で表示しています。クリックで選択。" FontSize="11"
+                            <TextBlock Text="類似度順で表示しています。クリックで選択。" FontSize="{StaticResource AFontSizeXs}"
                                        Foreground="{ThemeResource ATextFaint}"/>
                         </StackPanel>
                     </Grid>
@@ -209,14 +208,14 @@
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
 
-                                        <Border Grid.Column="0" Height="80" CornerRadius="6"
+                                        <Border Grid.Column="0" Height="80" CornerRadius="{StaticResource ARadiusSm}"
                                                 Background="{ThemeResource ABorder}">
                                             <Image Source="{x:Bind PhotoPath, Converter={StaticResource PickerThumbConverter}}"
                                                    Stretch="UniformToFill"/>
                                         </Border>
 
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                                            <TextBlock Text="{x:Bind WorldName}" FontSize="14" FontWeight="SemiBold"
+                                            <TextBlock Text="{x:Bind WorldName}" FontSize="{StaticResource AFontSizeLg}" FontWeight="SemiBold"
                                                        Foreground="{ThemeResource AText}"
                                                        TextTrimming="CharacterEllipsis" MaxLines="1"/>
                                             <TextBlock Text="{x:Bind PhotoFilename}" FontSize="10"
@@ -224,7 +223,7 @@
                                                        TextTrimming="CharacterEllipsis" MaxLines="1"/>
                                         </StackPanel>
 
-                                        <Border Grid.Column="2" Padding="8,3" CornerRadius="6"
+                                        <Border Grid.Column="2" Padding="8,3" CornerRadius="{StaticResource ARadiusSm}"
                                                 Background="{ThemeResource APrimarySoft}" VerticalAlignment="Center">
                                             <TextBlock FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource APrimary}">
                                                 <Run Text="距離: "/><Run Text="{x:Bind Distance}"/>

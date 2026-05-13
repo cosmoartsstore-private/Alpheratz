@@ -3,6 +3,6 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Border Style="{StaticResource SidebarBorderStyle}">
-        <TextBlock Text="検索条件" FontSize="16" FontWeight="ExtraBold"/>
+        <TextBlock Text="検索条件" FontSize="{StaticResource AFontSizeLg}" FontWeight="ExtraBold"/>
     </Border>
 </UserControl>
