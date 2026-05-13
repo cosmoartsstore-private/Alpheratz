@@ -67,13 +67,13 @@
                                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                                     Padding="10,8" CornerRadius="{StaticResource ARadiusMd}" Click="DateTrigger_Click">
                                 <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <Border Width="24" Height="24" CornerRadius="6"
+                                    <Border Width="24" Height="24" CornerRadius="{StaticResource ARadiusSm}"
                                             BorderBrush="{ThemeResource ABorder}" BorderThickness="1"
                                             Background="{ThemeResource ASurface}">
                                         <TextBlock Text="&#x1F4C5;" FontSize="{StaticResource AFontSizeXs}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     </Border>
                                     <StackPanel Spacing="1">
-                                        <TextBlock Text="撮影日" FontSize="10" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}"/>
+                                        <TextBlock Text="撮影日" FontSize="{StaticResource AFontSizeXs}" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}"/>
                                         <TextBlock x:Name="DateRangeLabel" Text="すべての期間" FontSize="{StaticResource AFontSizeMd}" FontWeight="Bold" Foreground="{ThemeResource ATextDim}"/>
                                     </StackPanel>
                                 </StackPanel>
@@ -109,7 +109,7 @@
                                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                                             Padding="10,8" CornerRadius="{StaticResource ARadiusMd}" MinHeight="38" Click="FromChip_Click">
                                         <StackPanel Spacing="2">
-                                            <TextBlock Text="From" FontSize="10" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}"/>
+                                            <TextBlock Text="From" FontSize="{StaticResource AFontSizeXs}" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}"/>
                                             <TextBlock x:Name="FromValueText" Text="---" FontSize="{StaticResource AFontSizeSm}" FontWeight="Bold"
                                                        FontFamily="{StaticResource AFontMono}"/>
                                         </StackPanel>
@@ -118,7 +118,7 @@
                                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                                             Padding="10,8" CornerRadius="{StaticResource ARadiusMd}" MinHeight="38" Click="ToChip_Click">
                                         <StackPanel Spacing="2">
-                                            <TextBlock Text="To" FontSize="10" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}"/>
+                                            <TextBlock Text="To" FontSize="{StaticResource AFontSizeXs}" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}"/>
                                             <TextBlock x:Name="ToValueText" Text="---" FontSize="{StaticResource AFontSizeSm}" FontWeight="Bold"
                                                        FontFamily="{StaticResource AFontMono}"/>
                                         </StackPanel>
@@ -244,17 +244,17 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <Border Width="24" Height="24" CornerRadius="6"
+                                <Border Width="24" Height="24" CornerRadius="{StaticResource ARadiusSm}"
                                         BorderBrush="{ThemeResource ABorder}" BorderThickness="1"
                                         Background="{ThemeResource ASurface}">
                                     <TextBlock Text="#" FontSize="{StaticResource AFontSizeXs}" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 </Border>
                                 <StackPanel Grid.Column="1" Spacing="1" Margin="10,0,0,0">
-                                    <TextBlock Text="タグ" FontSize="10" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}"/>
+                                    <TextBlock Text="タグ" FontSize="{StaticResource AFontSizeXs}" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}"/>
                                     <TextBlock x:Name="TagSummaryLabel" Text="すべてのタグ" FontSize="{StaticResource AFontSizeMd}" FontWeight="Bold"
                                                Foreground="{ThemeResource ATextDim}" TextTrimming="CharacterEllipsis"/>
                                 </StackPanel>
-                                <TextBlock Grid.Column="2" Text="▼" FontSize="10" VerticalAlignment="Center" Foreground="{ThemeResource ATextFaint}"/>
+                                <TextBlock Grid.Column="2" Text="▼" FontSize="{StaticResource AFontSizeXs}" VerticalAlignment="Center" Foreground="{ThemeResource ATextFaint}"/>
                             </Grid>
                         </Button>
                         <!-- Tag dropdown panel -->
@@ -294,17 +294,17 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <Border Width="24" Height="24" CornerRadius="6"
+                                <Border Width="24" Height="24" CornerRadius="{StaticResource ARadiusSm}"
                                         BorderBrush="{ThemeResource ABorder}" BorderThickness="1"
                                         Background="{ThemeResource ASurface}">
                                     <TextBlock Text="&#x1F310;" FontSize="{StaticResource AFontSizeXs}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 </Border>
                                 <StackPanel Grid.Column="1" Spacing="1" Margin="10,0,0,0">
-                                    <TextBlock Text="ワールド" FontSize="10" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}"/>
+                                    <TextBlock Text="ワールド" FontSize="{StaticResource AFontSizeXs}" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}"/>
                                     <TextBlock x:Name="WorldSummaryLabel" Text="すべてのワールド" FontSize="{StaticResource AFontSizeMd}" FontWeight="Bold"
                                                Foreground="{ThemeResource ATextDim}" TextTrimming="CharacterEllipsis"/>
                                 </StackPanel>
-                                <TextBlock Grid.Column="2" Text="▼" FontSize="10" VerticalAlignment="Center" Foreground="{ThemeResource ATextFaint}"/>
+                                <TextBlock Grid.Column="2" Text="▼" FontSize="{StaticResource AFontSizeXs}" VerticalAlignment="Center" Foreground="{ThemeResource ATextFaint}"/>
                             </Grid>
                         </Button>
                         <!-- World dropdown panel -->

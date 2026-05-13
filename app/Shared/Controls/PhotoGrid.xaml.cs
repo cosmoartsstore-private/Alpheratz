@@ -67,7 +67,7 @@ public sealed partial class PhotoGrid : UserControl
 
     public void ScrollToTop()
     {
-        try { ItemsViewControl.GridScrollViewerRef.ChangeView(null, 0, null); }
+        try { ItemsViewControl.GridScrollViewerRef?.ChangeView(null, 0, null); }
         catch (Exception ex) { AppLogger.Error($"PhotoGrid.ScrollToTop: threw: {ex}"); }
     }
 
@@ -85,6 +85,7 @@ public sealed partial class PhotoGrid : UserControl
         try
         {
             var sv = ItemsViewControl.GridScrollViewerRef;
+            if (sv is null) return;
             var extent = sv.ExtentHeight;
             var viewport = sv.ViewportHeight;
             if (extent <= viewport) return;
@@ -99,8 +100,10 @@ public sealed partial class PhotoGrid : UserControl
     {
         try
         {
-            var extent = ItemsViewControl.GridScrollViewerRef.ExtentHeight;
-            var viewport = ItemsViewControl.GridScrollViewerRef.ViewportHeight;
+            var sv = ItemsViewControl.GridScrollViewerRef;
+            if (sv is null) return;
+            var extent = sv.ExtentHeight;
+            var viewport = sv.ViewportHeight;
 
             if (extent <= 0 || viewport <= 0 || extent <= viewport)
             {
@@ -112,7 +115,7 @@ public sealed partial class PhotoGrid : UserControl
             var trackHeight = Math.Max(1, ActualHeight - 48);
             var ratio = viewport / extent;
             CustomScrollbarControl.ThumbHeight = Math.Max(18, trackHeight * ratio);
-            CustomScrollbarControl.ThumbTop = (ItemsViewControl.GridScrollViewerRef.VerticalOffset / (extent - viewport)) * Math.Max(0, trackHeight - CustomScrollbarControl.ThumbHeight);
+            CustomScrollbarControl.ThumbTop = (sv.VerticalOffset / (extent - viewport)) * Math.Max(0, trackHeight - CustomScrollbarControl.ThumbHeight);
         }
         catch (Exception ex) { AppLogger.Error($"PhotoGrid.UpdateScrollbar: threw: {ex}"); }
     }

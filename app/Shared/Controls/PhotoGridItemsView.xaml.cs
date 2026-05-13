@@ -77,8 +77,21 @@ public sealed partial class PhotoGridItemsView : UserControl
         return null;
     }
 
-    public ScrollViewer GridScrollViewerRef =>
-        internalScrollViewer ?? FindChildScrollViewer(PhotoItems) ?? new ScrollViewer();
+    /// <summary>
+    /// 内部の ScrollViewer 参照。未取得なら一度だけ探索しキャッシュする。
+    /// 旧実装は毎呼び出しで `new ScrollViewer()` を fallback 生成しており、
+    /// それ自体は VisualTree に組み込まれない無意味なオブジェクトだったため除去。
+    /// 取得失敗時は null を返し、呼出側で no-op を選べるようにする。
+    /// </summary>
+    public ScrollViewer? GridScrollViewerRef
+    {
+        get
+        {
+            if (internalScrollViewer is not null) return internalScrollViewer;
+            internalScrollViewer = FindChildScrollViewer(PhotoItems);
+            return internalScrollViewer;
+        }
+    }
 
     private void RecalculateCardSize(double availableWidth)
     {

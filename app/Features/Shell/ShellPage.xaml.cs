@@ -445,6 +445,36 @@ public sealed partial class ShellPage : Page
         }
     }
 
+    private void ShellPage_Loaded(object sender, RoutedEventArgs e)
+    {
+        // ctor で全結線済み。Loaded は冪等な再ハイドレートのみ。
+    }
+
+    /// <summary>
+    /// アンマウント時に GalleryViewModel 側に残った drillDownPhotosProvider などの
+    /// 参照を切る。Page を捨てた後も VM がコールバックを保持していると、
+    /// ガベージコレクトされず古い ShellPage インスタンスがリークする。
+    /// </summary>
+    private void ShellPage_Unloaded(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            viewModel.galleryViewModel.drillDownPhotosProvider = null;
+            viewModel.galleryViewModel.selectionState.PropertyChanged -= OnSelectionStateChanged;
+            viewModel.PropertyChanged -= OnShellViewModelChanged;
+            drillDownPhotos = null;
+            if (drillDownPage is not null)
+            {
+                drillDownPage.OnBack = null;
+                drillDownPage.OnPhotoActivated = null;
+                drillDownPage.OnFavoriteClicked = null;
+                drillDownPage.OnThumbnailsNeeded = null;
+                drillDownPage = null;
+            }
+        }
+        catch (Exception ex) { AppLogger.Error($"ShellPage.ShellPage_Unloaded: threw: {ex}"); }
+    }
+
     private void ShellPage_KeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
         if (e.Key == Windows.System.VirtualKey.Escape)

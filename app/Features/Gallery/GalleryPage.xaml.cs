@@ -104,16 +104,10 @@ public sealed partial class GalleryPage : Page
             viewModel.selectionState.selectedPhotoPaths.CollectionChanged += OnSelectedPathsChanged;
             viewModel.photosState.PropertyChanged += OnPhotosStateChanged;
 
-            // MasonryView のコールバック結線
-            if (GridStage.MasonryViewControlRef is { } masonry)
-            {
-                masonry.SetColumnCount(5);
-                masonry.SetPhotos(viewModel.photosState.photos);
-                masonry.OnPhotoTapped = photo => viewModel.handlePhotoActivate(
-                    new PhotoGridItem { Photo = photo }, false, p => OnSelectPhoto?.Invoke(p));
-                masonry.OnThumbnailsNeeded = items => viewModel.photosState.requestVisibleThumbnails(items);
-                masonry.OnFirstVisibleIndexChanged = idx => SyncMonthNavToIndex(idx);
-            }
+            // MasonryView のコールバック結線。x:Load=False で遅延生成されるため、
+            // 最初に SetMasonryActive(true) が呼ばれて実体化された瞬間に結線する。
+            GridStage.OnMasonryRealized = WireMasonryCallbacks;
+
             if (GridStage.MonthNavControlRef is { } monthNav)
             {
                 monthNav.OnJumpToMonth = group =>
@@ -215,6 +209,28 @@ public sealed partial class GalleryPage : Page
         catch (Exception ex)
         {
             AppLogger.Error($"GalleryPage.OnDisplayStateChanged: threw: {ex}");
+        }
+    }
+
+    /// <summary>
+    /// MasonryView が遅延生成されたタイミングで一度だけ呼ばれ、コールバックと初期データを結線する。
+    /// 以降のフィルタ変更や ViewMode 切替時は photos コレクション自体が共有参照なので
+    /// 再 SetPhotos しなくても要素変化が伝播する。
+    /// </summary>
+    private void WireMasonryCallbacks(Controls.GalleryMasonryView masonry)
+    {
+        try
+        {
+            masonry.SetColumnCount(5);
+            masonry.SetPhotos(viewModel.photosState.photos);
+            masonry.OnPhotoTapped = photo => viewModel.handlePhotoActivate(
+                new PhotoGridItem { Photo = photo }, false, p => OnSelectPhoto?.Invoke(p));
+            masonry.OnThumbnailsNeeded = items => viewModel.photosState.requestVisibleThumbnails(items);
+            masonry.OnFirstVisibleIndexChanged = idx => SyncMonthNavToIndex(idx);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"GalleryPage.WireMasonryCallbacks: threw: {ex}");
         }
     }
 
@@ -398,6 +414,7 @@ public sealed partial class GalleryPage : Page
 
         viewModel.photosState.OnMonthGroupsChanged = null;
         viewModel.photosState.OnPhotosReplaced = null;
+        GridStage.OnMasonryRealized = null;
         if (GridStage.MasonryViewControlRef is { } masonry)
         {
             masonry.OnPhotoTapped = null;

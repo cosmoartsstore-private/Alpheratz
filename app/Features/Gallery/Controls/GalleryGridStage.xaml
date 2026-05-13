@@ -12,7 +12,12 @@
 
         <Grid Grid.Column="0">
             <shared:PhotoGrid x:Name="PhotoGridControl"/>
+            <!--
+                MasonryView は ViewMode.gallery のときだけ実体化したいので x:Load=False で
+                初期化を遅延する。SetMasonryActive(true) 時に FindName で初めて生成される。
+            -->
             <galleryControls:GalleryMasonryView x:Name="MasonryViewControl"
+                                                x:Load="False"
                                                 HorizontalAlignment="Stretch" Visibility="Collapsed"/>
             <shared:EmptyState x:Name="EmptyStateControl" Visibility="Collapsed"/>
 
