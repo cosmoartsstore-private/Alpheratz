@@ -43,11 +43,16 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     private readonly List<IAsyncDisposable> scanUnlistenFns = [];
     private readonly List<IAsyncDisposable> phashUnlistenFns = [];
 
-    // scan:completed の後続タスク (archive/orientation/phash) を直列化するためのセマフォ。
-    // 3 タスクを並列で走らせると DB writer が衝突し、SQLITE_BUSY や orientation の
-    // 部分書き込みが発生しうるため、明示的に逐次化する。
+    // scan:completed の後続タスク (archive 解析 / orientation 補完 / phash 計算) を
+    // 直列化するためのセマフォ。3 タスクを並列で走らせると同じ photos テーブルへの
+    // UPDATE が衝突して SQLITE_BUSY が返り、結果として orientation や phash が一部行だけ
+    // 反映されず欠落するパーシャル書き込みが発生する。WAL でも複数 writer は禁止のため、
+    // ここで明示的に 1 つずつ走らせる。トレードオフ：スキャン後の補完が逐次なので終了が
+    // やや遅いが、ユーザは UI 操作可能なので体感問題にはなりにくい。
     private readonly SemaphoreSlim postScanGate = new(1, 1);
 
+    // phash 計算進捗の UI 更新スロットリング。生ハンドラは数十 ms ごとに発火するが、
+    // UI の TextBlock 更新を毎回マーシャリングすると CPU が無駄になるため、最小間隔を 1 秒に絞る。
     private const long PhashUiUpdateMinIntervalMs = 1000;
     private long lastPhashUiUpdateTicks;
 

@@ -10,18 +10,28 @@ using Windows.Storage.Streams;
 
 namespace Alpheratz.Core.Imaging;
 
+/// <summary>
+/// グリッド用 / 表示用サムネイルのディスクキャッシュを管理し、無ければ生成する。
+/// キャッシュキーは "&lt;filename&gt;.thumb.&lt;version&gt;.jpg" 形式で imgCache ディレクトリに置く。
+/// version はアルゴリズム / 仕様変更時にインクリメントすることで、旧版を強制再生成できる。
+/// </summary>
 public sealed class ThumbnailService
 {
+    // 同一サムネイルファイルへの並列生成衝突を防ぐ per-path セマフォ。
+    // 別パスの生成は並列に走らせたいので、ConcurrentDictionary で path -> Semaphore を引く。
+    // OrdinalIgnoreCase: Windows ファイルシステムは大文字小文字を区別しないため。
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> _pathLocks = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// グリッド用サムネイル（長辺 512px）を取得する。無ければ生成。
+    /// キャッシュキーは "grid.v3"。v2 は 384px だったが、HiDPI 表示で blur に見えるため
+    /// 512px に上げて v3 に bump した（旧 v2 ファイルは新規生成で自然に置き換わる）。
+    /// </summary>
     public async Task<string> EnsureGridThumbAsync(string photoPath, long sourceSlot, CancellationToken ct = default)
     {
         AppLogger.Trace($"ThumbnailService.EnsureGridThumbAsync: enter path={photoPath} slot={sourceSlot}");
         try
         {
-            // 512px on the longest edge. Cache key bumped to v3 so previously
-            // generated 384px files (v2) get regenerated rather than served
-            // as upscaled blurs.
             var path = await EnsureThumbAsync(photoPath, sourceSlot, 512, "grid.v3", ct).ConfigureAwait(false);
             AppLogger.Trace("ThumbnailService.EnsureGridThumbAsync: exit");
             return path;
@@ -33,6 +43,10 @@ public sealed class ThumbnailService
         }
     }
 
+    /// <summary>
+    /// PhotoModal 表示用サムネイル（長辺 514px、display.v2）を取得する。無ければ生成。
+    /// グリッド用とサイズはほぼ同じだが、キャッシュキーを分けることで将来別仕様にできる。
+    /// </summary>
     public async Task<string> EnsureDisplayThumbAsync(string photoPath, long sourceSlot, CancellationToken ct = default)
     {
         AppLogger.Trace($"ThumbnailService.EnsureDisplayThumbAsync: enter path={photoPath} slot={sourceSlot}");
@@ -49,6 +63,13 @@ public sealed class ThumbnailService
         }
     }
 
+    /// <summary>
+    /// キャッシュ存在チェック → 古ければ削除 → 必要なら生成、を per-path セマフォの排他下で行う。
+    /// 並列で同一パスのサムネイルを生成しようとすると File.Create が衝突するため、
+    /// パス単位の SemaphoreSlim で 1 つに絞る。別パスは並列のまま。
+    /// 元画像のタイムスタンプ &gt; キャッシュタイムスタンプなら旧キャッシュを破棄して再生成する
+    /// （ユーザがファイルを差し替えたケースで古いサムネが表示され続けるのを防ぐ）。
+    /// </summary>
     private static async Task<string> EnsureThumbAsync(string photoPath, long sourceSlot, uint maxSize, string version, CancellationToken ct)
     {
         AppLogger.Trace($"ThumbnailService.EnsureThumbAsync: enter version={version} maxSize={maxSize}");
@@ -65,6 +86,9 @@ public sealed class ThumbnailService
             {
                 if (File.Exists(thumbPath))
                 {
+                    // DB に保存されている photo_path は forward-slash 正規化されているが、
+                    // .NET の File API は OS ネイティブセパレータを要求する場面があるため、
+                    // ここで Path.DirectorySeparatorChar に正規化してから問い合わせる。
                     var sourceModified = File.GetLastWriteTimeUtc(photoPath.Replace('/', Path.DirectorySeparatorChar));
                     var cacheModified = File.GetLastWriteTimeUtc(thumbPath);
                     if (sourceModified <= cacheModified)
@@ -95,28 +119,37 @@ public sealed class ThumbnailService
         }
     }
 
+    /// <summary>
+    /// 元画像をデコードし、長辺 maxSize 以下に縮小して JPEG で書き出す。
+    /// EXIF 回転の扱いがこの関数の中核：
+    ///   - BitmapDecoder.OrientedPixelWidth/Height は EXIF 回転 *後* の寸法（ユーザ視点の寸法）。
+    ///   - BitmapTransform.ScaledWidth/Height は EXIF 回転 *前* の raw 寸法に適用される。
+    ///   - そのため、EXIF Orientation が縦横入替（90°/270°）の場合は Transform の幅高を入替える必要がある。
+    ///   - axisSwapped = (orientedW != decoder.PixelWidth) で「軸が入れ替わったか」を検出する。
+    ///   - ExifOrientationMode.RespectExifOrientation を渡せばデコード時に自動で適用される。
+    /// </summary>
     private static async Task GenerateThumbnailAsync(string sourcePath, string destPath, uint maxSize, CancellationToken ct)
     {
         AppLogger.Trace($"ThumbnailService.GenerateThumbnailAsync: enter src={sourcePath} maxSize={maxSize}");
         try
         {
-            // StorageFile.GetFileFromPathAsync rejects forward-slash separators
-            // even on Windows (0x800700A1). DB-normalised paths use '/', so
-            // flip them back before handing off to WinRT.
+            // StorageFile.GetFileFromPathAsync は Windows 上でも forward-slash 区切りを拒絶し
+            // E_INVALIDARG (0x800700A1) を返す。DB 正規化パスは '/' なので '\' に直す。
             var winPath = sourcePath.Replace('/', Path.DirectorySeparatorChar);
             var sourceFile = await StorageFile.GetFileFromPathAsync(winPath).AsTask(ct).ConfigureAwait(false);
             using var sourceStream = await sourceFile.OpenReadAsync().AsTask(ct).ConfigureAwait(false);
             var decoder = await BitmapDecoder.CreateAsync(sourceStream).AsTask(ct).ConfigureAwait(false);
 
-            // EXIF回転後の寸法でスケールを計算する。BitmapTransformはraw寸法に適用され、
-            // その後EXIF回転が適用されるため、回転で軸が入れ替わる場合はTransformの寸法も入れ替える。
+            // EXIF 回転後の「見た目寸法」でスケール係数を出す。
             var orientedW = decoder.OrientedPixelWidth;
             var orientedH = decoder.OrientedPixelHeight;
             double scale = Math.Min((double)maxSize / orientedW, (double)maxSize / orientedH);
-            scale = Math.Min(scale, 1.0);
+            scale = Math.Min(scale, 1.0); // 元画像より拡大はしない（無駄な処理 + blur）
             var finalW = (uint)Math.Round(orientedW * scale);
             var finalH = (uint)Math.Round(orientedH * scale);
 
+            // raw 寸法とオリエンテッド寸法が違う = EXIF 回転で縦横が入れ替わっている、ということ。
+            // この場合 Transform の入力サイズも入れ替える（詳細はメソッド doc コメント参照）。
             bool axisSwapped = orientedW != decoder.PixelWidth;
             var transformW = axisSwapped ? finalH : finalW;
             var transformH = axisSwapped ? finalW : finalH;

@@ -68,8 +68,13 @@ public sealed partial class ShellPage : Page
             viewModel.PropertyChanged += OnShellViewModelChanged;
 
             // drill-down 中の写真コレクションを GalleryViewModel.updatePhoto に
-            // 共有し、PhotoModal 経由のタグ/お気に入り更新が drill-down
-            // 一覧にも即時反映されるようにする。
+            // Func で参照渡しする。これにより：
+            //   - PhotoModal でタグ/お気に入りを変えると、GalleryViewModel.updatePhoto が
+            //     photosState.photos と displayItems に加えて drillDownPhotos も走査して
+            //     同じ photo_path の項目を見つけて更新する。
+            //   - drill-down を抜けたら drillDownPhotos = null になるので参照ループは切れる。
+            // delegate 経由にしているのは、ViewModel が UI レイヤ (drillDownPhotos の存在自体) を
+            // 知らずに済むようにするため。
             viewModel.galleryViewModel.drillDownPhotosProvider = () => drillDownPhotos;
 
             Stage.OnBackToGallery = ShowGallery;
@@ -325,6 +330,14 @@ public sealed partial class ShellPage : Page
         AppLogger.Trace("ShellPage.ShowTemplate: exit");
     }
 
+    /// <summary>
+    /// 写真詳細モーダルを表示する。
+    /// cachedModalPage を再利用するのは、初回生成コスト (XAML パース + Border 階層構築)
+    /// が非自明に重く、写真切り替えごとに作り直すと体感の遅れに直結するため。
+    /// 既存インスタンスがあれば UpdateViewModel(...) で内部 binding を差し替えるだけにする。
+    /// OnAddTag/OnRemoveTag は VM 横断のロジックなので初回に固定で結線し、その他の
+    /// コールバックは modalViewModel に依存するので毎回上書きする。
+    /// </summary>
     public void ShowPhotoModal(PhotoModalViewModel modalViewModel)
     {
         AppLogger.Trace("ShellPage.ShowPhotoModal: enter");

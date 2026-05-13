@@ -10,12 +10,23 @@ using Alpheratz.Models;
 
 namespace Alpheratz.Services;
 
+/// <summary>
+/// 写真関連の操作を集約するアプリケーションサービス。
+/// AlpheratzDb の薄いラッパに見えるが、以下を加味して 1 層挟む意味がある：
+///   - 一括更新の直列化 (_bulkWriteGate)
+///   - DTO ↔ DB クエリパラメータの変換
+///   - ファイルシステム操作 (BulkCopyPhotosAsync)
+/// ViewModel から見ると「写真にまつわる操作の唯一の入口」になる。
+/// </summary>
 public sealed class PhotoService
 {
     private readonly AlpheratzDb _db;
     // SQLite への並列書込を直列化するためのセマフォ。
-    // BulkSet*/BulkAdd* など複数行更新では Task.WhenAll で並列発行すると
-    // SQLite が SQLITE_BUSY を返してパーシャル更新になるため、1 件ずつ走らせる。
+    // BulkSet*/BulkAdd* で 100 件単位を Task.WhenAll で並列発行すると、SQLite の
+    // ファイルロック競合で SQLITE_BUSY が返り、一部行だけ書き込まれてパーシャル更新になる
+    // (例：100 件一括お気に入り解除のうち 40 件だけ反映、残り 60 件は元のまま、という状態が発生)。
+    // WAL モードでも複数 writer は許容されないため、明示的に 1 件ずつ直列化する。
+    // 読み取りは並列のままで影響しない。
     private readonly SemaphoreSlim _bulkWriteGate = new(1, 1);
 
     public PhotoService(AlpheratzDb db)
@@ -25,6 +36,7 @@ public sealed class PhotoService
         AppLogger.Trace("PhotoService.ctor: exit");
     }
 
+    /// <summary>外向け Payload を DB 内部の Params に変換する。includePhash は転送量削減のため別パラメータ化。</summary>
     private PhotoQueryParams ToParams(PhotoQueryPayload p, bool includePhash = false) => new()
     {
         StartDate = p.startDate,
@@ -41,6 +53,7 @@ public sealed class PhotoService
         Sort = p.sortMode,
     };
 
+    /// <summary>フィルタ条件で写真をページ単位で取得する。詳細は AlpheratzDb.GetPhotosPageAsync を参照。</summary>
     public async Task<PhotoPageDto> GetPhotosAsync(PhotoQueryPayload payload, CancellationToken ct = default)
     {
         AppLogger.Trace($"PhotoService.GetPhotosAsync: enter limit={payload.limit} offset={payload.offset}");
@@ -57,6 +70,7 @@ public sealed class PhotoService
         }
     }
 
+    /// <summary>MonthNav 用に同じフィルタ条件で年月別件数を取得する。</summary>
     public Task<IReadOnlyList<Core.Database.MonthSummaryItem>> GetMonthSummaryAsync(PhotoQueryPayload payload, CancellationToken ct = default)
     {
         AppLogger.Trace("PhotoService.GetMonthSummaryAsync: enter");
@@ -73,6 +87,11 @@ public sealed class PhotoService
         }
     }
 
+    /// <summary>
+    /// グループドリルダウン用のクエリ。groupKey が世界名なのかパスなのかを推測して
+    /// WorldExacts / PhotoPathExact に振り分ける（パス文字には '/' か '\' が必ず含まれる）。
+    /// 現実装ではグルーピングはワールド単位だが、将来フォルダ単位にも拡張できる設計。
+    /// </summary>
     public async Task<IReadOnlyList<PhotoRecordDto>> GetWorldGroupPhotosAsync(
         string groupKey, string? startDate, string? endDate, long? sourceSlot,
         string? orientation, bool? favoritesOnly, IReadOnlyList<string>? tagFilters,
@@ -103,6 +122,7 @@ public sealed class PhotoService
         }
     }
 
+    /// <summary>フィルタパネルのワールド候補リストを取得する（撮影枚数の多い順）。</summary>
     public async Task<IReadOnlyList<WorldFilterOptionDto>> GetWorldFilterOptionsAsync(CancellationToken ct = default)
     {
         AppLogger.Trace("PhotoService.GetWorldFilterOptionsAsync: enter");
@@ -119,6 +139,11 @@ public sealed class PhotoService
         }
     }
 
+    /// <summary>
+    /// 選択写真パスの配列から (photo_path, source_slot) ペアを引く。
+    /// マルチセレクト中に「どのスロットの写真か」を保持する必要があり、UI 側では
+    /// パスしか持っていないことがあるため DB に問い合わせる。
+    /// </summary>
     public async Task<IReadOnlyList<SelectedPhotoRefDto>> GetSelectedPhotoRefsAsync(IReadOnlyList<string> photoPaths, CancellationToken ct = default)
     {
         AppLogger.Trace($"PhotoService.GetSelectedPhotoRefsAsync: enter count={photoPaths.Count}");
@@ -141,6 +166,7 @@ public sealed class PhotoService
         }
     }
 
+    /// <summary>単体お気に入りトグル。sourceSlot は将来スロット別更新が必要になった場合のために受け取る。</summary>
     public Task SetPhotoFavoriteAsync(string photoPath, bool isFavorite, long sourceSlot, CancellationToken ct = default)
     {
         AppLogger.Trace($"PhotoService.SetPhotoFavoriteAsync: enter isFavorite={isFavorite}");
@@ -149,6 +175,7 @@ public sealed class PhotoService
         return task;
     }
 
+    /// <summary>選択写真一括お気に入り設定。_bulkWriteGate で 1 件ずつ直列化して SQLITE_BUSY を回避する。</summary>
     public async Task BulkSetPhotoFavoriteAsync(IReadOnlyList<SelectedPhotoRefDto> photos, bool isFavorite, CancellationToken ct = default)
     {
         AppLogger.Trace($"PhotoService.BulkSetPhotoFavoriteAsync: enter count={photos.Count} isFavorite={isFavorite}");
@@ -168,6 +195,7 @@ public sealed class PhotoService
         AppLogger.Trace("PhotoService.BulkSetPhotoFavoriteAsync: exit");
     }
 
+    /// <summary>単体写真へのタグ追加（tags マスタへの登録も DB 側でまとめて行う）。</summary>
     public Task AddPhotoTagAsync(string photoPath, string tag, long sourceSlot, CancellationToken ct = default)
     {
         AppLogger.Trace($"PhotoService.AddPhotoTagAsync: enter tag={tag}");
@@ -176,6 +204,7 @@ public sealed class PhotoService
         return task;
     }
 
+    /// <summary>選択写真への一括タグ追加。BulkSetFavorite と同様 _bulkWriteGate で直列化。</summary>
     public async Task BulkAddPhotoTagAsync(IReadOnlyList<SelectedPhotoRefDto> photos, string tag, CancellationToken ct = default)
     {
         AppLogger.Trace($"PhotoService.BulkAddPhotoTagAsync: enter count={photos.Count} tag={tag}");
@@ -195,6 +224,7 @@ public sealed class PhotoService
         AppLogger.Trace("PhotoService.BulkAddPhotoTagAsync: exit");
     }
 
+    /// <summary>単体写真からタグを 1 件外す。tags マスタ自体は残す。</summary>
     public Task RemovePhotoTagAsync(string photoPath, string tag, long sourceSlot, CancellationToken ct = default)
     {
         AppLogger.Trace($"PhotoService.RemovePhotoTagAsync: enter tag={tag}");
@@ -203,6 +233,7 @@ public sealed class PhotoService
         return task;
     }
 
+    /// <summary>単体写真に紐づくタグ名一覧を取得する。</summary>
     public Task<IReadOnlyList<string>> GetPhotoTagsAsync(string photoPath, long sourceSlot, CancellationToken ct = default)
     {
         AppLogger.Trace("PhotoService.GetPhotoTagsAsync: enter");
@@ -213,10 +244,14 @@ public sealed class PhotoService
 
     /// <summary>
     /// 選択した写真を destinationFolder にコピーする。
-    /// R2-A-7: copied / skipped 件数を返すことで呼出側のメッセージを実態に合わせる。
-    /// R2-A-8: DB に格納された photo_path は forward-slash 区切りである可能性があるため、
-    ///         File.Copy に渡す前にネイティブのディレクトリセパレータへ正規化する
-    ///         （UNC \\server\share 形式での失敗を防ぐ）。
+    /// 戻り値: (copied, skipped) — 既に同名がある場合は個別にスキップして処理継続。
+    /// 1 件の失敗で全体が中断されると、複数選択コピーが事実上使えなくなるため。
+    ///
+    /// 実装メモ：
+    /// - DB の photo_path は forward-slash 正規化済みのため、File.Copy に渡す前に
+    ///   Path.DirectorySeparatorChar (Windows なら '\') へ戻す。UNC パス (\\server\share)
+    ///   は '/' 区切りだと「壊れた長いパス」と認識されて失敗するため必須。
+    /// - I/O はバックグラウンドスレッドで実行 (Task.Run) し、UI スレッドをブロックしない。
     /// </summary>
     public Task<(int copied, int skipped)> BulkCopyPhotosAsync(IReadOnlyList<SelectedPhotoRefDto> photos, string destinationFolder, CancellationToken ct = default)
     {

@@ -10,6 +10,12 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Alpheratz.Features.Settings;
 
+/// <summary>
+/// 設定画面の ViewModel。
+/// 設定は SettingsService 経由で JSON ファイルに永続化される。
+/// 起動時に refreshSettings で読込、SettingsPage の各操作が単一の AlpheratzSettingDto に
+/// 結合されて保存される（buildSettingPayload）。
+/// </summary>
 public partial class SettingsViewModel : UiThreadSafeObservableObject
 {
     private readonly SettingsService settingsService;
@@ -31,6 +37,10 @@ public partial class SettingsViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("SettingsViewModel.ctor: exit");
     }
 
+    /// <summary>
+    /// 現在の VM 状態から永続化用 DTO を作る。overrides を渡すと、指定フィールドだけ
+    /// 上書きできる (フォルダ変更のように VM 反映前に保存したいケース向け)。
+    /// </summary>
     public AlpheratzSettingDto buildSettingPayload(AlpheratzSettingDto? overrides = null)
     {
         AppLogger.Trace("SettingsViewModel.buildSettingPayload: enter");
@@ -48,6 +58,11 @@ public partial class SettingsViewModel : UiThreadSafeObservableObject
         return payload;
     }
 
+    /// <summary>
+    /// 永続化されている設定 JSON を読み込み、VM の全プロパティを上書きする。
+    /// 失敗時は例外を rethrow して呼出側 (ShellViewModel.refreshSettings) が
+    /// 起動失敗として扱えるようにする（設定読込が失敗した状態でデータ層を初期化すると壊れる）。
+    /// </summary>
     public async Task refreshSettings()
     {
         AppLogger.Trace("SettingsViewModel.refreshSettings: enter");
@@ -77,6 +92,11 @@ public partial class SettingsViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("SettingsViewModel.refreshSettings: exit");
     }
 
+    /// <summary>
+    /// フォルダ選択ダイアログを開き、選ばれたパス（または キャンセル時 null）を返す。
+    /// 永続化は呼出側で必要に応じて行う (フォルダ変更には UI 上での確認モーダルが入るため、
+    /// この関数は「ただ選ぶ」だけにとどめる)。
+    /// </summary>
     public async Task<string?> handleChooseFolderPathOnly()
     {
         AppLogger.Trace("SettingsViewModel.handleChooseFolderPathOnly: enter");

@@ -1,8 +1,11 @@
 namespace Alpheratz.Core.Imaging.Pdq;
 
-// PDQ DCT coefficient table: 16 x 64. Each entry is the IEEE 754 binary32
-// representation (as uint). Use BitConverter.UInt32BitsToSingle to decode.
-// Ported verbatim from legacy alpheratz pdq_hash_dct.rs.
+/// <summary>
+/// PDQ 用 DCT 係数テーブル (16 × 64)。
+/// 各エントリは float の IEEE 754 binary32 をビット表現した uint で格納してある。
+/// 浮動小数リテラルだと「最終ビット 1 桁が処理系ごとにブレる」可能性があるため、ビット表現で固定化して
+/// PDQ 仕様準拠の値を厳密に再現している。デコードは <see cref="System.BitConverter.UInt32BitsToSingle"/>。
+/// </summary>
 public static class PdqDctMatrix
 {
     public const int BufferWh = 64;

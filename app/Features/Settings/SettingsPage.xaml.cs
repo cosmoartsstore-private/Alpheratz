@@ -8,14 +8,23 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace Alpheratz.Features.Settings;
 
+/// <summary>
+/// 設定画面。フォルダ変更、テーマ切替、起動設定、ワールド解決開始の操作を提供する。
+/// ファイル I/O や DB 操作は親 ShellPage の callback 経由で実行する purely-view 構成。
+/// </summary>
 public sealed partial class SettingsPage : Page
 {
     private readonly SettingsViewModel viewModel;
 
+    /// <summary>フォルダ変更ボタン押下 (slot=1: メイン / slot=2: セカンダリ)。await して結果反映。</summary>
     public Func<int, Task>? OnChooseFolder { get; set; }
+    /// <summary>フォルダ初期化（ペンディング状態を経由してから実行される）。</summary>
     public Action<int>? OnResetFolder { get; set; }
+    /// <summary>起動時自動起動 トグル変更。</summary>
     public Func<bool, Task>? OnStartupPreferenceChanged { get; set; }
+    /// <summary>テーマ切替 (true=Dark)。アプリ全体のテーマを切り替える。</summary>
     public Func<bool, Task>? OnThemeChanged { get; set; }
+    /// <summary>「ワールド不明写真を解析する」ボタン押下。WorldResolve モーダルを開く。</summary>
     public Func<Task>? OnStartWorldAnalysis { get; set; }
     public SettingsPage(SettingsViewModel viewModel)
     {

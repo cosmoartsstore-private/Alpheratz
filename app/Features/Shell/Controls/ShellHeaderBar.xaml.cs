@@ -6,9 +6,15 @@ using Microsoft.UI.Xaml.Media;
 
 namespace Alpheratz.Features.Shell.Controls;
 
+/// <summary>
+/// 画面上部のヘッダーバー。検索ボックス、フィルタ表示ボタン、設定ボタンを束ねる。
+/// ViewModel と DataContext 経由で SearchQuery 等を双方向バインドする。
+/// </summary>
 public sealed partial class ShellHeaderBar : UserControl
 {
+    /// <summary>フィルタオーバーレイ開閉ボタンが押されたとき発火。</summary>
     public Action? OnToggleFilter { get; set; }
+    /// <summary>設定ボタンが押されたとき発火。</summary>
     public Action? OnShowSettings { get; set; }
 
     public ShellHeaderBar()

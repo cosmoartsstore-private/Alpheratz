@@ -8,8 +8,12 @@ using Alpheratz.Models.Events;
 
 namespace Alpheratz.Services;
 
-// Background worker that fills missing orientation/width/height for photos
-// already in the cache. Mirrors legacy alpheratz orientation.rs.
+/// <summary>
+/// DB に既に存在し orientation / image_width / image_height が欠落している写真を
+/// バックグラウンドで埋めるワーカー。
+/// 画像をデコードして EXIF の縦横と回転を読み取り UpdatePhotoOrientationAndDimensionsAsync で
+/// 書き込む。BatchSize=200 件単位で処理し、各バッチ後に "orientation:progress" を発行。
+/// </summary>
 public sealed class OrientationService
 {
     private const int BatchSize = 200;

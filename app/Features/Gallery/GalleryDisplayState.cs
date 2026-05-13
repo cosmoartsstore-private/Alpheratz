@@ -21,7 +21,8 @@ public partial class GalleryDisplayState : UiThreadSafeObservableObject
     [ObservableProperty] private bool isMasonryEnabled;
     [ObservableProperty] private string? viewPreparationLabel;
 
-    // TS: useGridDimensions
+    // ギャラリー領域の実測サイズ。MasonryView や標準グリッドの列数・行高計算に使う。
+    // PhotoGrid 側の SizeChanged から rightPanelRef/gridWrapperRef 経由で更新される。
     [ObservableProperty] private double panelWidth = 800;
     [ObservableProperty] private double gridWrapperHeight = 600;
 

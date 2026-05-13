@@ -146,7 +146,15 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
 
     /// <summary>
     /// 写真コレクションを一括差し替える。
-    /// displayItems 内の Photo 参照も新しいオブジェクトに同期する。
+    ///
+    /// photos と displayItems の二重管理について：
+    ///   - photos: 生の PhotoThumbnailItem 配列。MasonryView がこれを直接見る。
+    ///   - displayItems: グルーピング情報付き PhotoGridItem 配列。標準グリッドが見る。
+    ///   グルーピング変更は DB を叩かずに displayItems だけ再構築できる（高速）。
+    ///
+    /// 同期処理：差し替えで PhotoThumbnailItem の参照アドレスが変わると、
+    /// displayItems が古い参照を持ったままになるので、photo_path をキーに新参照へ差し替える。
+    /// グループ代表写真と GroupPhotos のサブ配列の両方を辿る必要がある。
     /// </summary>
     public void setPhotos(IEnumerable<PhotoThumbnailItem> nextPhotos, bool autoGenerateThumbnails = true)
     {
@@ -228,9 +236,20 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
     }
 
     /// <summary>
-    /// グリッドサムネイルの非同期生成を開始する。
-    /// cancelPrevious=true（フルリロード時）は実行中の生成をキャンセルしてから開始。
-    /// cancelPrevious=false（loadMore 追加分）は既存生成を中断せず追加。
+    /// グリッドサムネイルのバックグラウンド生成を開始する。
+    ///
+    /// cancelPrevious=true（フィルタ変更・フルリロード時）：
+    ///   進行中の生成をキャンセルしてから新しい CTS で開始する。
+    ///   旧フィルタの写真に対する生成が新フィルタ表示の邪魔をしないようにするため。
+    ///
+    /// cancelPrevious=false（ビューポート進入時の lazy 要求）：
+    ///   既に CTS が動いていればそれに相乗りし、無ければ新規生成する。
+    ///   スクロール中に何度も呼ばれる経路で CTS を作り直すと、走り始めの生成が
+    ///   即キャンセルされて UI が真っ白なまま、という症状になるため。
+    ///
+    /// CTS の交換にあたっての race 対策が肝で、Volatile.Read + CompareExchange を
+    /// 使うことで「null チェック → null なら自分の CTS を代入」を原子化している。
+    /// 単純な ??= だと読み込みと代入の間に別スレッドが介入する余地がある。
     /// </summary>
     private void kickThumbnailGeneration(IReadOnlyDictionary<string, PhotoThumbnailItem> photoMap, bool cancelPrevious = true)
     {
@@ -367,8 +386,19 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
     }
 
     /// <summary>
-    /// フィルタ条件に基づき DB から全メタデータを一括取得する。
-    /// transitionToken で多重ロードを制御し、古いリクエストの結果を自動破棄する。
+    /// フィルタ条件に基づき DB から全メタデータを一括取得し、UI コレクションへ反映する。
+    ///
+    /// transitionToken の役割：
+    ///   フィルタを高速に切り替えると、古いクエリの結果が後から戻ってきて
+    ///   新しいクエリの結果を上書きしてしまう可能性がある。
+    ///   呼び出しごとにトークンをインクリメントし、await から戻った時点で
+    ///   transitionToken が変わっていたら「自分は古い世代」と判断して破棄する。
+    ///
+    /// フロー：
+    ///   1. transitionToken++ → サムネイル CTS をキャンセル → IsLoading = true
+    ///   2. fetchAllPhotos と loadMonthSummary を Task.WhenAll で並列取得
+    ///   3. トークン整合性チェック → photosRef / photos / displayItems を更新
+    ///   4. 新しい photoMap でサムネイル生成をキック
     /// </summary>
     public async Task loadPhotos(int page = 0)
     {

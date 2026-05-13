@@ -13,9 +13,18 @@ using Windows.System;
 
 namespace Alpheratz.Services;
 
+/// <summary>
+/// ワールド情報 (世界名 / world_id) を写真に紐付けるためのドメインサービス。
+/// PDQ 距離に基づく類似マッチング、Twitter Intent URL の起動、画像クリップボードコピー、
+/// VRChat ワールドリンクの起動などを担当する。
+/// </summary>
 public sealed class WorldService
 {
-    // Per legacy alpheratz: matches with a hamming distance > 124 are rejected.
+    /// <summary>
+    /// PDQ ハミング距離の最大許容値。
+    /// 256 ビットハッシュ中 124 ビット以下の差なら「同じワールドで撮影された可能性が高い」と判定する。
+    /// 256 の約半分 (128) を閾値にすると偶然一致でも閾値を下回るため、やや厳しめの 124 を採用。
+    /// </summary>
     public const int WorldMatchDistanceThreshold = 124;
 
     private readonly AlpheratzDb _db;

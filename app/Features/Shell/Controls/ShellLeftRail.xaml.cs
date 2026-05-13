@@ -7,13 +7,24 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace Alpheratz.Features.Shell.Controls;
 
+/// <summary>
+/// 画面左側の縦型ナビゲーションレール。アクティブスクリーン、ビューモード、グルーピング、
+/// マルチセレクトのトグルを担当する。XAML はボタンの並びだけで、状態同期は code-behind から行う。
+/// 上位の ShellPage が On... コールバックを設定する purely-view 構成。
+/// </summary>
 public sealed partial class ShellLeftRail : UserControl
 {
+    /// <summary>ギャラリー画面表示ボタンが押されたとき発火。</summary>
     public Action? OnShowGallery { get; set; }
+    /// <summary>タグマスタ画面表示ボタンが押されたとき発火。</summary>
     public Action? OnShowTagMaster { get; set; }
+    /// <summary>テンプレート画面表示ボタンが押されたとき発火。</summary>
     public Action? OnShowTemplate { get; set; }
+    /// <summary>マルチセレクトモード切替ボタンが押されたとき発火。</summary>
     public Action? OnToggleMultiSelect { get; set; }
+    /// <summary>グルーピングモード変更時に発火 (none / world)。</summary>
     public Action<GroupingMode>? OnGroupingChange { get; set; }
+    /// <summary>ビューモード切替時に発火 ("gallery" / "standard")。await で UI 待機できるよう Task 返却。</summary>
     public Func<string, Task>? OnViewModeChange { get; set; }
 
     private MainScreen currentScreen = MainScreen.gallery;

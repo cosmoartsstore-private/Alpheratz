@@ -11,23 +11,40 @@ using System.ComponentModel;
 
 namespace Alpheratz.Features.PhotoModal;
 
+/// <summary>
+/// 写真詳細を全画面モーダルで表示する Page。
+/// ShellPage によってインスタンスがキャッシュ・再利用されるため、UpdateViewModel で
+/// 中身を差し替えて生成コストを抑える。
+/// </summary>
 public sealed partial class PhotoModalPage : Page
 {
     private PhotoModalViewModel viewModel;
     private UiObservableCollection<string>? masterTags;
 
+    /// <summary>モーダルを閉じる操作のフック (× ボタン、背景クリック、ESC キー)。</summary>
     public Action? OnClose { get; set; }
+    /// <summary>「戻る」操作 (履歴スタックを一段戻る)。</summary>
     public Action? OnGoBack { get; set; }
+    /// <summary>前の写真へ移動。</summary>
     public Action? OnGoPrev { get; set; }
+    /// <summary>次の写真へ移動。</summary>
     public Action? OnGoNext { get; set; }
+    /// <summary>ワールドリンクを既定ブラウザで開く。</summary>
     public Func<Task>? OnOpenWorld { get; set; }
+    /// <summary>エクスプローラで写真フォルダを開く。</summary>
     public Func<Task>? OnOpenExplorer { get; set; }
+    /// <summary>ツイート投稿テンプレートのクリップボードコピー＋ X 起動。</summary>
     public Func<Task>? OnTweet { get; set; }
+    /// <summary>お気に入りフラグの即時トグル。</summary>
     public Func<Task>? OnToggleFavorite { get; set; }
+    /// <summary>タグ追加 (photoPath, tag)。</summary>
     public Func<string, string, Task>? OnAddTag { get; set; }
+    /// <summary>タグ削除 (photoPath, tag)。</summary>
     public Func<string, string, Task>? OnRemoveTag { get; set; }
+    /// <summary>タグマスタ画面への遷移（モーダルを閉じてから遷移する想定）。</summary>
     public Action? OnOpenTagMaster { get; set; }
 
+    /// <summary>タグ候補リストをコンボボックスに反映する。</summary>
     public void SetMasterTags(UiObservableCollection<string> tags)
     {
         try

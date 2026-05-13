@@ -7,8 +7,13 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace Alpheratz.Features.Shell.Controls;
 
+/// <summary>
+/// メインコンテンツ領域。MainContent を差し替えることでギャラリー・設定・タグマスタ等の
+/// ページ遷移を行う。モーダル (PhotoModal/WorldResolve) 表示用の上層スロットも提供する。
+/// </summary>
 public sealed partial class ShellStage : UserControl
 {
+    /// <summary>ヘッダの戻るボタンが押されたときに発火 (Settings/TagMaster/Template から Gallery 復帰用)。</summary>
     public Action? OnBackToGallery { get; set; }
     public ShellStage()
     {

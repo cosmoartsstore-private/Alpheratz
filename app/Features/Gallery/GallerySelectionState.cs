@@ -15,13 +15,19 @@ using CommunityToolkit.Mvvm.ComponentModel;
 namespace Alpheratz.Features.Gallery;
 
 #pragma warning disable CS0162 // Unreachable code (DETACH flags are compile-time constants for debug)
+/// <summary>
+/// マルチセレクトモードと選択中写真のセットを管理する。
+/// 選択が変わるたびに DB から (photo_path, source_slot) ペアを引き直すため、
+/// CTS で旧リクエストをキャンセルする仕組みを持つ。
+/// </summary>
 public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisposable
 {
-    // TS: DETACH_RUNTIME_DATA = false
+    // 開発時の動作切り分け用デバッグフラグ。本番では常に false。
+    // true にすると DB ロード経路を完全に切って、UI 遷移だけをテストできる。
     private const bool DETACH_RUNTIME_DATA = false;
 
-    // Legacy debug switch — must stay false. true skips loadSelectedPhotoRefs
-    // so the bulk-operation toolbar fires with empty refs.
+    // 補助ロード (selectedPhotoRefs の DB 引き直し) のみ切る軽量モード。
+    // true で bulk-operation ツールバーが「選択枚数 0」のまま動作する。本番では false。
     private const bool DETACH_AUXILIARY_RUNTIME_DATA = false;
 
     private readonly PhotoService photoService;
