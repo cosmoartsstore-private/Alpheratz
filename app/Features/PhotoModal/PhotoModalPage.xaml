@@ -22,10 +22,12 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto" MinWidth="300" MaxWidth="420"/>
                 </Grid.ColumnDefinitions>
-                <Grid x:Name="ImagePanel" Grid.Column="0" Background="{ThemeResource ABg}" CornerRadius="28,0,0,28">
+                <Grid x:Name="ImagePanel" Grid.Column="0" Background="{ThemeResource ABg}"
+                      CornerRadius="{StaticResource ARadiusModalRight}">
                     <Image x:Name="ModalImage" Stretch="Uniform"/>
                     <Button x:Name="BackButton" HorizontalAlignment="Left" VerticalAlignment="Top"
-                            Margin="14" Width="34" Height="34" CornerRadius="17"
+                            Margin="14" Width="34" Height="34"
+                            CornerRadius="{StaticResource ARadiusButton}"
                             Background="{ThemeResource ASurface}"
                             BorderBrush="{ThemeResource ABorder}"
                             BorderThickness="1"
@@ -39,7 +41,7 @@
                     </Border>
                 </Grid>
                 <Grid Grid.Column="1" Background="{ThemeResource ASurface}" CornerRadius="0,28,28,0"
-                      BorderBrush="{ThemeResource ABorder}" BorderThickness="1,0,0,0">
+                      BorderBrush="{ThemeResource ABorderMid}" BorderThickness="1,0,0,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
@@ -48,7 +50,9 @@
                     </Grid.RowDefinitions>
                     <Grid Grid.Row="0" Padding="24,16,16,0">
                         <Button x:Name="CloseButtonOverlay" HorizontalAlignment="Right" VerticalAlignment="Top"
-                                Width="34" Height="34" CornerRadius="17" Background="Transparent"
+                                Width="34" Height="34"
+                                CornerRadius="{StaticResource ARadiusButton}"
+                                Background="Transparent"
                                 BorderBrush="{ThemeResource ABorder}" BorderThickness="1"
                                 Click="CloseButton_Click">
                             <shared:AppIcon IconName="close" IconSize="12" Foreground="{ThemeResource ATextDim}"/>
@@ -69,10 +73,10 @@
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <Border Padding="8,3" CornerRadius="{StaticResource ARadiusSm}" Background="{ThemeResource APrimarySoft}">
-                                <TextBlock Text="{Binding state.SelectedPhoto.MatchSource}" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource APrimary}"/>
+                                <TextBlock Text="{Binding state.SelectedPhoto.MatchSource}" FontSize="{StaticResource AFontSizeXs}" FontWeight="SemiBold" Foreground="{ThemeResource APrimary}"/>
                             </Border>
                             <Border Padding="8,3" CornerRadius="{StaticResource ARadiusSm}" Background="{ThemeResource APrimarySoft}">
-                                <TextBlock Text="{Binding state.SelectedPhoto.SourceSlot}" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource APrimary}"/>
+                                <TextBlock Text="{Binding state.SelectedPhoto.SourceSlot}" FontSize="{StaticResource AFontSizeXs}" FontWeight="SemiBold" Foreground="{ThemeResource APrimary}"/>
                             </Border>
                         </StackPanel>
                         <Rectangle Height="1" Fill="{ThemeResource ABorder}" Opacity="0.9"/>

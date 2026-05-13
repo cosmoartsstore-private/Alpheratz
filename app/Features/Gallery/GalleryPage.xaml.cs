@@ -102,6 +102,7 @@ public sealed partial class GalleryPage : Page
 
             viewModel.selectionState.PropertyChanged += OnSelectionStateChanged;
             viewModel.selectionState.selectedPhotoPaths.CollectionChanged += OnSelectedPathsChanged;
+            viewModel.photosState.PropertyChanged += OnPhotosStateChanged;
 
             // MasonryView のコールバック結線
             if (GridStage.MasonryViewControlRef is { } masonry)
@@ -214,6 +215,23 @@ public sealed partial class GalleryPage : Page
         catch (Exception ex)
         {
             AppLogger.Error($"GalleryPage.OnDisplayStateChanged: threw: {ex}");
+        }
+    }
+
+    /// <summary>IsLoading / TotalCount の変化を GridStage の表示出し分けに反映する。</summary>
+    private void OnPhotosStateChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        try
+        {
+            if (e.PropertyName == nameof(viewModel.photosState.IsLoading)
+                || e.PropertyName == nameof(viewModel.photosState.TotalCount))
+            {
+                GridStage.UpdateLoadingState(viewModel.photosState.IsLoading, viewModel.photosState.TotalCount);
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"GalleryPage.OnPhotosStateChanged: threw: {ex}");
         }
     }
 
@@ -363,17 +381,12 @@ public sealed partial class GalleryPage : Page
 
     private void Page_Loaded(object sender, RoutedEventArgs e)
     {
-        viewModel.selectionState.PropertyChanged -= OnSelectionStateChanged;
-        viewModel.selectionState.selectedPhotoPaths.CollectionChanged -= OnSelectedPathsChanged;
-        viewModel.displayState.PropertyChanged -= OnDisplayStateChanged;
-
-        viewModel.selectionState.PropertyChanged += OnSelectionStateChanged;
-        viewModel.selectionState.selectedPhotoPaths.CollectionChanged += OnSelectedPathsChanged;
-        viewModel.displayState.PropertyChanged += OnDisplayStateChanged;
-
+        // ctor で購読、Unloaded で解除する片付け済みパスを通すので、ここでは
+        // 二重購読しない。再ナビゲーション時の状態同期のみ実行する。
         var isGallery = viewModel.displayState.ViewMode == Shared.Models.ViewMode.gallery;
         GridStage.SetMasonryActive(isGallery);
         FilterPanel.SetGroupingEnabled(!isGallery);
+        GridStage.UpdateLoadingState(viewModel.photosState.IsLoading, viewModel.photosState.TotalCount);
     }
 
     private void Page_Unloaded(object sender, RoutedEventArgs e)
@@ -381,6 +394,7 @@ public sealed partial class GalleryPage : Page
         viewModel.selectionState.PropertyChanged -= OnSelectionStateChanged;
         viewModel.selectionState.selectedPhotoPaths.CollectionChanged -= OnSelectedPathsChanged;
         viewModel.displayState.PropertyChanged -= OnDisplayStateChanged;
+        viewModel.photosState.PropertyChanged -= OnPhotosStateChanged;
 
         viewModel.photosState.OnMonthGroupsChanged = null;
         viewModel.photosState.OnPhotosReplaced = null;

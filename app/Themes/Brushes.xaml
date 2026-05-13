@@ -2,7 +2,13 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- Theme-aware brushes (ported from legacy alpheratz CSS vars). -->
+    <!--
+        テーマ対応ブラシ。旧 alpheratz CSS 変数から移植。
+        ・サーフェイスは ABg < ASurface < ASurfaceSoft < ASurfaceTop の階層を明示的に分離する。
+          以前は Dark で ASurface == ASurfaceSoft で階層が消えていた。
+        ・アクセントは Hover / Pressed / Soft / SoftHover で 4 段階の階層を持たせる。
+        ・ATextFaint は WCAG AA を狙って Light/Dark とも引き上げる。
+    -->
     <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Light">
             <!-- ToggleSwitch overrides -->
@@ -23,21 +29,27 @@
             <SolidColorBrush x:Key="ToggleSwitchKnobFillOffPointerOver" Color="#0F1419"/>
 
             <SolidColorBrush x:Key="AAccent" Color="#1D9BF0"/>
-            <SolidColorBrush x:Key="ABg" Color="#FFFFFF"/>
+            <SolidColorBrush x:Key="ABg" Color="#F2F4F6"/>
             <SolidColorBrush x:Key="ASurface" Color="#FFFFFF"/>
-            <SolidColorBrush x:Key="ASurfaceSoft" Color="#F7F9FA"/>
+            <SolidColorBrush x:Key="ASurfaceSoft" Color="#EEF1F4"/>
+            <SolidColorBrush x:Key="ASurfaceSofter" Color="#F7F9FB"/>
+            <SolidColorBrush x:Key="ASurfaceHover" Color="#E4E9EE"/>
             <SolidColorBrush x:Key="ASurfaceTop" Color="#FFFFFF"/>
-            <SolidColorBrush x:Key="ASurfaceSide" Color="#FFFFFF"/>
-            <SolidColorBrush x:Key="ABorder" Color="#1A000000"/>
-            <SolidColorBrush x:Key="ABorderMid" Color="#30000000"/>
-            <SolidColorBrush x:Key="ABorderStrong" Color="#381D9BF0"/>
+            <SolidColorBrush x:Key="ASurfaceSide" Color="#FAFBFC"/>
+            <SolidColorBrush x:Key="ASurfaceVeil" Color="#B3FFFFFF"/>
+            <SolidColorBrush x:Key="ABorder" Color="#1F000000"/>
+            <SolidColorBrush x:Key="ABorderMid" Color="#33000000"/>
+            <SolidColorBrush x:Key="ABorderStrong" Color="#4D1D9BF0"/>
             <SolidColorBrush x:Key="AText" Color="#0F1419"/>
             <SolidColorBrush x:Key="ATextDim" Color="#536471"/>
-            <SolidColorBrush x:Key="ATextFaint" Color="#8899A6"/>
+            <SolidColorBrush x:Key="ATextFaint" Color="#6C7A87"/>
             <SolidColorBrush x:Key="ATextDisabled" Color="#C4CFD6"/>
             <SolidColorBrush x:Key="APrimary" Color="#1D9BF0"/>
-            <SolidColorBrush x:Key="APrimarySoft" Color="#E8F4FD"/>
-            <SolidColorBrush x:Key="AAccentSoft" Color="#DCF0FC"/>
+            <SolidColorBrush x:Key="APrimaryHover" Color="#1A8CD8"/>
+            <SolidColorBrush x:Key="APrimaryPressed" Color="#1577B5"/>
+            <SolidColorBrush x:Key="APrimarySoft" Color="#D9ECFB"/>
+            <SolidColorBrush x:Key="APrimarySoftHover" Color="#C6E1F6"/>
+            <SolidColorBrush x:Key="AAccentSoft" Color="#D9ECFB"/>
             <SolidColorBrush x:Key="AWarn" Color="#D97706"/>
             <SolidColorBrush x:Key="ADanger" Color="#DC2626"/>
             <SolidColorBrush x:Key="ADangerSolid" Color="#EF4444"/>
@@ -72,21 +84,27 @@
             <SolidColorBrush x:Key="ToggleSwitchKnobFillOffPointerOver" Color="#E7E9EA"/>
 
             <SolidColorBrush x:Key="AAccent" Color="#1D9BF0"/>
-            <SolidColorBrush x:Key="ABg" Color="#000000"/>
+            <SolidColorBrush x:Key="ABg" Color="#0B0D10"/>
             <SolidColorBrush x:Key="ASurface" Color="#16181C"/>
-            <SolidColorBrush x:Key="ASurfaceSoft" Color="#16181C"/>
-            <SolidColorBrush x:Key="ASurfaceTop" Color="#000000"/>
-            <SolidColorBrush x:Key="ASurfaceSide" Color="#16181C"/>
-            <SolidColorBrush x:Key="ABorder" Color="#1AFFFFFF"/>
-            <SolidColorBrush x:Key="ABorderMid" Color="#38FFFFFF"/>
-            <SolidColorBrush x:Key="ABorderStrong" Color="#4D1D9BF0"/>
+            <SolidColorBrush x:Key="ASurfaceSoft" Color="#1E2126"/>
+            <SolidColorBrush x:Key="ASurfaceSofter" Color="#23262C"/>
+            <SolidColorBrush x:Key="ASurfaceHover" Color="#262A30"/>
+            <SolidColorBrush x:Key="ASurfaceTop" Color="#0F1115"/>
+            <SolidColorBrush x:Key="ASurfaceSide" Color="#13161A"/>
+            <SolidColorBrush x:Key="ASurfaceVeil" Color="#B316181C"/>
+            <SolidColorBrush x:Key="ABorder" Color="#24FFFFFF"/>
+            <SolidColorBrush x:Key="ABorderMid" Color="#3DFFFFFF"/>
+            <SolidColorBrush x:Key="ABorderStrong" Color="#661D9BF0"/>
             <SolidColorBrush x:Key="AText" Color="#F0F2F3"/>
-            <SolidColorBrush x:Key="ATextDim" Color="#9BA3AB"/>
-            <SolidColorBrush x:Key="ATextFaint" Color="#5C6369"/>
-            <SolidColorBrush x:Key="ATextDisabled" Color="#2F3336"/>
+            <SolidColorBrush x:Key="ATextDim" Color="#A8B0B8"/>
+            <SolidColorBrush x:Key="ATextFaint" Color="#7E8690"/>
+            <SolidColorBrush x:Key="ATextDisabled" Color="#3A3D43"/>
             <SolidColorBrush x:Key="APrimary" Color="#1D9BF0"/>
-            <SolidColorBrush x:Key="APrimarySoft" Color="#1A2A3A"/>
-            <SolidColorBrush x:Key="AAccentSoft" Color="#1A2A3A"/>
+            <SolidColorBrush x:Key="APrimaryHover" Color="#45ADF4"/>
+            <SolidColorBrush x:Key="APrimaryPressed" Color="#1577B5"/>
+            <SolidColorBrush x:Key="APrimarySoft" Color="#1F2C3A"/>
+            <SolidColorBrush x:Key="APrimarySoftHover" Color="#283A4E"/>
+            <SolidColorBrush x:Key="AAccentSoft" Color="#1F2C3A"/>
             <SolidColorBrush x:Key="AWarn" Color="#FBBF24"/>
             <SolidColorBrush x:Key="ADanger" Color="#F87171"/>
             <SolidColorBrush x:Key="ADangerSolid" Color="#EF4444"/>
@@ -95,7 +113,7 @@
             <SolidColorBrush x:Key="AFavorite" Color="#FBBF24"/>
             <SolidColorBrush x:Key="AFavoriteSoft" Color="#24FBBF24"/>
             <SolidColorBrush x:Key="AFavoriteBorder" Color="#55FBBF24"/>
-            <SolidColorBrush x:Key="AOverlay" Color="#66000000"/>
+            <SolidColorBrush x:Key="AOverlay" Color="#80000000"/>
             <SolidColorBrush x:Key="ADarkOverlay" Color="#B3000000"/>
             <SolidColorBrush x:Key="AScrollbarTrack" Color="#0FFFFFFF"/>
             <SolidColorBrush x:Key="AScrollbarThumb" Color="#421D9BF0"/>

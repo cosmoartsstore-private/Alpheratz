@@ -116,10 +116,21 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
     /// <summary>
     /// イベントバスを購読し初回データをロードする。
     /// scan:completed / scan:enrich_completed 受信で自動再ロード。
+    /// 初回ロードが完了してから購読を開始することで、
+    /// 起動直後にスキャンが即完了するケースの DB 二重発行を防ぐ。
     /// </summary>
-    public Task InitializeAsync()
+    public async Task InitializeAsync()
     {
         AppLogger.Trace("GalleryPhotosState.InitializeAsync: enter");
+        try
+        {
+            await loadPhotos(0).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"GalleryPhotosState.InitializeAsync: initial load threw: {ex}");
+        }
+
         try
         {
             scanCompletedUnlisten = eventBus.Subscribe("scan:completed", () => loadPhotos());
@@ -130,9 +141,7 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
             AppLogger.Error($"GalleryPhotosState.InitializeAsync: subscribe threw: {ex}");
             throw;
         }
-        var task = loadPhotos(0);
         AppLogger.Trace("GalleryPhotosState.InitializeAsync: exit");
-        return task;
     }
 
     /// <summary>
@@ -382,10 +391,12 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
 
         try
         {
+            // 月集計と全件取得は独立した SQL なので Task.WhenAll で並行発行する。
+            // 旧実装は逐次 await により月集計が写真取得の後ろにシリアル化されていた。
             var photosTask = fetchAllPhotos();
             var monthTask = loadMonthSummary();
+            await Task.WhenAll(photosTask, monthTask).ConfigureAwait(false);
             var allPhotos = await photosTask.ConfigureAwait(false);
-            await monthTask.ConfigureAwait(false);
             if (transitionToken != token)
             {
                 AppLogger.Trace("GalleryPhotosState.loadPhotos: superseded by newer load");

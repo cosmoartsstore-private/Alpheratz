@@ -341,8 +341,8 @@ public sealed partial class PhotoModalPage : Page
     {
         try
         {
-            if (sender is Button btn)
-                btn.Background = (Brush)Application.Current.Resources["ASurfaceSoft"];
+            if (sender is Button btn && ResolveThemeBrush(btn, "ASurfaceHover") is { } hover)
+                btn.Background = hover;
         }
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.BottomAction_PointerEntered: {ex}"); }
     }
@@ -355,5 +355,25 @@ public sealed partial class PhotoModalPage : Page
                 btn.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         }
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.BottomAction_PointerExited: {ex}"); }
+    }
+
+    /// <summary>
+    /// ActualTheme に対応した ThemeDictionaries からブラシを取り出す。
+    /// Application.Current.Resources["X"] は ThemeDictionaries 内のキーを解決しないため、
+    /// 明示的にテーマ辞書を辿る必要がある。
+    /// </summary>
+    private static Brush? ResolveThemeBrush(FrameworkElement element, string key)
+    {
+        try
+        {
+            var themeKey = element.ActualTheme == ElementTheme.Dark ? "Dark" : "Light";
+            if (Application.Current.Resources.ThemeDictionaries.TryGetValue(themeKey, out var raw)
+                && raw is ResourceDictionary dict
+                && dict.TryGetValue(key, out var value)
+                && value is Brush brush)
+                return brush;
+        }
+        catch { }
+        return null;
     }
 }

@@ -64,4 +64,26 @@ public sealed partial class GalleryGridStage : UserControl
         }
         AppLogger.Trace("GalleryGridStage.SetMasonryActive: exit");
     }
+
+    /// <summary>
+    /// ロード中スピナーと EmptyState を排他で出し分ける。
+    /// - IsLoading=true → 写真グリッド + LoadingVeil
+    /// - IsLoading=false && TotalCount=0 → EmptyState 表示・グリッド/Masonry/MonthNav 非表示
+    /// - IsLoading=false && TotalCount>0 → グリッド表示のみ
+    /// </summary>
+    public void UpdateLoadingState(bool isLoading, int totalCount)
+    {
+        try
+        {
+            LoadingVeil.Visibility = isLoading ? Visibility.Visible : Visibility.Collapsed;
+            var showEmpty = !isLoading && totalCount == 0;
+            EmptyStateControl.Visibility = showEmpty ? Visibility.Visible : Visibility.Collapsed;
+            MonthNavControl.Visibility = showEmpty ? Visibility.Collapsed : Visibility.Visible;
+            MonthNavColumn.Width = showEmpty ? new GridLength(0) : new GridLength(56);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"GalleryGridStage.UpdateLoadingState: threw: {ex}");
+        }
+    }
 }

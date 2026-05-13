@@ -143,12 +143,20 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         AppLogger.Trace("ShellViewModel.initialize: enter");
         try
         {
-            await registerScanListeners().ConfigureAwait(false);
-            await registerPhashWorker().ConfigureAwait(false);
-            await refreshSettings().ConfigureAwait(false);
-            await galleryViewModel.photosState.InitializeAsync().ConfigureAwait(false);
-            await tagMasterViewModel.loadTags().ConfigureAwait(false);
-            await galleryViewModel.loadWorldFilterOptions().ConfigureAwait(false);
+            // リスナ登録と設定読込は副作用が独立しているので並行化する。
+            // 写真ロードはこれらが終わった後 (DB セッションが落ち着いた後) に開始する。
+            await Task.WhenAll(
+                registerScanListeners(),
+                registerPhashWorker(),
+                refreshSettings()).ConfigureAwait(false);
+
+            // 写真メタデータ・タグマスタ・ワールド候補は互いに独立した SELECT。
+            // 逐次 await すると 3 つの DB ラウンドトリップ分のレイテンシが積み上がる
+            // ため、Task.WhenAll で並行発行する。
+            var photosInitTask = galleryViewModel.photosState.InitializeAsync();
+            var tagsTask = tagMasterViewModel.loadTags();
+            var worldsTask = galleryViewModel.loadWorldFilterOptions();
+            await Task.WhenAll(photosInitTask, tagsTask, worldsTask).ConfigureAwait(false);
 
             if (DETACH_RUNTIME_DATA)
             {

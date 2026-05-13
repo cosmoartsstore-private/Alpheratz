@@ -6,14 +6,18 @@
         <Border Width="420"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
-                CornerRadius="18"
+                CornerRadius="{StaticResource ARadiusXl}"
                 Padding="28"
                 Background="{ThemeResource ASurface}"
                 BorderBrush="{ThemeResource ABorder}"
                 BorderThickness="1">
             <StackPanel Spacing="14">
-                <ProgressRing Width="44" Height="44" IsActive="True" HorizontalAlignment="Center"/>
-                <TextBlock Text="スキャン中..." FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                <ProgressRing Width="44" Height="44" IsActive="True" HorizontalAlignment="Center"
+                              Foreground="{ThemeResource APrimary}"/>
+                <TextBlock Text="スキャン中..."
+                           FontSize="{StaticResource AFontSize2Xl}"
+                           FontWeight="SemiBold"
+                           HorizontalAlignment="Center"/>
                 <TextBlock Text="{Binding ScanProgress.current_world}"
                            Style="{StaticResource HintTextStyle}"
                            TextAlignment="Center"/>
