@@ -246,7 +246,6 @@ public sealed partial class ShellPage : Page
             Stage.ModalVisibility = Visibility.Visible;
             isMiddleModalOpen = true;
             HeaderBar.Opacity = 0.4;
-// LeftRail removed (Step 5)
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowGroupDrillDown: threw: {ex}"); }
         AppLogger.Trace("ShellPage.ShowGroupDrillDown: exit");
@@ -264,11 +263,10 @@ public sealed partial class ShellPage : Page
             isMiddleModalOpen = false;
             drillDownPhotos = null;
             Stage.ModalVisibility = Visibility.Collapsed;
-            // 最上位 (PhotoModal) も開いていなければ HeaderBar / LeftRail の dim を解除
+            // 最上位 (PhotoModal) も開いていなければ HeaderBar の dim を解除
             if (!isModalOpen)
             {
                 HeaderBar.Opacity = 1.0;
-// LeftRail removed (Step 5)
             }
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.CloseMiddleModal: threw: {ex}"); }
@@ -341,7 +339,6 @@ public sealed partial class ShellPage : Page
             Stage.ModalVisibility = Visibility.Visible;
             isMiddleModalOpen = true;
             HeaderBar.Opacity = 0.4;
-// LeftRail removed (Step 5)
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowSettings: threw: {ex}"); }
         AppLogger.Trace("ShellPage.ShowSettings: exit");
@@ -362,7 +359,6 @@ public sealed partial class ShellPage : Page
             }
             Stage.MainContent = tagMasterPage;
             Stage.SetBackButtonVisible(true);
-// LeftRail removed (Step 5)
             HeaderBar.SetGalleryControlsEnabled(false);
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowTagMaster: threw: {ex}"); }
@@ -392,7 +388,6 @@ public sealed partial class ShellPage : Page
             }
             Stage.MainContent = templatePage;
             Stage.SetBackButtonVisible(true);
-// LeftRail removed (Step 5)
             HeaderBar.SetGalleryControlsEnabled(false);
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowTemplate: threw: {ex}"); }
@@ -455,7 +450,6 @@ public sealed partial class ShellPage : Page
             Stage.TopModalVisibility = Visibility.Visible;
             isModalOpen = true;
             HeaderBar.Opacity = 0.4;
-// LeftRail removed (Step 5)
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowPhotoModal: threw: {ex}"); }
         AppLogger.Trace("ShellPage.ShowPhotoModal: exit");
@@ -483,7 +477,6 @@ public sealed partial class ShellPage : Page
             Stage.ModalVisibility = Visibility.Visible;
             isMiddleModalOpen = true;
             HeaderBar.Opacity = 0.4;
-// LeftRail removed (Step 5)
             await vm.InitializeAsync().ConfigureAwait(false);
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowWorldResolveModalAsync: threw: {ex}"); }
@@ -493,7 +486,7 @@ public sealed partial class ShellPage : Page
     /// <summary>
     /// 最上位モーダル (PhotoModal) を閉じる。中位モーダル (Settings / GroupDrillDown /
     /// WorldResolve) はそのままで、PhotoModal だけ消えて中位モーダルに戻る。
-    /// 中位も無ければ HeaderBar / LeftRail の dim を解除する。
+    /// 中位も無ければ HeaderBar の dim を解除する。
     /// </summary>
     public void CloseModal()
     {
@@ -503,11 +496,10 @@ public sealed partial class ShellPage : Page
             isModalOpen = false;
             Stage.TopModalVisibility = Visibility.Collapsed;
             // 中位モーダル (Settings / GroupDrillDown / WorldResolve) も開いていなければ
-            // HeaderBar / LeftRail の dim を解除する。中位が残っていれば dim 維持。
+            // HeaderBar の dim を解除する。中位が残っていれば dim 維持。
             if (!isMiddleModalOpen)
             {
                 HeaderBar.Opacity = 1.0;
-// LeftRail removed (Step 5)
             }
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.CloseModal: threw: {ex}"); }
@@ -626,7 +618,7 @@ public sealed partial class ShellPage : Page
     }
 
     /// <summary>
-    /// HeaderBar / LeftRail のタップで現在開いているモーダルを閉じる。
+    /// HeaderBar のタップで現在開いているモーダルを閉じる。
     /// 2 段スタックでは「上から順に」閉じるのが直感的なので、最上位 (PhotoModal) が
     /// 開いていれば PhotoModal を先に閉じる。残った中位 (Settings / GroupDrillDown /
     /// WorldResolve) があれば次のタップで中位が閉じる、という挙動。
