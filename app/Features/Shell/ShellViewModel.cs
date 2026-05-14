@@ -210,7 +210,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
                 catch (Exception ex)
                 {
                     AppLogger.Error($"ShellViewModel.startScan: ScanAsync wrapper threw: {ex}");
-                    try { await eventBus.PublishAsync("scan:error", ex.Message).ConfigureAwait(false); }
+                    try { await eventBus.PublishAsync(EventNames.ScanError, ex.Message).ConfigureAwait(false); }
                     catch (Exception pubEx) { AppLogger.Error($"ShellViewModel.startScan: failed to publish scan:error: {pubEx}"); }
                 }
             });
@@ -305,12 +305,12 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         if (DETACH_RUNTIME_DATA) return Task.CompletedTask;
         try
         {
-            scanUnlistenFns.Add(eventBus.Subscribe<ScanProgressDto>("scan:progress", payload =>
+            scanUnlistenFns.Add(eventBus.Subscribe<ScanProgressDto>(EventNames.ScanProgress, payload =>
             {
                 dispatcherService.requestAnimationFrame(() => ScanProgress = payload);
                 return Task.CompletedTask;
             }));
-            scanUnlistenFns.Add(eventBus.Subscribe("scan:completed", async () =>
+            scanUnlistenFns.Add(eventBus.Subscribe(EventNames.ScanCompleted, async () =>
             {
                 try
                 {
@@ -321,7 +321,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
                 }
                 catch (Exception ex) { AppLogger.Error($"ShellViewModel.scan:completed: threw: {ex}"); }
             }));
-            scanUnlistenFns.Add(eventBus.Subscribe<string>("scan:error", payload =>
+            scanUnlistenFns.Add(eventBus.Subscribe<string>(EventNames.ScanError, payload =>
             {
                 try
                 {
@@ -356,7 +356,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         catch (Exception ex) { AppLogger.Warn($"ShellViewModel.registerPhashWorker: initial probe failed: {ex}"); PdqProgress = PhashProgressEvent.Empty; }
         try
         {
-            phashUnlistenFns.Add(eventBus.Subscribe<PhashProgressEvent>("phash_progress", payload =>
+            phashUnlistenFns.Add(eventBus.Subscribe<PhashProgressEvent>(EventNames.PhashProgress, payload =>
             {
                 IsPdqRunning = true;
                 var nowTicks = Environment.TickCount64;
@@ -366,7 +366,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
                 }
                 return Task.CompletedTask;
             }));
-            phashUnlistenFns.Add(eventBus.Subscribe("phash_complete", () =>
+            phashUnlistenFns.Add(eventBus.Subscribe(EventNames.PhashComplete, () =>
             {
                 IsPdqRunning = false;
                 PdqProgress = PdqProgress with { done = PdqProgress.total, current = null };

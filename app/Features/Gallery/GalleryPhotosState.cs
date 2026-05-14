@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Alpheratz.Core;
 using Alpheratz.Models;
+using Alpheratz.Models.Events;
 using Alpheratz.Services;
 using Alpheratz.Shared.Models;
 using Alpheratz.Shared.Services;
@@ -133,8 +134,8 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
 
         try
         {
-            scanCompletedUnlisten = eventBus.Subscribe("scan:completed", () => loadPhotos());
-            scanEnrichCompletedUnlisten = eventBus.Subscribe("scan:enrich_completed", () => loadPhotos());
+            scanCompletedUnlisten = eventBus.Subscribe(EventNames.ScanCompleted, () => loadPhotos());
+            scanEnrichCompletedUnlisten = eventBus.Subscribe(EventNames.ScanEnrichCompleted, () => loadPhotos());
         }
         catch (Exception ex)
         {

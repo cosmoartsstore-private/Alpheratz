@@ -100,7 +100,7 @@ public sealed class OrientationService
             Interlocked.Exchange(ref isRunning, 0);
             var snapshot = currentProgress;
             UpdateProgress(snapshot.processed, snapshot.total, false);
-            await eventBus.PublishAsync("orientation_complete", new object()).ConfigureAwait(false);
+            await eventBus.PublishAsync(EventNames.OrientationComplete, new object()).ConfigureAwait(false);
         }
 
         AppLogger.Trace("OrientationService.StartOrientationCalculationAsync: exit");
@@ -117,7 +117,7 @@ public sealed class OrientationService
         lock (_publishLock)
         {
             _publishTail = _publishTail.ContinueWith(
-                _ => eventBus.PublishAsync("orientation_progress", snapshot),
+                _ => eventBus.PublishAsync(EventNames.OrientationProgress, snapshot),
                 TaskScheduler.Default).Unwrap();
         }
     }

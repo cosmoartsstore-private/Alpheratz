@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Alpheratz.Core.Database;
 using Alpheratz.Models;
+using Alpheratz.Models.Events;
 
 namespace Alpheratz.Core.Scanner;
 
@@ -63,12 +64,12 @@ public sealed partial class PhotoScanner
         catch (OperationCanceledException)
         {
             AppLogger.Trace("PhotoScanner.ScanAsync: cancelled");
-            await _bus.PublishAsync("scan:error", "スキャンを中断しました").ConfigureAwait(false);
+            await _bus.PublishAsync(EventNames.ScanError, "スキャンを中断しました").ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             AppLogger.Error($"スキャン中に予期しないエラーが発生しました: {ex}");
-            await _bus.PublishAsync("scan:error", ex.Message).ConfigureAwait(false);
+            await _bus.PublishAsync(EventNames.ScanError, ex.Message).ConfigureAwait(false);
         }
         finally
         {
@@ -88,7 +89,7 @@ public sealed partial class PhotoScanner
             photoDirs.Add((1, setting.PhotoFolderPath));
         else if (!string.IsNullOrWhiteSpace(setting.PhotoFolderPath))
         {
-            await _bus.PublishAsync("scan:error", $"写真フォルダが見つかりません: {setting.PhotoFolderPath}").ConfigureAwait(false);
+            await _bus.PublishAsync(EventNames.ScanError, $"写真フォルダが見つかりません: {setting.PhotoFolderPath}").ConfigureAwait(false);
             return;
         }
 
@@ -107,12 +108,12 @@ public sealed partial class PhotoScanner
                 photoDirs.Add((1, defaultDir));
             else
             {
-                await _bus.PublishAsync("scan:error", "写真フォルダが未設定です。設定から参照フォルダを選択してください。").ConfigureAwait(false);
+                await _bus.PublishAsync(EventNames.ScanError, "写真フォルダが未設定です。設定から参照フォルダを選択してください。").ConfigureAwait(false);
                 return;
             }
         }
 
-        await _bus.PublishAsync("scan:progress", new ScanProgressDto { processed = 0, total = 0, current_world = "ファイルを収集中...", phase = "scan" }).ConfigureAwait(false);
+        await _bus.PublishAsync(EventNames.ScanProgress, new ScanProgressDto { processed = 0, total = 0, current_world = "ファイルを収集中...", phase = "scan" }).ConfigureAwait(false);
 
         // Load existing photos
         var existing = await _db.GetExistingPhotosAsync(ct).ConfigureAwait(false);
@@ -164,7 +165,7 @@ public sealed partial class PhotoScanner
         }
 
         var total = candidates.Count;
-        await _bus.PublishAsync("scan:progress", new ScanProgressDto { processed = 0, total = total, current_world = $"{total} 件の更新対象を確認しました", phase = "scan" }).ConfigureAwait(false);
+        await _bus.PublishAsync(EventNames.ScanProgress, new ScanProgressDto { processed = 0, total = total, current_world = $"{total} 件の更新対象を確認しました", phase = "scan" }).ConfigureAwait(false);
 
         for (var i = 0; i < candidates.Count; i++)
         {
@@ -178,7 +179,7 @@ public sealed partial class PhotoScanner
 
             if (i % 10 == 0 || i == total - 1)
             {
-                await _bus.PublishAsync("scan:progress", new ScanProgressDto
+                await _bus.PublishAsync(EventNames.ScanProgress, new ScanProgressDto
                 {
                     processed = i + 1,
                     total = total,
@@ -188,7 +189,7 @@ public sealed partial class PhotoScanner
             }
         }
 
-        await _bus.PublishAsync("scan:completed", null).ConfigureAwait(false);
+        await _bus.PublishAsync(EventNames.ScanCompleted, null).ConfigureAwait(false);
     }
 
     private static PhotoUpsertData AnalyzePhoto(string path, string filename, long slot, ExistingPhotoInfo? existing, ScanRefreshKind kind)

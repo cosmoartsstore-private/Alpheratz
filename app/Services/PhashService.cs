@@ -120,9 +120,9 @@ public sealed class PhashService
             var snapshot = currentProgress;
             UpdateProgress(snapshot.done, snapshot.total, null);
             if (succeeded)
-                await eventBus.PublishAsync("phash_complete", new object()).ConfigureAwait(false);
+                await eventBus.PublishAsync(EventNames.PhashComplete, new object()).ConfigureAwait(false);
             else
-                await eventBus.PublishAsync("phash_error", errorMessage ?? "phash analysis failed").ConfigureAwait(false);
+                await eventBus.PublishAsync(EventNames.PhashError, errorMessage ?? "phash analysis failed").ConfigureAwait(false);
         }
 
         AppLogger.Trace("PhashService.StartPdqAnalysisAsync: exit");
@@ -135,6 +135,6 @@ public sealed class PhashService
         // UpdateProgress が割り込むことができ、同じ値が二重発火する race があった。
         var snapshot = new PhashProgressEvent { done = done, total = total, current = current };
         currentProgress = snapshot;
-        _ = eventBus.PublishAsync("phash_progress", snapshot);
+        _ = eventBus.PublishAsync(EventNames.PhashProgress, snapshot);
     }
 }

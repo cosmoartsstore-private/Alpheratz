@@ -87,6 +87,7 @@ public sealed partial class ShellPage : Page
         ShowGallery();
         HeaderBar.SetViewMode(viewModel.ViewMode);
         HeaderBar.SetGroupingMode(viewModel.galleryViewModel.filtersState.GroupingMode);
+        HeaderBar.SetPdqProgress(viewModel.IsPdqRunning, viewModel.PdqProgress?.done ?? 0, viewModel.PdqProgress?.total ?? 0);
         AppLogger.Trace("ShellPage.ctor: exit");
     }
 
@@ -116,6 +117,8 @@ public sealed partial class ShellPage : Page
             else if (e.PropertyName == nameof(viewModel.PendingFolderPath) && viewModel.PendingFolderPath is not null) _ = ShowFolderChangeConfirmAsync();
             else if (e.PropertyName == nameof(viewModel.PendingResetRequest) && viewModel.PendingResetRequest is not null) _ = ShowResetConfirmAsync();
             else if (e.PropertyName == nameof(viewModel.ThemeMode)) ApplyTheme(viewModel.ThemeMode);
+            else if (e.PropertyName == nameof(viewModel.IsPdqRunning) || e.PropertyName == nameof(viewModel.PdqProgress))
+                HeaderBar.SetPdqProgress(viewModel.IsPdqRunning, viewModel.PdqProgress?.done ?? 0, viewModel.PdqProgress?.total ?? 0);
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.OnShellViewModelChanged: threw: {ex}"); }
         AppLogger.Trace("ShellPage.OnShellViewModelChanged: exit");

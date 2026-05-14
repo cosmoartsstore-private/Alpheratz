@@ -121,6 +121,29 @@ public sealed partial class ShellHeaderBar : UserControl
         catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.SetViewMode: threw: {ex}"); }
     }
 
+    /// <summary>
+    /// PDQ ハッシュ計算の進捗を表示する pill chip を更新する。
+    /// running=false なら chip を非表示にする。旧 RightRail (削除済み) で表示していた
+    /// 進捗情報を HeaderBar に移植し、画面に常時見える形にした。
+    /// done/total が 0 のときも "PDQ" だけ表示するので、計算開始の合図にもなる。
+    /// </summary>
+    public void SetPdqProgress(bool running, int done, int total)
+    {
+        try
+        {
+            if (!running)
+            {
+                PdqProgressChip.Visibility = Visibility.Collapsed;
+                return;
+            }
+            PdqProgressChip.Visibility = Visibility.Visible;
+            PdqProgressText.Text = total > 0
+                ? $"PDQ {done} / {total}"
+                : "PDQ";
+        }
+        catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.SetPdqProgress: threw: {ex}"); }
+    }
+
     // -----------------------------------------------------------------------
     // ボタンクリックハンドラ
     // -----------------------------------------------------------------------

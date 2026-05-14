@@ -17,6 +17,7 @@
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
             <!-- Left: filter pill -->
@@ -73,6 +74,34 @@
             </Border>
 
             <!--
+                PDQ progress chip (旧 RightRail から移植)。
+                ハッシュ計算中だけ表示され、完了数 / 全体数を pill 形状で示す。
+                visibility は SetPdqProgress 経由でコード側からセットする。
+            -->
+            <Border x:Name="PdqProgressChip" Grid.Column="2"
+                    Visibility="Collapsed"
+                    MinHeight="24"
+                    Padding="10,2"
+                    CornerRadius="{StaticResource ARadiusPill}"
+                    BorderBrush="{ThemeResource ABorderStrong}"
+                    BorderThickness="1"
+                    Background="{ThemeResource APrimarySoft}"
+                    VerticalAlignment="Center"
+                    ToolTipService.ToolTip="類似画像 (PDQ) ハッシュの計算進捗"
+                    AutomationProperties.Name="PDQ 進捗">
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <ProgressRing IsActive="True" Width="12" Height="12"
+                                  Foreground="{ThemeResource APrimary}"
+                                  VerticalAlignment="Center"/>
+                    <TextBlock x:Name="PdqProgressText"
+                               FontSize="{StaticResource AFontSizeXs}"
+                               FontWeight="Bold"
+                               Foreground="{ThemeResource APrimary}"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+
+            <!--
                 Right side: gallery view controls + settings.
                 LeftRail から移植した 3 つのトグル (ビューモード / グループ化 / 複数選択) を、
                 設定ボタンの直前に並べる。各ボタンは binary トグルで、アクティブ時に
@@ -81,7 +110,7 @@
             -->
 
             <!-- View mode toggle (standard <-> gallery / masonry) -->
-            <Button x:Name="ViewModeBtn" Grid.Column="2"
+            <Button x:Name="ViewModeBtn" Grid.Column="3"
                     Style="{StaticResource HeaderIconButtonStyle}"
                     AutomationProperties.Name="表示モード切替"
                     ToolTipService.ToolTip="表示モード切替 (標準グリッド / マソンリー)"
@@ -91,7 +120,7 @@
             </Button>
 
             <!-- Grouping toggle (none <-> world). Masonry 表示中は無効化される。 -->
-            <Button x:Name="GroupingBtn" Grid.Column="3"
+            <Button x:Name="GroupingBtn" Grid.Column="4"
                     Style="{StaticResource HeaderIconButtonStyle}"
                     AutomationProperties.Name="グループ化切替"
                     ToolTipService.ToolTip="ワールド単位でグループ化"
@@ -101,7 +130,7 @@
             </Button>
 
             <!-- Multi-select toggle -->
-            <Button x:Name="MultiSelectBtn" Grid.Column="4"
+            <Button x:Name="MultiSelectBtn" Grid.Column="5"
                     Style="{StaticResource HeaderIconButtonStyle}"
                     AutomationProperties.Name="複数選択モード切替"
                     ToolTipService.ToolTip="複数選択モードを切り替える"
@@ -111,7 +140,7 @@
             </Button>
 
             <!-- Right: settings gear -->
-            <Button x:Name="SettingsGearBtn" Grid.Column="5"
+            <Button x:Name="SettingsGearBtn" Grid.Column="6"
                     Style="{StaticResource HeaderIconButtonStyle}"
                     ToolTipService.ToolTip="設定"
                     AutomationProperties.Name="設定"
