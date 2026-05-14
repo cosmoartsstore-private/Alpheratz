@@ -240,6 +240,11 @@ public sealed partial class ShellPage : Page
         AppLogger.Trace("ShellPage.ShowGroupDrillDown: exit");
     }
 
+    /// <summary>
+    /// 設定モーダルを開く。3 セクション (全般 / タグマスタ / テンプレート) を統合した
+    /// SettingsPage を Stage.ModalContent 経由で重ねる。Gallery は背景に残ったまま。
+    /// インスタンスは初回生成時にキャッシュし、以降の表示は再ハイドレートで使い回す。
+    /// </summary>
     public void ShowSettings()
     {
         AppLogger.Trace("ShellPage.ShowSettings: enter");
@@ -247,8 +252,17 @@ public sealed partial class ShellPage : Page
         {
             if (settingsPage is null)
             {
-                settingsPage = new SettingsPage(viewModel.settingsViewModel)
+                var compositeVm = new SettingsCompositeViewModel(
+                    viewModel.settingsViewModel,
+                    viewModel.tagMasterViewModel,
+                    viewModel.templatePageViewModel);
+
+                settingsPage = new SettingsPage(compositeVm)
                 {
+                    // ===== 共通 =====
+                    OnClose = CloseModal,
+
+                    // ===== 全般 =====
                     OnChooseFolder = async slot =>
                     {
                         var path = await viewModel.settingsViewModel.handleChooseFolderPathOnly().ConfigureAwait(false);
@@ -266,13 +280,32 @@ public sealed partial class ShellPage : Page
                     OnResetFolder = viewModel.handleResetFolder,
                     OnStartupPreferenceChanged = viewModel.handleStartupPreference,
                     OnThemeChanged = isDark => viewModel.handleThemeChange(isDark ? Alpheratz.Shared.Models.ThemeMode.dark : Alpheratz.Shared.Models.ThemeMode.light),
+                    // ワールド解析モーダルは Settings モーダルと同じ ModalContent スロットを使う。
+                    // CloseModal を経由するとフェードアウトアニメ中に新コンテンツを差し込むことになり
+                    // race するので、ShowWorldResolveModalAsync 側で ModalContent を直接差し替える。
                     OnStartWorldAnalysis = ShowWorldResolveModalAsync,
+
+                    // ===== タグマスタ =====
+                    OnCreateTag = viewModel.tagMasterViewModel.createTag,
+                    OnDeleteTag = viewModel.tagMasterViewModel.deleteTag,
+
+                    // ===== 投稿テンプレート =====
+                    OnCancelEdit = viewModel.templatePageViewModel.cancelEdit,
+                    OnStartEdit = viewModel.templatePageViewModel.startEdit,
+                    OnDeleteTemplate = template => viewModel.templatePageViewModel.deleteTemplate(template, viewModel.buildSettingPayload()),
+                    OnSaveTemplate = () => viewModel.templatePageViewModel.saveTemplate(viewModel.buildSettingPayload()),
+                    OnSelectTemplate = async template =>
+                    {
+                        viewModel.templatePageViewModel.ActiveTweetTemplate = template;
+                        await viewModel.templatePageViewModel.saveTemplates(viewModel.buildSettingPayload()).ConfigureAwait(false);
+                    },
                 };
             }
-            Stage.MainContent = settingsPage;
-            Stage.SetBackButtonVisible(true);
-            LeftRail.SetActiveScreen(MainScreen.settings);
-            HeaderBar.SetGalleryControlsEnabled(false);
+            Stage.ModalContent = settingsPage;
+            Stage.ModalVisibility = Visibility.Visible;
+            isModalOpen = true;
+            HeaderBar.Opacity = 0.4;
+            LeftRail.Opacity = 0.4;
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowSettings: threw: {ex}"); }
         AppLogger.Trace("ShellPage.ShowSettings: exit");
