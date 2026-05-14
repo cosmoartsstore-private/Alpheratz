@@ -27,4 +27,13 @@
         <Setter Property="Padding" Value="14"/>
     </Style>
 
+    <!-- Modal/dialog inner panel -->
+    <Style x:Key="ModalPanelBorderStyle" TargetType="Border">
+        <Setter Property="CornerRadius" Value="{StaticResource ARadiusXl}"/>
+        <Setter Property="BorderBrush" Value="{ThemeResource ABorder}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Background" Value="{ThemeResource ASurface}"/>
+        <Setter Property="Padding" Value="{StaticResource ASectionPadding}"/>
+    </Style>
+
 </ResourceDictionary>

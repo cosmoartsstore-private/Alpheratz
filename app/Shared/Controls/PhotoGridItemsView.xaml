@@ -22,7 +22,10 @@
         <GridView.ItemTemplate>
             <DataTemplate>
                 <Grid Margin="4,4,4,6">
-                    <Border Style="{StaticResource PhotoCardBorderStyle}" PointerEntered="CardBorder_PointerEntered" PointerExited="CardBorder_PointerExited">
+                    <Border Style="{StaticResource PhotoCardBorderStyle}"
+                            PointerEntered="CardBorder_PointerEntered"
+                            PointerExited="CardBorder_PointerExited"
+                            DataContextChanged="CardBorder_DataContextChanged">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="*"/>

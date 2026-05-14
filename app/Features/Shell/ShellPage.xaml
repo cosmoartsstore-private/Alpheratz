@@ -17,15 +17,14 @@
         <shellControls:ShellHeaderBar x:Name="HeaderBar" Grid.Row="0"
                                        Tapped="ModalDismissArea_Tapped"/>
 
-        <Grid Grid.Row="1">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
-            <shellControls:ShellLeftRail x:Name="LeftRail" Grid.Column="0"
-                                         Tapped="ModalDismissArea_Tapped"/>
-            <shellControls:ShellStage x:Name="Stage" Grid.Column="1"/>
-        </Grid>
+        <!--
+            LeftRail は撤去 (Step 5)。LeftRail にあった 3 トグル (複数選択 / グループ化 /
+            ビューモード) は HeaderBar 右側に移植済み。TagMaster/Template 画面への遷移ボタンも
+            撤去 (これらは Settings モーダルに統合済み)。
+            「ギャラリーに戻る」ボタンは Stage 内蔵の BackToGalleryBtn を使う (TagMaster/Template
+            の旧 Page 経路で使われる)。
+        -->
+        <shellControls:ShellStage x:Name="Stage" Grid.Row="1"/>
 
         <!-- Filter overlay: covers entire window below header -->
         <Grid x:Name="FilterOverlay" Grid.Row="1" Visibility="Collapsed">
@@ -42,3 +41,4 @@
         </Grid>
     </Grid>
 </Page>
+

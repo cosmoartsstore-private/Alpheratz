@@ -7,9 +7,17 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace Alpheratz.Features.Shell.Controls;
 
+/// <summary>
+/// メインコンテンツ領域。MainContent (常時 GalleryPage) の上に 2 段スタックの
+/// モーダルレイヤと、ScanningOverlay / ToastHost を重ねる構造。
+///   Layer 0: MainContent (GalleryPage 固定)
+///   Layer 1: ModalLayerHost (中位: Settings / WorldResolve / GroupDrillDown)
+///   Layer 2: TopModalLayerHost (最上位: PhotoModal)
+///   Layer 3: ScanningOverlay (スキャン進捗)
+///   Layer 4: ToastHost
+/// </summary>
 public sealed partial class ShellStage : UserControl
 {
-    public Action? OnBackToGallery { get; set; }
     public ShellStage()
     {
         AppLogger.Trace("ShellStage.ctor: enter");
@@ -31,12 +39,25 @@ public sealed partial class ShellStage : UserControl
         set => MainContentHost.Content = value;
     }
 
+    /// <summary>
+    /// 中位モーダルのコンテンツ (Settings / WorldResolve / GroupDrillDown 等)。
+    /// 最上位の PhotoModal は <see cref="TopModalContent"/> を使う。
+    /// </summary>
     public object? ModalContent
     {
         get => ModalContentHost.Content;
         set => ModalContentHost.Content = value;
     }
 
+    // モーダル開閉のバージョンカウンタ。閉じるアニメの onCompleted から見て、
+    // 「自分が始めたときの version と現在の version が一致する」ときだけ Content=null
+    // などのクリーンアップを実行する。これにより：
+    //   Open → Close (アニメ進行中) → Open (新コンテンツ) のシーケンスで、
+    //   遅延発火した旧 Close の onCompleted が新コンテンツを誤って消すのを防ぐ。
+    private int modalVersion;
+    private int topModalVersion;
+
+    /// <summary>中位モーダルレイヤの表示。FadeIn/Out + ScaleIn/Out アニメを伴う。</summary>
     public Visibility ModalVisibility
     {
         get => ModalLayerHost.Visibility;
@@ -44,19 +65,23 @@ public sealed partial class ShellStage : UserControl
         {
             if (value == Visibility.Visible)
             {
+                // version bump で進行中の close onCompleted を無効化する。
+                modalVersion++;
                 ModalLayerHost.Visibility = Visibility.Visible;
                 AnimationHelper.FadeIn(ModalLayerHost, 250);
                 AnimationHelper.ScaleIn(ModalContentHost, fromScale: 0.88f, durationMs: 350);
             }
             else if (ModalLayerHost.Visibility == Visibility.Visible)
             {
+                var ourVersion = ++modalVersion;
                 AnimationHelper.FadeOut(ModalLayerHost, 200);
                 AnimationHelper.ScaleOut(ModalContentHost, toScale: 0.92f, durationMs: 200, onCompleted: () =>
                 {
                     DispatcherQueue?.TryEnqueue(() =>
                     {
-                        if (ModalContentHost.Content is PhotoModal.PhotoModalPage modal)
-                            modal.ReleaseImage();
+                        // アニメ中に再オープン (もしくは別の close) が発生していたら version が
+                        // 進んでいる。その場合は自分の cleanup は古い遺物なのでスキップ。
+                        if (modalVersion != ourVersion) return;
                         ModalContentHost.Content = null;
                         ModalLayerHost.Visibility = Visibility.Collapsed;
                         AnimationHelper.ResetVisual(ModalLayerHost);
@@ -67,6 +92,64 @@ public sealed partial class ShellStage : UserControl
             else
             {
                 ModalLayerHost.Visibility = value;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 最上位モーダルのコンテンツ (PhotoModal 専用)。
+    /// 中位レイヤ (ModalContent) の上にさらに重ねて表示することで、GroupDrillDown 中の
+    /// 写真クリック → PhotoModal を中位 → 最上位の 2 段スタックで描画できる。
+    /// </summary>
+    public object? TopModalContent
+    {
+        get => TopModalContentHost.Content;
+        set => TopModalContentHost.Content = value;
+    }
+
+    /// <summary>
+    /// 最上位モーダルレイヤの表示。閉じるアニメ完了時に PhotoModalPage であれば
+    /// ReleaseImage() を呼んで重い BitmapImage 参照を解放する (再表示時は新規取得)。
+    /// 旧実装ではこの責務が ModalVisibility 側にあったが、PhotoModal を最上位レイヤに
+    /// 移したのに合わせて移動した。
+    /// version カウンタで「閉じるアニメ進行中に再オープン」したケースのクリーンアップ
+    /// 競合を防ぐ。
+    /// </summary>
+    public Visibility TopModalVisibility
+    {
+        get => TopModalLayerHost.Visibility;
+        set
+        {
+            if (value == Visibility.Visible)
+            {
+                topModalVersion++;
+                TopModalLayerHost.Visibility = Visibility.Visible;
+                AnimationHelper.FadeIn(TopModalLayerHost, 250);
+                AnimationHelper.ScaleIn(TopModalContentHost, fromScale: 0.88f, durationMs: 350);
+            }
+            else if (TopModalLayerHost.Visibility == Visibility.Visible)
+            {
+                var ourVersion = ++topModalVersion;
+                AnimationHelper.FadeOut(TopModalLayerHost, 200);
+                AnimationHelper.ScaleOut(TopModalContentHost, toScale: 0.92f, durationMs: 200, onCompleted: () =>
+                {
+                    DispatcherQueue?.TryEnqueue(() =>
+                    {
+                        // アニメ中に再オープンされていたら version 不一致 → cleanup スキップ。
+                        // ReleaseImage も含めて飛ばす (まだ表示中の image を解放しないように)。
+                        if (topModalVersion != ourVersion) return;
+                        if (TopModalContentHost.Content is PhotoModal.PhotoModalPage modal)
+                            modal.ReleaseImage();
+                        TopModalContentHost.Content = null;
+                        TopModalLayerHost.Visibility = Visibility.Collapsed;
+                        AnimationHelper.ResetVisual(TopModalLayerHost);
+                        AnimationHelper.ResetVisual(TopModalContentHost);
+                    });
+                });
+            }
+            else
+            {
+                TopModalLayerHost.Visibility = value;
             }
         }
     }
@@ -112,15 +195,4 @@ public sealed partial class ShellStage : UserControl
     }
 
     public Shared.Controls.ScanningOverlay ScanningOverlayControlRef => ScanningOverlayControl;
-
-    public void SetBackButtonVisible(bool visible)
-    {
-        BackToGalleryBtn.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    private void BackToGalleryBtn_Click(object sender, RoutedEventArgs e)
-    {
-        try { OnBackToGallery?.Invoke(); }
-        catch (Exception ex) { AppLogger.Error($"ShellStage.BackToGalleryBtn_Click: threw: {ex}"); }
-    }
 }

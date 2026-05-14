@@ -7,11 +7,19 @@ using Microsoft.UI.Xaml.Media.Animation;
 
 namespace Alpheratz.Features.Bootstrap;
 
+/// <summary>
+/// 起動時のスプラッシュ画面。DB 初期化や Window 構築の進捗を 4 段階の論理フェーズで受け取り、
+/// ProgressFill のバー幅と sparkle アイコンの位置を補間して滑らかにアニメーション表示する。
+/// </summary>
 public sealed partial class BootstrapPage : Page
 {
+    /// <summary>プログレストラックの XAML 上の幅 (BootstrapPage.xaml と一致させること)。</summary>
     private const double TrackWidth = 420.0;
+    /// <summary>現在描画中のパーセント値 (0-100)。フレームごとに _target に近付ける。</summary>
     private double _current;
+    /// <summary>目標パーセント値。SetPhase で 5/30/60/100 のいずれかが設定される。</summary>
     private double _target;
+    /// <summary>60fps 想定のアニメーション駆動タイマ (16ms 間隔)。</summary>
     private readonly DispatcherTimer _anim;
 
     public BootstrapPage()
@@ -51,6 +59,13 @@ public sealed partial class BootstrapPage : Page
         }
     }
 
+    /// <summary>
+    /// ライフサイクルフェーズに応じて目標パーセントを更新する。
+    /// 値は手動チューニング：起動の体感速度に合わせて、SDK/サービス/データの各段階で
+    /// 進捗バーが極端に止まって見えない刻みにしてある。
+    /// uiReady は dataReady と同じ 100% (バー的にはゴール) で、シェル切替アニメーションは
+    /// 上位層が制御する。
+    /// </summary>
     public void SetPhase(AppLifecyclePhase phase)
     {
         try
@@ -74,6 +89,13 @@ public sealed partial class BootstrapPage : Page
         }
     }
 
+    /// <summary>
+    /// 毎フレーム呼ばれる補間ロジック。
+    /// _current += diff * 0.12 は「残差の 12% を毎フレーム埋める」という指数減衰補間
+    /// (ease-out)。0.12 は 60fps で約 0.5 秒で目標の 95% に到達する係数で、
+    /// 視覚的にもたつきがちな低 fps でも自然に追従する経験値。
+    /// |diff| &lt; 0.3 で打ち切るのは、浮動小数の漸近で永久にタイマーが回り続けるのを防ぐため。
+    /// </summary>
     private void OnAnimTick(object? sender, object e)
     {
         var diff = _target - _current;

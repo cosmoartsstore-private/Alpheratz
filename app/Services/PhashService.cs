@@ -8,9 +8,12 @@ using Alpheratz.Models.Events;
 
 namespace Alpheratz.Services;
 
-// Background worker that fills missing PDQ hashes for photos already in the
-// cache. Mirrors legacy alpheratz pdq_hash worker. Only writes the hex hash
-// back; quality is computed for logging but not persisted.
+/// <summary>
+/// DB に既に存在し phash 列が空の写真をバックグラウンドで埋めるワーカー。
+/// PDQ ハッシュ計算 (PdqHasher) → hex 文字列で UpdatePhotoPhashAsync で書き込む。
+/// quality 値はログ目的のみ（DB スキーマには持っていない）。
+/// 進捗は "phash:progress" / 完了は "phash_complete" を LocalEventBus で発行する。
+/// </summary>
 public sealed class PhashService
 {
     private const int BatchSize = 50;
@@ -117,9 +120,9 @@ public sealed class PhashService
             var snapshot = currentProgress;
             UpdateProgress(snapshot.done, snapshot.total, null);
             if (succeeded)
-                await eventBus.PublishAsync("phash_complete", new object()).ConfigureAwait(false);
+                await eventBus.PublishAsync(EventNames.PhashComplete, new object()).ConfigureAwait(false);
             else
-                await eventBus.PublishAsync("phash_error", errorMessage ?? "phash analysis failed").ConfigureAwait(false);
+                await eventBus.PublishAsync(EventNames.PhashError, errorMessage ?? "phash analysis failed").ConfigureAwait(false);
         }
 
         AppLogger.Trace("PhashService.StartPdqAnalysisAsync: exit");
@@ -132,6 +135,6 @@ public sealed class PhashService
         // UpdateProgress が割り込むことができ、同じ値が二重発火する race があった。
         var snapshot = new PhashProgressEvent { done = done, total = total, current = current };
         currentProgress = snapshot;
-        _ = eventBus.PublishAsync("phash_progress", snapshot);
+        _ = eventBus.PublishAsync(EventNames.PhashProgress, snapshot);
     }
 }

@@ -8,8 +8,12 @@ using Alpheratz.Models.Events;
 
 namespace Alpheratz.Services;
 
-// Background worker that fills missing orientation/width/height for photos
-// already in the cache. Mirrors legacy alpheratz orientation.rs.
+/// <summary>
+/// DB に既に存在し orientation / image_width / image_height が欠落している写真を
+/// バックグラウンドで埋めるワーカー。
+/// 画像をデコードして EXIF の縦横と回転を読み取り UpdatePhotoOrientationAndDimensionsAsync で
+/// 書き込む。BatchSize=200 件単位で処理し、各バッチ後に "orientation:progress" を発行。
+/// </summary>
 public sealed class OrientationService
 {
     private const int BatchSize = 200;
@@ -18,6 +22,11 @@ public sealed class OrientationService
     private readonly LocalEventBus eventBus;
     private int isRunning;
     private OrientationProgressEvent currentProgress = new();
+    // PublishAsync を fire-and-forget で連続発火すると、2 個目の方が先に完了して
+    // 進捗バーが瞬間的に巻き戻る可能性がある。直前の publish タスクの後に次を
+    // ContinueWith で繋ぐことで FIFO 順序を保証する。
+    private Task _publishTail = Task.CompletedTask;
+    private readonly object _publishLock = new();
 
     public OrientationService(AlpheratzDb db, LocalEventBus eventBus)
     {
@@ -91,7 +100,7 @@ public sealed class OrientationService
             Interlocked.Exchange(ref isRunning, 0);
             var snapshot = currentProgress;
             UpdateProgress(snapshot.processed, snapshot.total, false);
-            await eventBus.PublishAsync("orientation_complete", new object()).ConfigureAwait(false);
+            await eventBus.PublishAsync(EventNames.OrientationComplete, new object()).ConfigureAwait(false);
         }
 
         AppLogger.Trace("OrientationService.StartOrientationCalculationAsync: exit");
@@ -99,11 +108,17 @@ public sealed class OrientationService
 
     private void UpdateProgress(int processed, int total, bool running)
     {
-        // ローカル変数 snapshot にコピーしてから PublishAsync へ渡す。
-        // 旧実装では currentProgress フィールドが先に上書きされて、後段の
-        // PublishAsync が新しいスナップショットを発火するパスがあった。
+        // ローカル変数 snapshot にコピーしてから PublishAsync へ渡す（後段の
+        // currentProgress 上書きで snapshot が改竄されないようにする）。
+        // さらに _publishTail を ContinueWith で繋いで FIFO 発行することで、
+        // 連続呼び出し時に handler 実行順が逆転して進捗バーが巻き戻る現象を防ぐ。
         var snapshot = new OrientationProgressEvent { processed = processed, total = total, running = running };
         currentProgress = snapshot;
-        _ = eventBus.PublishAsync("orientation_progress", snapshot);
+        lock (_publishLock)
+        {
+            _publishTail = _publishTail.ContinueWith(
+                _ => eventBus.PublishAsync(EventNames.OrientationProgress, snapshot),
+                TaskScheduler.Default).Unwrap();
+        }
     }
 }

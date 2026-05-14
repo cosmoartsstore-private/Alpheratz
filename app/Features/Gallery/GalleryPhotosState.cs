@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Alpheratz.Core;
 using Alpheratz.Models;
+using Alpheratz.Models.Events;
 using Alpheratz.Services;
 using Alpheratz.Shared.Models;
 using Alpheratz.Shared.Services;
@@ -116,28 +117,45 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
     /// <summary>
     /// イベントバスを購読し初回データをロードする。
     /// scan:completed / scan:enrich_completed 受信で自動再ロード。
+    /// 初回ロードが完了してから購読を開始することで、
+    /// 起動直後にスキャンが即完了するケースの DB 二重発行を防ぐ。
     /// </summary>
-    public Task InitializeAsync()
+    public async Task InitializeAsync()
     {
         AppLogger.Trace("GalleryPhotosState.InitializeAsync: enter");
         try
         {
-            scanCompletedUnlisten = eventBus.Subscribe("scan:completed", () => loadPhotos());
-            scanEnrichCompletedUnlisten = eventBus.Subscribe("scan:enrich_completed", () => loadPhotos());
+            await loadPhotos(0).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"GalleryPhotosState.InitializeAsync: initial load threw: {ex}");
+        }
+
+        try
+        {
+            scanCompletedUnlisten = eventBus.Subscribe(EventNames.ScanCompleted, () => loadPhotos());
+            scanEnrichCompletedUnlisten = eventBus.Subscribe(EventNames.ScanEnrichCompleted, () => loadPhotos());
         }
         catch (Exception ex)
         {
             AppLogger.Error($"GalleryPhotosState.InitializeAsync: subscribe threw: {ex}");
             throw;
         }
-        var task = loadPhotos(0);
         AppLogger.Trace("GalleryPhotosState.InitializeAsync: exit");
-        return task;
     }
 
     /// <summary>
     /// 写真コレクションを一括差し替える。
-    /// displayItems 内の Photo 参照も新しいオブジェクトに同期する。
+    ///
+    /// photos と displayItems の二重管理について：
+    ///   - photos: 生の PhotoThumbnailItem 配列。MasonryView がこれを直接見る。
+    ///   - displayItems: グルーピング情報付き PhotoGridItem 配列。標準グリッドが見る。
+    ///   グルーピング変更は DB を叩かずに displayItems だけ再構築できる（高速）。
+    ///
+    /// 同期処理：差し替えで PhotoThumbnailItem の参照アドレスが変わると、
+    /// displayItems が古い参照を持ったままになるので、photo_path をキーに新参照へ差し替える。
+    /// グループ代表写真と GroupPhotos のサブ配列の両方を辿る必要がある。
     /// </summary>
     public void setPhotos(IEnumerable<PhotoThumbnailItem> nextPhotos, bool autoGenerateThumbnails = true)
     {
@@ -185,6 +203,23 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
     }
 
     /// <summary>
+    /// ドリルダウン等、photos に含まれない外部リスト向けにサムネイル生成を要求する。
+    /// メイン側の進行中生成をキャンセルしないので、メインの表示は維持される。
+    /// </summary>
+    public void kickThumbnailsForExternal(IReadOnlyList<PhotoThumbnailItem> items)
+    {
+        if (items.Count == 0) return;
+        var photoMap = new Dictionary<string, PhotoThumbnailItem>(items.Count);
+        foreach (var p in items)
+        {
+            if (!string.IsNullOrEmpty(p.PhotoPath))
+                photoMap.TryAdd(p.PhotoPath, p);
+        }
+        if (photoMap.Count == 0) return;
+        kickThumbnailGeneration(photoMap, cancelPrevious: false);
+    }
+
+    /// <summary>
     /// MasonryView のビューポート内に入った写真のサムネイル生成を要求する。
     /// 既にサムネイルがある写真はスキップされる。
     /// </summary>
@@ -202,9 +237,20 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
     }
 
     /// <summary>
-    /// グリッドサムネイルの非同期生成を開始する。
-    /// cancelPrevious=true（フルリロード時）は実行中の生成をキャンセルしてから開始。
-    /// cancelPrevious=false（loadMore 追加分）は既存生成を中断せず追加。
+    /// グリッドサムネイルのバックグラウンド生成を開始する。
+    ///
+    /// cancelPrevious=true（フィルタ変更・フルリロード時）：
+    ///   進行中の生成をキャンセルしてから新しい CTS で開始する。
+    ///   旧フィルタの写真に対する生成が新フィルタ表示の邪魔をしないようにするため。
+    ///
+    /// cancelPrevious=false（ビューポート進入時の lazy 要求）：
+    ///   既に CTS が動いていればそれに相乗りし、無ければ新規生成する。
+    ///   スクロール中に何度も呼ばれる経路で CTS を作り直すと、走り始めの生成が
+    ///   即キャンセルされて UI が真っ白なまま、という症状になるため。
+    ///
+    /// CTS の交換にあたっての race 対策が肝で、Volatile.Read + CompareExchange を
+    /// 使うことで「null チェック → null なら自分の CTS を代入」を原子化している。
+    /// 単純な ??= だと読み込みと代入の間に別スレッドが介入する余地がある。
     /// </summary>
     private void kickThumbnailGeneration(IReadOnlyDictionary<string, PhotoThumbnailItem> photoMap, bool cancelPrevious = true)
     {
@@ -247,7 +293,17 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
                 cts = existing;
             }
         }
-        var ct = cts.Token;
+
+        // 既存 CTS を取った直後に loadPhotos 側が Interlocked.Exchange + Dispose を
+        // 走らせると、ローカル変数 cts は Disposed になっている可能性がある。
+        // cts.Token は ObjectDisposedException を投げるので捕捉して早期 return。
+        CancellationToken ct;
+        try { ct = cts.Token; }
+        catch (ObjectDisposedException)
+        {
+            AppLogger.Trace("GalleryPhotosState.kickThumbnailGeneration: cts disposed mid-flight, skip");
+            return;
+        }
 
         var targets = photoMap.Values
             .Where(p => string.IsNullOrEmpty(p.GridThumbPath) && !string.IsNullOrEmpty(p.PhotoPath))
@@ -341,8 +397,19 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
     }
 
     /// <summary>
-    /// フィルタ条件に基づき DB から全メタデータを一括取得する。
-    /// transitionToken で多重ロードを制御し、古いリクエストの結果を自動破棄する。
+    /// フィルタ条件に基づき DB から全メタデータを一括取得し、UI コレクションへ反映する。
+    ///
+    /// transitionToken の役割：
+    ///   フィルタを高速に切り替えると、古いクエリの結果が後から戻ってきて
+    ///   新しいクエリの結果を上書きしてしまう可能性がある。
+    ///   呼び出しごとにトークンをインクリメントし、await から戻った時点で
+    ///   transitionToken が変わっていたら「自分は古い世代」と判断して破棄する。
+    ///
+    /// フロー：
+    ///   1. transitionToken++ → サムネイル CTS をキャンセル → IsLoading = true
+    ///   2. fetchAllPhotos と loadMonthSummary を Task.WhenAll で並列取得
+    ///   3. トークン整合性チェック → photosRef / photos / displayItems を更新
+    ///   4. 新しい photoMap でサムネイル生成をキック
     /// </summary>
     public async Task loadPhotos(int page = 0)
     {
@@ -365,10 +432,12 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
 
         try
         {
+            // 月集計と全件取得は独立した SQL なので Task.WhenAll で並行発行する。
+            // 旧実装は逐次 await により月集計が写真取得の後ろにシリアル化されていた。
             var photosTask = fetchAllPhotos();
             var monthTask = loadMonthSummary();
+            await Task.WhenAll(photosTask, monthTask).ConfigureAwait(false);
             var allPhotos = await photosTask.ConfigureAwait(false);
-            await monthTask.ConfigureAwait(false);
             if (transitionToken != token)
             {
                 AppLogger.Trace("GalleryPhotosState.loadPhotos: superseded by newer load");

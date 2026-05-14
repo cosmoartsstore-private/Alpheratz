@@ -2,32 +2,54 @@ using System;
 
 namespace Alpheratz.Core.Imaging.Pdq;
 
-// PDQ image hash core algorithm. Pure numeric port of legacy alpheratz
-// pdq_hash.rs. The image-loading side (PNG/JPG -> grayscale float[]) lives in
-// PdqImageReader; this file only handles the math once we have a luma buffer.
+/// <summary>
+/// PDQ (Perceptual Hash, Facebook 公開アルゴリズム) のコア計算。
+/// 参考: https://github.com/facebook/ThreatExchange/tree/main/pdq
+///
+/// アルゴリズム概要：
+///   1. 入力画像をグレイスケール (luma) に変換し、長辺 512px 以下に縮小（呼び出し側責任）
+///   2. Jarosz Box フィルタを XY 2 パスで適用してアンチエイリアシング (ローパス)
+///   3. 64x64 に decimate (中心セル サンプリング)
+///   4. 64x64 → 16x16 の離散コサイン変換 (DCT) で低周波成分を抽出
+///   5. 16x16 (=256 セル) を中央値で二値化 → 256 ビット = 32 バイトハッシュ
+///   6. quality は画素分散から算出 (低分散 = 単色寄り = ハッシュ信頼性低)
+///
+/// 32 バイトハッシュ同士の Hamming 距離が 64 以下なら「ほぼ同じ画像」と判定する慣習。
+/// </summary>
 public static class PdqHasher
 {
+    /// <summary>Jarosz/decimate の中間バッファ寸法 (64x64)。</summary>
     public const int BufferWh = PdqDctMatrix.BufferWh;          // 64
+    /// <summary>DCT 出力寸法 (16x16)。</summary>
     public const int DctOutputWh = PdqDctMatrix.DctOutputWh;    // 16
+    /// <summary>DCT 出力の総セル数 (256)。</summary>
     public const int DctOutputMatrixSize = DctOutputWh * DctOutputWh; // 256
+    /// <summary>ハッシュバイト長 (256 ビット = 32 バイト)。</summary>
     public const int HashLength = DctOutputMatrixSize / 8;      // 32 bytes
+    /// <summary>幅高がこれ未満の画像はハッシュ不能 (情報量が少なすぎて DCT 係数がノイズになる)。</summary>
     public const int MinHashableDim = 5;
+    /// <summary>呼び出し側に推奨する事前縮小上限 (長辺 512px)。これ以上はコストが上がるだけで精度向上は微小。</summary>
     public const int DownsampleDims = 512;
+    /// <summary>Jarosz Box フィルタの XY 反復回数 (2 回でガウスフィルタ近似、PDQ 仕様値)。</summary>
     private const int PdqNumJaroszXyPasses = 2;
 
+    // ITU-R BT.601 の RGB→luma 係数。
     public const float LumaFromR = 0.299f;
     public const float LumaFromG = 0.587f;
     public const float LumaFromB = 0.114f;
 
-    // Public entry: produces (hash[32], quality). Callers feed an already
-    // luma-converted, properly-sized buffer (rows*cols floats).
-    // Width/height should already be capped at DownsampleDims (image side max).
+    /// <summary>
+    /// PDQ ハッシュとクオリティを返すパブリックエントリポイント。
+    /// luma は呼出側で長辺 DownsampleDims 以下に縮小しグレイスケール化したフロート配列。
+    /// 画像が極端に小さい (MinHashableDim 未満) なら null を返す。
+    /// </summary>
     public static (byte[] Hash, float Quality)? GeneratePdq(float[] luma, int width, int height)
     {
         if (width < MinHashableDim || height < MinHashableDim) return null;
         return GeneratePdqFullSize(luma, width, height);
     }
 
+    /// <summary>サイズ閾値チェックを省いた本体。Jarosz → Decimate → DCT → 二値化の流れ。</summary>
     public static (byte[] Hash, float Quality) GeneratePdqFullSize(float[] luma, int width, int height)
     {
         var windowAlongRows = ComputeJaroszFilterWindowSize(width, BufferWh);
@@ -42,11 +64,19 @@ public static class PdqHasher
         return (Buffer16x16ToBits(buffer16x16), QualityMetric(buffer64x64));
     }
 
-    // (old + 2*new - 1) / (2*new)
+    /// <summary>
+    /// 元寸法 oldDim → 目標寸法 newDim にダウンサンプルする際の Box フィルタ窓幅。
+    /// 式 (oldDim + 2*newDim - 1) / (2*newDim) は PDQ 仕様（Facebook 公開リファレンス実装）由来。
+    /// 直感的には「old/new の倍率の半分 ± 端数調整」で、奇数化することで対称な窓になる。
+    /// </summary>
     public static int ComputeJaroszFilterWindowSize(int oldDim, int newDim)
         => (oldDim + 2 * newDim - 1) / (2 * newDim);
 
-    // Two-pass box blur: row pass into temp, then col pass back into buffer.
+    /// <summary>
+    /// 2 軸 (rows / cols) で Box フィルタを reps 回適用する。
+    /// 行方向 → 一時バッファ → 列方向 → 元バッファ、を 1 ペアとして reps 回繰り返す。
+    /// Box ブラーの繰り返しはガウシアンに収束するという数学的性質を使い、安価にガウスフィルタを近似。
+    /// </summary>
     public static void JaroszFilter(float[] buffer, int rows, int cols, int winRows, int winCols, int reps)
     {
         var tmp = new float[buffer.Length];
@@ -57,6 +87,7 @@ public static class PdqHasher
         }
     }
 
+    /// <summary>各行を 1-D Box フィルタにかける（行内 stride=1）。</summary>
     public static void BoxAlongRows(float[] input, float[] output, int rows, int cols, int win)
     {
         for (var i = 0; i < rows; i++)
@@ -65,6 +96,7 @@ public static class PdqHasher
         }
     }
 
+    /// <summary>各列を 1-D Box フィルタにかける（列をまたぐので stride=cols）。</summary>
     public static void BoxAlongCols(float[] input, float[] output, int rows, int cols, int win)
     {
         for (var j = 0; j < cols; j++)
@@ -73,7 +105,15 @@ public static class PdqHasher
         }
     }
 
-    // 1-D moving average with three different phases (mirrors Rust).
+    /// <summary>
+    /// 1 次元の移動平均（Box フィルタ）。4 フェーズ実装で端の処理を漏れなく行う：
+    ///   PHASE 1: 窓を埋めるまでの累積（出力なし）
+    ///   PHASE 2: 窓が成長中の出力（左端の半窓）
+    ///   PHASE 3: 完全窓での出力（中央部、最も多い）
+    ///   PHASE 4: 窓が縮小中の出力（右端の半窓）
+    /// この実装は Facebook PDQ リファレンス実装をそのまま移植したもので、
+    /// fullWin が偶数/奇数いずれでも端まで対称になる。
+    /// </summary>
     public static void BoxOneD(float[] inv, int inStartOffset, float[] outv, int vectorLen, int stride, int fullWin)
     {
         var halfWin = (fullWin + 2) / 2;
@@ -125,7 +165,11 @@ public static class PdqHasher
         }
     }
 
-    // Sample buffer at center-of-cell positions to produce outRows x outCols.
+    /// <summary>
+    /// 入力バッファを outRows x outCols に縮小する。各出力セルは入力グリッドの「中心位置」を
+    /// サンプリングする（(2k+1)/(2N) の式）。中心サンプリングにより、端寄りバイアスを避けつつ
+    /// Jarosz でローパス済みの値を採取することでエイリアシングを回避する。
+    /// </summary>
     public static float[][] Decimate(float[] input, int inRows, int inCols, int outRows, int outCols)
     {
         var output = new float[outRows][];
@@ -142,7 +186,14 @@ public static class PdqHasher
         return output;
     }
 
-    // 64x64 -> intermediate 16x64 -> output 16x16, using DCT_MATRIX coefficients.
+    /// <summary>
+    /// 64x64 → 16x16 の DCT。2 段階に分けることで計算量を抑える：
+    ///   64x64 → 16x64 (行方向 DCT, 中間)
+    ///   16x64 → 16x16 (列方向 DCT, 最終)
+    /// 直接 64x64 → 16x16 で計算すると 64*64*16*16 演算が必要だが、
+    /// 分離可能性を利用すれば 16*64*64 + 16*16*64 演算で済む（約 4 倍速）。
+    /// 係数は PdqDctMatrix で事前計算済み（uint32 ビットパターンとして格納し float に復元）。
+    /// </summary>
     public static float[] Dct64To16(float[][] input)
     {
         var inRows = input.Length;
@@ -180,7 +231,14 @@ public static class PdqHasher
         return output;
     }
 
-    // Quick-select-style median (Torben's method).
+    /// <summary>
+    /// Torben のアルゴリズムによる O(n) 中央値計算。
+    /// 配列を直接ソートせず、min/max 範囲の二分探索で中央値を当てる。
+    /// 利点：
+    ///   - 入力配列を変更しない (PDQ 計算で 256 要素配列をそのまま二値化に再利用するため必須)
+    ///   - 標準のクイックセレクトより安定 (枢軸選択の最悪 O(n²) を避ける)
+    /// 参考: https://www.stat.cmu.edu/~ryantibs/median/torben.c
+    /// </summary>
     public static float TorbenMedian(float[] m)
     {
         var min = m[0];
@@ -218,7 +276,13 @@ public static class PdqHasher
         }
     }
 
-    // Convert 256 floats into 256-bit hash (32 bytes), comparing each to the median.
+    /// <summary>
+    /// 16x16=256 個の DCT 係数を、中央値より大きい/小さいで二値化して 256 ビット = 32 バイトの
+    /// ハッシュにする。中央値で割ることで「明るい/暗い」のパターンだけが残り、
+    /// 全体の明度オフセットに対して頑健になる。
+    /// バイト順は HashLength - i - 1 で反転しているのは PDQ 標準実装の big-endian 出力と
+    /// 揃えるため (これにより別実装が出力したハッシュと相互運用できる)。
+    /// </summary>
     public static byte[] Buffer16x16ToBits(float[] input)
     {
         var median = TorbenMedian(input);
@@ -235,6 +299,12 @@ public static class PdqHasher
         return hash;
     }
 
+    /// <summary>
+    /// ハッシュの信頼度メトリック (0.0 - 1.0)。
+    /// 64x64 バッファ内の水平・垂直方向の隣接画素差分の絶対値を合計し、定数で正規化する。
+    /// 単色平面のような「ハッシュしても意味の薄い画像」では低い値になり、
+    /// PDQ マッチングで低信頼ハッシュを除外するための閾値判定に使う。
+    /// </summary>
     public static float QualityMetric(float[][] buffer)
     {
         var rows = buffer.Length;
@@ -262,7 +332,10 @@ public static class PdqHasher
         return quality > 1f ? 1f : quality;
     }
 
-    // Hamming distance between two 32-byte hashes (0..256).
+    /// <summary>
+    /// 同サイズの 2 ハッシュ間のハミング距離 (0..256)。
+    /// BitOperations.PopCount で 1 バイトずつ XOR 後の立ちビットを数える (HW popcnt 命令を利用)。
+    /// </summary>
     public static int HammingDistance(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
     {
         if (a.Length != b.Length) throw new ArgumentException("hash length mismatch");
@@ -274,19 +347,22 @@ public static class PdqHasher
         return d;
     }
 
-    // Hex-encode hash (legacy storage format).
+    /// <summary>ハッシュを 64 文字の lowercase hex 文字列にエンコード（DB 保存形式）。</summary>
     public static string ToHex(byte[] hash)
     {
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
+    /// <summary>hex 文字列をバイト配列に戻す。</summary>
     public static byte[] FromHex(string hex)
     {
         return Convert.FromHexString(hex);
     }
 
-    // Hex-string hamming distance (mirrors legacy alpheratz get_hamming_distance).
-    // Both hashes must be lowercase hex of equal length (typically 64 chars).
+    /// <summary>
+    /// hex 文字列同士のハミング距離。一旦バイトに戻さず 4bit ずつ直接 XOR + popcount で計算する
+    /// (アロケーションを避けるため)。長さが違うか hex 文字以外を含むと null を返す。
+    /// </summary>
     public static int? HexHammingDistance(string left, string right)
     {
         if (left.Length != right.Length) return null;
@@ -309,7 +385,12 @@ public static class PdqHasher
         return -1;
     }
 
-    // Smallest distance over the cross product of two pipe-separated hash variant lists.
+    /// <summary>
+    /// 2 つのハッシュバリアントリストのクロス積から最小距離を返す。
+    /// バリアント = 同一画像を 0°/90°/180°/270° で生成した複数ハッシュを '|' 区切りで持つ仕様。
+    /// ユーザがアップした画像の回転状態が不明な場合、複数回転ハッシュを保持して最小距離を取ることで
+    /// 回転耐性のあるマッチングを実現する。
+    /// </summary>
     public static int? ClosestHashDistance(IReadOnlyList<string> leftVariants, IReadOnlyList<string> rightVariants)
     {
         if (leftVariants.Count == 0 || rightVariants.Count == 0) return null;
@@ -327,6 +408,10 @@ public static class PdqHasher
         return best == int.MaxValue ? null : best;
     }
 
+    /// <summary>
+    /// DB 格納形式 (パイプ '|' 区切り) のハッシュバリアント文字列をパースしてリスト化する。
+    /// 不正な hex (長さ 64 でない / hex 文字以外混入) は捨てる。
+    /// </summary>
     public static System.Collections.Generic.List<string> ParseHashVariants(string? value)
     {
         var result = new System.Collections.Generic.List<string>();

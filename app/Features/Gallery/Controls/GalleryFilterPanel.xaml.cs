@@ -27,7 +27,9 @@ public sealed partial class GalleryFilterPanel : UserControl
     public Action<string>? OnTagFilterAdd { get; set; }
     public Action<string>? OnTagFilterRemove { get; set; }
 
-    private DateTime visibleMonth = new(DateTime.Now.Year, DateTime.Now.Month, 1);
+    // インスタンス生成時の「今月」で初期化。アプリ起動から日を跨いでも UI 操作で
+    // visibleMonth は更新されるので問題なし（コンストラクタ評価で十分）。
+    private DateTime visibleMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
     private string activeDateField = "from";
     private string draftFrom = "";
     private string draftTo = "";
@@ -388,7 +390,10 @@ public sealed partial class GalleryFilterPanel : UserControl
 
     // ── Calendar navigation ──
     private static readonly DateTime CalendarMinMonth = new(2000, 1, 1);
-    private static readonly DateTime CalendarMaxMonth = new(DateTime.Now.Year + 2, 1, 1);
+    // static readonly の初期化式は静的コンストラクタ＝アプリ起動時刻で固定される。
+    // 0 時跨ぎでアプリを起動しっぱなしにすると「今年 + 2 年」のラインが進まないので、
+    // 都度評価する property にする。
+    private static DateTime CalendarMaxMonth => new(DateTime.Today.Year + 2, 1, 1);
 
     private void MonthPrev_Click(object sender, RoutedEventArgs e)
     {

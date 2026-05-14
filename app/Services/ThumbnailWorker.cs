@@ -8,16 +8,23 @@ using Alpheratz.Core.Imaging;
 
 namespace Alpheratz.Services;
 
+/// <summary>サムネイル生成 1 件の完了を表す DTO（呼出側コールバックに渡す）。</summary>
 public sealed record ThumbnailResult(string PhotoPath, long SourceSlot, string ThumbPath);
 
 /// <summary>
 /// グリッド/表示サムネイルをバックグラウンドで一括生成するワーカー。
 /// ThumbnailService.EnsureGridThumbAsync はキャッシュ済みなら即返するため、
-/// 重複バッチを投げてもコストは低い。
+/// 重複バッチ (ビューポート遷移時の同じ写真への再リクエスト) を投げてもコストは低い。
 /// </summary>
 public sealed class ThumbnailWorker
 {
-    /// <summary>同時生成数の上限。CPU 負荷とディスク I/O のバランスで調整する。</summary>
+    /// <summary>
+    /// 同時生成数の上限。2 にしている理由：
+    ///   - サムネイル生成は CPU (デコード+リサイズ) と I/O (元画像読み込み・JPEG 書き込み) の両方が重い
+    ///   - 並列度を上げすぎると HDD ではシーク多発で逆に遅くなる
+    ///   - 2 は SSD/HDD どちらでも安定する経験値
+    /// CPU コア数に合わせて自動調整する余地もあるが、UI スレッドを圧迫しないことを優先。
+    /// </summary>
     private const int MaxConcurrency = 2;
 
     private readonly ThumbnailService thumbnailService;

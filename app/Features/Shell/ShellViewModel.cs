@@ -26,7 +26,6 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     private const bool DETACH_RUNTIME_DATA = false;
     private const bool DETACH_AUXILIARY_RUNTIME_DATA = false;
 
-    private readonly NavigationService navigationService;
     private readonly SettingsService settingsService;
     private readonly AlpheratzDb db;
     private readonly PhotoScanner scanner;
@@ -43,11 +42,16 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     private readonly List<IAsyncDisposable> scanUnlistenFns = [];
     private readonly List<IAsyncDisposable> phashUnlistenFns = [];
 
-    // scan:completed の後続タスク (archive/orientation/phash) を直列化するためのセマフォ。
-    // 3 タスクを並列で走らせると DB writer が衝突し、SQLITE_BUSY や orientation の
-    // 部分書き込みが発生しうるため、明示的に逐次化する。
+    // scan:completed の後続タスク (archive 解析 / orientation 補完 / phash 計算) を
+    // 直列化するためのセマフォ。3 タスクを並列で走らせると同じ photos テーブルへの
+    // UPDATE が衝突して SQLITE_BUSY が返り、結果として orientation や phash が一部行だけ
+    // 反映されず欠落するパーシャル書き込みが発生する。WAL でも複数 writer は禁止のため、
+    // ここで明示的に 1 つずつ走らせる。トレードオフ：スキャン後の補完が逐次なので終了が
+    // やや遅いが、ユーザは UI 操作可能なので体感問題にはなりにくい。
     private readonly SemaphoreSlim postScanGate = new(1, 1);
 
+    // phash 計算進捗の UI 更新スロットリング。生ハンドラは数十 ms ごとに発火するが、
+    // UI の TextBlock 更新を毎回マーシャリングすると CPU が無駄になるため、最小間隔を 1 秒に絞る。
     private const long PhashUiUpdateMinIntervalMs = 1000;
     private long lastPhashUiUpdateTicks;
 
@@ -55,12 +59,6 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     public SettingsViewModel settingsViewModel { get; }
     public TagMasterViewModel tagMasterViewModel { get; }
     public TemplatePageViewModel templatePageViewModel { get; }
-
-    public MainScreen activeMainScreen
-    {
-        get => navigationService.ActiveMainScreen;
-        set { navigationService.ActiveMainScreen = value; OnPropertyChanged(); }
-    }
 
     private string scanStatus = "idle";
     private ScanProgressDto scanProgress = new() { processed = 0, total = 0, current_world = "", phase = "scan" };
@@ -94,7 +92,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     public string ActiveTweetTemplate { get => activeTweetTemplate; set => SetProperty(ref activeTweetTemplate, value); }
 
     public ShellViewModel(
-        NavigationService navigationService, SettingsService settingsService, AlpheratzDb db, PhotoScanner scanner,
+        SettingsService settingsService, AlpheratzDb db, PhotoScanner scanner,
         PhashService phashService, OrientationService orientationService, WorldService worldService,
         LocalEventBus eventBus, ToastService toastService, GalleryViewModel galleryViewModel,
         SettingsViewModel settingsViewModel, TagMasterViewModel tagMasterViewModel,
@@ -102,7 +100,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         ThumbnailWorker thumbnailWorker)
     {
         AppLogger.Trace("ShellViewModel.ctor: enter");
-        this.navigationService = navigationService; this.settingsService = settingsService; this.db = db;
+        this.settingsService = settingsService; this.db = db;
         this.scanner = scanner; this.phashService = phashService; this.orientationService = orientationService;
         this.worldService = worldService; this.eventBus = eventBus; this.toastService = toastService;
         this.galleryViewModel = galleryViewModel; this.settingsViewModel = settingsViewModel;
@@ -143,12 +141,20 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         AppLogger.Trace("ShellViewModel.initialize: enter");
         try
         {
-            await registerScanListeners().ConfigureAwait(false);
-            await registerPhashWorker().ConfigureAwait(false);
-            await refreshSettings().ConfigureAwait(false);
-            await galleryViewModel.photosState.InitializeAsync().ConfigureAwait(false);
-            await tagMasterViewModel.loadTags().ConfigureAwait(false);
-            await galleryViewModel.loadWorldFilterOptions().ConfigureAwait(false);
+            // リスナ登録と設定読込は副作用が独立しているので並行化する。
+            // 写真ロードはこれらが終わった後 (DB セッションが落ち着いた後) に開始する。
+            await Task.WhenAll(
+                registerScanListeners(),
+                registerPhashWorker(),
+                refreshSettings()).ConfigureAwait(false);
+
+            // 写真メタデータ・タグマスタ・ワールド候補は互いに独立した SELECT。
+            // 逐次 await すると 3 つの DB ラウンドトリップ分のレイテンシが積み上がる
+            // ため、Task.WhenAll で並行発行する。
+            var photosInitTask = galleryViewModel.photosState.InitializeAsync();
+            var tagsTask = tagMasterViewModel.loadTags();
+            var worldsTask = galleryViewModel.loadWorldFilterOptions();
+            await Task.WhenAll(photosInitTask, tagsTask, worldsTask).ConfigureAwait(false);
 
             if (DETACH_RUNTIME_DATA)
             {
@@ -167,13 +173,6 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         }
         catch (Exception ex) { AppLogger.Error($"ShellViewModel.initialize: threw: {ex}"); throw; }
         AppLogger.Trace("ShellViewModel.initialize: exit");
-    }
-
-    public void setActiveMainScreen(MainScreen screen)
-    {
-        AppLogger.Trace($"ShellViewModel.setActiveMainScreen: enter screen={screen}");
-        activeMainScreen = screen;
-        AppLogger.Trace("ShellViewModel.setActiveMainScreen: exit");
     }
 
     public Task startScan()
@@ -197,7 +196,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
                 catch (Exception ex)
                 {
                     AppLogger.Error($"ShellViewModel.startScan: ScanAsync wrapper threw: {ex}");
-                    try { await eventBus.PublishAsync("scan:error", ex.Message).ConfigureAwait(false); }
+                    try { await eventBus.PublishAsync(EventNames.ScanError, ex.Message).ConfigureAwait(false); }
                     catch (Exception pubEx) { AppLogger.Error($"ShellViewModel.startScan: failed to publish scan:error: {pubEx}"); }
                 }
             });
@@ -292,12 +291,12 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         if (DETACH_RUNTIME_DATA) return Task.CompletedTask;
         try
         {
-            scanUnlistenFns.Add(eventBus.Subscribe<ScanProgressDto>("scan:progress", payload =>
+            scanUnlistenFns.Add(eventBus.Subscribe<ScanProgressDto>(EventNames.ScanProgress, payload =>
             {
                 dispatcherService.requestAnimationFrame(() => ScanProgress = payload);
                 return Task.CompletedTask;
             }));
-            scanUnlistenFns.Add(eventBus.Subscribe("scan:completed", async () =>
+            scanUnlistenFns.Add(eventBus.Subscribe(EventNames.ScanCompleted, async () =>
             {
                 try
                 {
@@ -308,7 +307,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
                 }
                 catch (Exception ex) { AppLogger.Error($"ShellViewModel.scan:completed: threw: {ex}"); }
             }));
-            scanUnlistenFns.Add(eventBus.Subscribe<string>("scan:error", payload =>
+            scanUnlistenFns.Add(eventBus.Subscribe<string>(EventNames.ScanError, payload =>
             {
                 try
                 {
@@ -343,7 +342,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         catch (Exception ex) { AppLogger.Warn($"ShellViewModel.registerPhashWorker: initial probe failed: {ex}"); PdqProgress = PhashProgressEvent.Empty; }
         try
         {
-            phashUnlistenFns.Add(eventBus.Subscribe<PhashProgressEvent>("phash_progress", payload =>
+            phashUnlistenFns.Add(eventBus.Subscribe<PhashProgressEvent>(EventNames.PhashProgress, payload =>
             {
                 IsPdqRunning = true;
                 var nowTicks = Environment.TickCount64;
@@ -353,7 +352,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
                 }
                 return Task.CompletedTask;
             }));
-            phashUnlistenFns.Add(eventBus.Subscribe("phash_complete", () =>
+            phashUnlistenFns.Add(eventBus.Subscribe(EventNames.PhashComplete, () =>
             {
                 IsPdqRunning = false;
                 PdqProgress = PdqProgress with { done = PdqProgress.total, current = null };

@@ -2,21 +2,41 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Threading;
 
 namespace Alpheratz.Core;
 
+/// <summary>
+/// 単一プロセス内のアプリケーションログを ConcurrentQueue にためて、別スレッドで
+/// ファイルに flush する非同期ロガー。
+/// Trace は [Conditional("TRACE_LOGGING")] により、TRACE_LOGGING シンボルが定義されていない
+/// ビルドでは呼び出しごと（引数の文字列補間も含めて）C# コンパイラレベルで消える。
+/// このため Trace を hot path に置いても Release ビルドでは GC プレッシャを生まない。
+/// </summary>
 public static class AppLogger
 {
     private static readonly string _fallbackLogPath = GetFallbackLogPath();
     private static readonly ConcurrentQueue<string> _queue = new();
     private static int _flushing;
 
+    /// <summary>TRACE_LOGGING シンボルの有無を実行時に取得（呼出側ガード用）。</summary>
+    public static bool IsTraceEnabled =>
+#if TRACE_LOGGING
+        true;
+#else
+        false;
+#endif
+
     public static void Warn(string message) => Enqueue("WARN", message);
     public static void Error(string message) => Enqueue("ERROR", message);
     public static void Info(string message) => Enqueue("INFO", message);
 
+    /// <summary>
+    /// 詳細トレース。TRACE_LOGGING シンボルが定義されたビルドのみで実行される
+    /// （引数の評価も含めてコンパイラが call site を消す）。Release ビルドではコストゼロ。
+    /// </summary>
     [Conditional("TRACE_LOGGING")]
     public static void Trace(string message) => Enqueue("TRACE", message);
 
@@ -30,7 +50,8 @@ public static class AppLogger
 
     private static void Enqueue(string level, string message)
     {
-        var line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [{level}] {message}";
+        // 地域設定で format 解釈が揺れないよう InvariantCulture で固定する。
+        var line = $"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture)}] [{level}] {message}";
         _queue.Enqueue(line);
 
         if (Interlocked.CompareExchange(ref _flushing, 1, 0) == 0)

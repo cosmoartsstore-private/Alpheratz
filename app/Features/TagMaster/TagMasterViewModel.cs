@@ -10,13 +10,21 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Alpheratz.Features.TagMaster;
 
+/// <summary>
+/// タグマスタ画面の ViewModel。タグの追加・削除と一覧表示を担当する。
+/// masterTags は他画面 (PhotoModal のタグコンボボックス、フィルタパネルのタグサジェスト) からも
+/// 共有参照されるため、本 VM の変更は自動的にそれらの UI にも反映される。
+/// </summary>
 public partial class TagMasterViewModel : UiThreadSafeObservableObject
 {
+    /// <summary>1 タグの最大文字数。UI の入力上限ではなくバリデーション側で弾く。</summary>
     private const int MAX_TAG_LENGTH = 40;
     private readonly AlpheratzDb db;
     private readonly ToastService toastService;
 
+    /// <summary>タグマスタの全タグ。フィルタ UI 等が直接バインドする共有コレクション。</summary>
     public UiObservableCollection<string> masterTags { get; } = [];
+    /// <summary>追加フォームの入力中文字列。</summary>
     [ObservableProperty] private string tagDraft = string.Empty;
 
     public TagMasterViewModel(AlpheratzDb db, ToastService toastService)
@@ -27,6 +35,10 @@ public partial class TagMasterViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("TagMasterViewModel.ctor: exit");
     }
 
+    /// <summary>
+    /// 全タグを DB からロードし masterTags を置換する。失敗時は rethrow して起動を中断させる
+    /// （タグリストが空の状態で UI を立ち上げると、ユーザがタグ追加と既存タグの区別を失う）。
+    /// </summary>
     public async Task loadTags()
     {
         AppLogger.Trace("TagMasterViewModel.loadTags: enter");
@@ -49,6 +61,10 @@ public partial class TagMasterViewModel : UiThreadSafeObservableObject
         AppLogger.Trace($"TagMasterViewModel.loadTags: exit count={masterTags.Count}");
     }
 
+    /// <summary>
+    /// TagDraft の内容で新規タグを作成する。trim 後空文字なら no-op、長さ超過は toast でエラー表示。
+    /// DB 追加成功時は loadTags() で一覧再取得し、ドラフトをクリアする。
+    /// </summary>
     public async Task createTag()
     {
         AppLogger.Trace($"TagMasterViewModel.createTag: enter draft={TagDraft}");
@@ -82,6 +98,10 @@ public partial class TagMasterViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("TagMasterViewModel.createTag: exit");
     }
 
+    /// <summary>
+    /// タグマスタからタグを削除する。photo_tags の中間行も DB 側でカスケード削除されるため、
+    /// 既に写真に付与されていたタグも一括で外れる。失敗時は toast でエラー通知。
+    /// </summary>
     public async Task deleteTag(string tag)
     {
         AppLogger.Trace($"TagMasterViewModel.deleteTag: enter tag={tag}");

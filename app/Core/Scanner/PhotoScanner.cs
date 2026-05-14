@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -7,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Alpheratz.Core.Database;
 using Alpheratz.Models;
+using Alpheratz.Models.Events;
 
 namespace Alpheratz.Core.Scanner;
 
@@ -62,12 +64,12 @@ public sealed partial class PhotoScanner
         catch (OperationCanceledException)
         {
             AppLogger.Trace("PhotoScanner.ScanAsync: cancelled");
-            await _bus.PublishAsync("scan:error", "スキャンを中断しました").ConfigureAwait(false);
+            await _bus.PublishAsync(EventNames.ScanError, "スキャンを中断しました").ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             AppLogger.Error($"スキャン中に予期しないエラーが発生しました: {ex}");
-            await _bus.PublishAsync("scan:error", ex.Message).ConfigureAwait(false);
+            await _bus.PublishAsync(EventNames.ScanError, ex.Message).ConfigureAwait(false);
         }
         finally
         {
@@ -87,7 +89,7 @@ public sealed partial class PhotoScanner
             photoDirs.Add((1, setting.PhotoFolderPath));
         else if (!string.IsNullOrWhiteSpace(setting.PhotoFolderPath))
         {
-            await _bus.PublishAsync("scan:error", $"写真フォルダが見つかりません: {setting.PhotoFolderPath}").ConfigureAwait(false);
+            await _bus.PublishAsync(EventNames.ScanError, $"写真フォルダが見つかりません: {setting.PhotoFolderPath}").ConfigureAwait(false);
             return;
         }
 
@@ -106,12 +108,12 @@ public sealed partial class PhotoScanner
                 photoDirs.Add((1, defaultDir));
             else
             {
-                await _bus.PublishAsync("scan:error", "写真フォルダが未設定です。設定から参照フォルダを選択してください。").ConfigureAwait(false);
+                await _bus.PublishAsync(EventNames.ScanError, "写真フォルダが未設定です。設定から参照フォルダを選択してください。").ConfigureAwait(false);
                 return;
             }
         }
 
-        await _bus.PublishAsync("scan:progress", new ScanProgressDto { processed = 0, total = 0, current_world = "ファイルを収集中...", phase = "scan" }).ConfigureAwait(false);
+        await _bus.PublishAsync(EventNames.ScanProgress, new ScanProgressDto { processed = 0, total = 0, current_world = "ファイルを収集中...", phase = "scan" }).ConfigureAwait(false);
 
         // Load existing photos
         var existing = await _db.GetExistingPhotosAsync(ct).ConfigureAwait(false);
@@ -163,7 +165,7 @@ public sealed partial class PhotoScanner
         }
 
         var total = candidates.Count;
-        await _bus.PublishAsync("scan:progress", new ScanProgressDto { processed = 0, total = total, current_world = $"{total} 件の更新対象を確認しました", phase = "scan" }).ConfigureAwait(false);
+        await _bus.PublishAsync(EventNames.ScanProgress, new ScanProgressDto { processed = 0, total = total, current_world = $"{total} 件の更新対象を確認しました", phase = "scan" }).ConfigureAwait(false);
 
         for (var i = 0; i < candidates.Count; i++)
         {
@@ -177,7 +179,7 @@ public sealed partial class PhotoScanner
 
             if (i % 10 == 0 || i == total - 1)
             {
-                await _bus.PublishAsync("scan:progress", new ScanProgressDto
+                await _bus.PublishAsync(EventNames.ScanProgress, new ScanProgressDto
                 {
                     processed = i + 1,
                     total = total,
@@ -187,7 +189,7 @@ public sealed partial class PhotoScanner
             }
         }
 
-        await _bus.PublishAsync("scan:completed", null).ConfigureAwait(false);
+        await _bus.PublishAsync(EventNames.ScanCompleted, null).ConfigureAwait(false);
     }
 
     private static PhotoUpsertData AnalyzePhoto(string path, string filename, long slot, ExistingPhotoInfo? existing, ScanRefreshKind kind)
@@ -337,12 +339,15 @@ public sealed partial class PhotoScanner
             return $"{m.Groups[1].Value} {m.Groups[2].Value.Replace('-', ':')}";
         try
         {
+            // ファイルシステムから読んだローカル時刻を InvariantCulture で format することで、
+            // PC の地域設定（区切り文字や曜日表記）に依存しない決定的な文字列にする。
+            // DB 内の比較は文字列ベースで行うため、format が環境ごとに揺れると並び順が壊れる。
             var modified = File.GetLastWriteTime(path);
-            return modified.ToString("yyyy-MM-dd HH:mm:ss");
+            return modified.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
         }
         catch
         {
-            return DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            return DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
         }
     }
 
@@ -422,7 +427,11 @@ public sealed partial class PhotoScanner
         {
             var fileMtime = File.GetLastWriteTimeUtc(path);
             var creationTs = ResolveTimestamp(path, existing.PhotoFilename);
-            if (!DateTime.TryParse(creationTs, out var created))
+            // ResolveTimestamp は InvariantCulture で format した "yyyy-MM-dd HH:mm:ss" を返すので、
+            // パースも明示的に InvariantCulture + ExactFormat にして、地域設定で format 解釈が
+            // 変わる事故を防ぐ。
+            if (!DateTime.TryParseExact(creationTs, "yyyy-MM-dd HH:mm:ss",
+                    CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var created))
                 return false;
             return fileMtime > created.ToUniversalTime().AddMinutes(1);
         }
@@ -590,8 +599,9 @@ public sealed partial class PhotoScanner
             {
                 var timeMatch = ReLogTime.Match(line);
                 var lineTime = timeMatch.Success
-                    ? DateTime.TryParseExact(timeMatch.Groups[1].Value, "yyyy.MM.dd HH:mm:ss", null, System.Globalization.DateTimeStyles.None, out var dt)
-                        ? dt.ToString("yyyy-MM-dd HH:mm:ss") : null
+                    ? DateTime.TryParseExact(timeMatch.Groups[1].Value, "yyyy.MM.dd HH:mm:ss",
+                        CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt)
+                        ? dt.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) : null
                     : null;
 
                 var enterMatch = ReLogEntering.Match(line);

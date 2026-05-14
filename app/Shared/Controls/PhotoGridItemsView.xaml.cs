@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using Alpheratz.Core;
 using Alpheratz.Features.Gallery;
@@ -49,7 +50,43 @@ public sealed partial class PhotoGridItemsView : UserControl
             throw;
         }
         PhotoItems.Loaded += PhotoItems_Loaded;
+        // Page アンマウント時に各 Image.Tag に積んだ PropertyChanged 購読を一括解除する。
+        // DataContextChanged は recycle 時には必ず呼ばれるが、Page を捨てるパスでは
+        // 個別の DataContextChanged(null) が走らずに済むこともあるため、保険として剥がす。
+        Unloaded += PhotoGridItemsView_Unloaded;
         AppLogger.Trace("PhotoGridItemsView.ctor: exit");
+    }
+
+    private void PhotoGridItemsView_Unloaded(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            UnsubscribeAllCards(PhotoItems);
+        }
+        catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.PhotoGridItemsView_Unloaded: {ex}"); }
+    }
+
+    /// <summary>
+    /// VisualTree を辿って、Image.Tag に保持されている GridImageSubscription を全て解除する。
+    /// PhotoThumbnailItem.PropertyChanged に残ったハンドラを切ることで、Page 破棄後も
+    /// Photo オブジェクトが View 側からの参照で GC されずに残るのを防ぐ。
+    /// </summary>
+    private static void UnsubscribeAllCards(DependencyObject root)
+    {
+        var stack = new Stack<DependencyObject>();
+        stack.Push(root);
+        while (stack.Count > 0)
+        {
+            var node = stack.Pop();
+            if (node is Image img && img.Tag is GridImageSubscription sub)
+            {
+                sub.Photo.PropertyChanged -= sub.Handler;
+                img.Tag = null;
+                img.Source = null;
+            }
+            var count = VisualTreeHelper.GetChildrenCount(node);
+            for (int i = 0; i < count; i++) stack.Push(VisualTreeHelper.GetChild(node, i));
+        }
     }
 
     private void PhotoItems_Loaded(object sender, RoutedEventArgs e)
@@ -77,8 +114,21 @@ public sealed partial class PhotoGridItemsView : UserControl
         return null;
     }
 
-    public ScrollViewer GridScrollViewerRef =>
-        internalScrollViewer ?? FindChildScrollViewer(PhotoItems) ?? new ScrollViewer();
+    /// <summary>
+    /// 内部の ScrollViewer 参照。未取得なら一度だけ探索しキャッシュする。
+    /// 旧実装は毎呼び出しで `new ScrollViewer()` を fallback 生成しており、
+    /// それ自体は VisualTree に組み込まれない無意味なオブジェクトだったため除去。
+    /// 取得失敗時は null を返し、呼出側で no-op を選べるようにする。
+    /// </summary>
+    public ScrollViewer? GridScrollViewerRef
+    {
+        get
+        {
+            if (internalScrollViewer is not null) return internalScrollViewer;
+            internalScrollViewer = FindChildScrollViewer(PhotoItems);
+            return internalScrollViewer;
+        }
+    }
 
     private void RecalculateCardSize(double availableWidth)
     {
@@ -197,6 +247,45 @@ public sealed partial class PhotoGridItemsView : UserControl
         catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.InternalScrollViewer_PointerWheelChanged: {ex}"); }
     }
 
+    /// <summary>
+    /// FrameworkElement の ActualTheme に対応した ThemeDictionaries からブラシを取り出す。
+    /// Application.Current.Resources["X"] では ThemeDictionaries 内のキーは解決されないため、
+    /// 明示的に ThemeDictionaries 経由で取得する必要がある。
+    /// </summary>
+    private static Brush? ResolveThemeBrush(FrameworkElement element, string key)
+    {
+        try
+        {
+            var themeKey = element.ActualTheme == ElementTheme.Dark ? "Dark" : "Light";
+            if (Application.Current.Resources.ThemeDictionaries.TryGetValue(themeKey, out var raw)
+                && raw is ResourceDictionary dict
+                && dict.TryGetValue(key, out var value)
+                && value is Brush brush)
+                return brush;
+        }
+        catch { }
+        return null;
+    }
+
+    /// <summary>
+    /// Recycle 時にホバー残留（BorderBrush/Background が hover 状態のまま）を解除する。
+    /// PointerExited はスクロールで pointer が抜けたケースで発火しないことがあるため、
+    /// DataContext 差し替えタイミングで明示的にリセットする。
+    /// </summary>
+    private void CardBorder_DataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
+    {
+        try
+        {
+            if (sender is not Border border) return;
+            ElementCompositionPreview.GetElementVisual(border).Offset = Vector3.Zero;
+            if (ResolveThemeBrush(border, "ABorder") is { } restBorder)
+                border.BorderBrush = restBorder;
+            if (ResolveThemeBrush(border, "ASurface") is { } restFill)
+                border.Background = restFill;
+        }
+        catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.CardBorder_DataContextChanged: {ex}"); }
+    }
+
     private void CardBorder_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
         try
@@ -205,10 +294,17 @@ public sealed partial class PhotoGridItemsView : UserControl
             var visual = ElementCompositionPreview.GetElementVisual(border);
             var compositor = visual.Compositor;
             var ease = compositor.CreateCubicBezierEasingFunction(new Vector2(0.25f, 0.1f), new Vector2(0.25f, 1f));
-            var anim = compositor.CreateVector3KeyFrameAnimation();
-            anim.InsertKeyFrame(1f, new Vector3(0, -1f, 0), ease);
-            anim.Duration = TimeSpan.FromMilliseconds(200);
-            visual.StartAnimation("Offset", anim);
+            var offsetAnim = compositor.CreateVector3KeyFrameAnimation();
+            offsetAnim.InsertKeyFrame(1f, new Vector3(0, -2f, 0), ease);
+            offsetAnim.Duration = TimeSpan.FromMilliseconds(180);
+            visual.StartAnimation("Offset", offsetAnim);
+
+            // 色フィードバック: 枠線をアクセント寄りに、背景をわずかに持ち上げる。
+            // Y オフセットだけだと視覚的フィードバックが弱いため。
+            if (ResolveThemeBrush(border, "ABorderStrong") is { } hoverBorder)
+                border.BorderBrush = hoverBorder;
+            if (ResolveThemeBrush(border, "ASurfaceHover") is { } hoverFill)
+                border.Background = hoverFill;
         }
         catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.CardBorder_PointerEntered: {ex}"); }
     }
@@ -221,10 +317,15 @@ public sealed partial class PhotoGridItemsView : UserControl
             var visual = ElementCompositionPreview.GetElementVisual(border);
             var compositor = visual.Compositor;
             var ease = compositor.CreateCubicBezierEasingFunction(new Vector2(0.25f, 0.1f), new Vector2(0.25f, 1f));
-            var anim = compositor.CreateVector3KeyFrameAnimation();
-            anim.InsertKeyFrame(1f, Vector3.Zero, ease);
-            anim.Duration = TimeSpan.FromMilliseconds(200);
-            visual.StartAnimation("Offset", anim);
+            var offsetAnim = compositor.CreateVector3KeyFrameAnimation();
+            offsetAnim.InsertKeyFrame(1f, Vector3.Zero, ease);
+            offsetAnim.Duration = TimeSpan.FromMilliseconds(180);
+            visual.StartAnimation("Offset", offsetAnim);
+
+            if (ResolveThemeBrush(border, "ABorder") is { } restBorder)
+                border.BorderBrush = restBorder;
+            if (ResolveThemeBrush(border, "ASurface") is { } restFill)
+                border.Background = restFill;
         }
         catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.CardBorder_PointerExited: {ex}"); }
     }

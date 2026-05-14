@@ -15,18 +15,34 @@ namespace Alpheratz.Features.Gallery.Controls;
 
 /// <summary>
 /// Canvas ベースの手動仮想化マソンリーレイアウト。
-/// ビューポート付近のカードのみ実体化し、遠方のカードは破棄してメモリを節約する。
-/// WinUI 3 の ItemsRepeater では 27,000 枚超で OOM になるため自前で実装。
+///
+/// WinUI 3 標準の ItemsRepeater は 27,000 枚超で OOM (Visual Tree が肥大しすぎ) になる
+/// ため、自前で「ビューポート付近のカードだけ実体化し、遠方のカードは破棄する」仮想化を実装。
+///
+/// 内部は 3 層に分かれる：
+///   1. レイアウト計算 (GalleryMasonryLayout) — 各写真の (top, left, width, height) を算出
+///   2. ビューポート判定 (UpdateVisibility) — 二分探索で可視範囲のレイアウトインデックスを抽出
+///   3. カード実体管理 (activeCards) — 入場・退場をスクロール量に追従させて適用
 /// </summary>
 public sealed partial class GalleryMasonryView : UserControl
 {
-    /// <summary>ビューポート外のこの範囲まで先読みしてカードを生成する。</summary>
+    /// <summary>
+    /// ビューポート外のこの範囲まで先読みしてカードを生成する。
+    /// 400px = 平均カード約 1.5 段分。スクロール中にすぐ見える距離をプリロードすることで
+    /// 「真っ白なまま画像が遅延してくる」体験を抑える。大きくしすぎるとメモリ消費が増える。
+    /// </summary>
     private const double OverscanPx = 400;
 
-    /// <summary>この範囲を超えたカードを即座に破棄する。OverscanPx より大きくすることでチラつきを防ぐ。</summary>
+    /// <summary>
+    /// この範囲を超えたカードを破棄する。OverscanPx より十分大きく (3 倍 = 1200px) することで、
+    /// 戻り方向の小スクロールでも前段で破棄したカードを再生成しなくて済み、チラつきを防ぐ。
+    /// </summary>
     private const double ReleaseMarginPx = 1200;
 
-    /// <summary>OverscanPx～ReleaseMarginPx 間のカードは画像を解放するまでこの時間だけ待つ。</summary>
+    /// <summary>
+    /// OverscanPx～ReleaseMarginPx 間のカードは「準退場」扱いで、この時間だけ破棄を遅延する。
+    /// スクロール反転の頻度が高い操作で、即破棄＋即再生成のバタつきを抑えるためのヒステリシス。
+    /// </summary>
     private const int ReleaseDelayMs = 250;
 
     private UiObservableCollection<PhotoThumbnailItem>? photos;

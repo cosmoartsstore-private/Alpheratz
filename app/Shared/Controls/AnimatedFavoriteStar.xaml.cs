@@ -41,16 +41,28 @@ public sealed partial class AnimatedFavoriteStar : UserControl
             try
             {
                 ApplyLiked(false);
+                UpdateAutomationName();
             }
             catch (Exception ex) { AppLogger.Error($"AnimatedFavoriteStar.Loaded: {ex}"); }
         };
+    }
+
+    /// <summary>UI Automation 用に、現在の Liked 状態に応じたアクセシブル名をセット。</summary>
+    private void UpdateAutomationName()
+    {
+        var name = Liked ? "お気に入り解除" : "お気に入りに追加";
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(this, name);
     }
 
     private static void OnLikedChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         try
         {
-            if (d is AnimatedFavoriteStar control) control.ApplyLiked(true);
+            if (d is AnimatedFavoriteStar control)
+            {
+                control.ApplyLiked(true);
+                control.UpdateAutomationName();
+            }
         }
         catch (Exception ex) { AppLogger.Error($"AnimatedFavoriteStar.OnLikedChanged: {ex}"); }
     }

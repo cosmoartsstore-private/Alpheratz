@@ -9,10 +9,14 @@
         Background="{ThemeResource ASurface}"
         BorderBrush="{ThemeResource ABorder}"
         BorderThickness="0,0,0,1">
-        <Grid ColumnSpacing="12">
+        <Grid ColumnSpacing="10">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
@@ -20,7 +24,9 @@
             <Button x:Name="FilterPillBtn" Grid.Column="0"
                     Style="{StaticResource HeaderPillButtonStyle}"
                     Click="FilterButton_Click"
-                    VerticalAlignment="Center">
+                    VerticalAlignment="Center"
+                    AutomationProperties.Name="検索条件を開く"
+                    AutomationProperties.HelpText="ワールド・タグ・撮影日・お気に入りで絞り込むパネルを表示します">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <shared:AppIcon IconName="search" IconSize="16" Foreground="{ThemeResource ATextDim}"/>
                     <TextBlock Text="検索条件" FontSize="{StaticResource AFontSizeSm}" FontWeight="ExtraBold"/>
@@ -28,7 +34,7 @@
                         <TextBlock
                             Text="{Binding galleryViewModel.filtersState.ActiveFilterCount}"
                             Foreground="White"
-                            FontSize="10"
+                            FontSize="{StaticResource AFontSizeXs}"
                             FontWeight="ExtraBold"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"/>
@@ -54,20 +60,91 @@
                     <shared:AppIcon IconName="search" IconSize="16"
                                    Foreground="{ThemeResource ATextFaint}"
                                    VerticalAlignment="Center"/>
-                    <TextBox Grid.Column="1"
+                    <TextBox x:Name="SearchTextBox" Grid.Column="1"
                              BorderThickness="0"
                              Background="Transparent"
                              Text="{Binding galleryViewModel.filtersState.SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                              PlaceholderText="ワールド名で検索..."
                              FontSize="{StaticResource AFontSizeMd}"
-                             VerticalAlignment="Center"/>
+                             VerticalAlignment="Center"
+                             AutomationProperties.Name="ワールド名検索"
+                             GotFocus="SearchTextBox_GotFocus"
+                             LostFocus="SearchTextBox_LostFocus"/>
                 </Grid>
             </Border>
 
+            <!--
+                PDQ progress chip (旧 RightRail から移植)。
+                ハッシュ計算中だけ表示され、完了数 / 全体数を pill 形状で示す。
+                visibility は SetPdqProgress 経由でコード側からセットする。
+            -->
+            <Border x:Name="PdqProgressChip" Grid.Column="2"
+                    Visibility="Collapsed"
+                    MinHeight="24"
+                    Padding="10,2"
+                    CornerRadius="{StaticResource ARadiusPill}"
+                    BorderBrush="{ThemeResource ABorderStrong}"
+                    BorderThickness="1"
+                    Background="{ThemeResource APrimarySoft}"
+                    VerticalAlignment="Center"
+                    ToolTipService.ToolTip="類似画像 (PDQ) ハッシュの計算進捗"
+                    AutomationProperties.Name="PDQ 進捗">
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <ProgressRing IsActive="True" Width="12" Height="12"
+                                  Foreground="{ThemeResource APrimary}"
+                                  VerticalAlignment="Center"/>
+                    <TextBlock x:Name="PdqProgressText"
+                               FontSize="{StaticResource AFontSizeXs}"
+                               FontWeight="Bold"
+                               Foreground="{ThemeResource APrimary}"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+
+            <!--
+                Right side: gallery view controls + settings.
+                LeftRail から移植した 3 つのトグル (ビューモード / グループ化 / 複数選択) を、
+                設定ボタンの直前に並べる。各ボタンは binary トグルで、アクティブ時に
+                背景・枠線・前景色が APrimarySoft / ABorderStrong / APrimary に切り替わる
+                (UpdateActiveStyle ヘルパで code-behind から付与)。
+            -->
+
+            <!-- View mode toggle (standard <-> gallery / masonry) -->
+            <Button x:Name="ViewModeBtn" Grid.Column="3"
+                    Style="{StaticResource HeaderIconButtonStyle}"
+                    AutomationProperties.Name="表示モード切替"
+                    ToolTipService.ToolTip="表示モード切替 (標準グリッド / マソンリー)"
+                    Click="ViewModeBtn_Click"
+                    VerticalAlignment="Center">
+                <shared:AppIcon x:Name="ViewModeIcon" IconName="grid" IconSize="16" Foreground="{ThemeResource ATextDim}"/>
+            </Button>
+
+            <!-- Grouping toggle (none <-> world). Masonry 表示中は無効化される。 -->
+            <Button x:Name="GroupingBtn" Grid.Column="4"
+                    Style="{StaticResource HeaderIconButtonStyle}"
+                    AutomationProperties.Name="グループ化切替"
+                    ToolTipService.ToolTip="ワールド単位でグループ化"
+                    Click="GroupingBtn_Click"
+                    VerticalAlignment="Center">
+                <shared:AppIcon x:Name="GroupingIcon" IconName="group" IconSize="16" Foreground="{ThemeResource ATextDim}"/>
+            </Button>
+
+            <!-- Multi-select toggle -->
+            <Button x:Name="MultiSelectBtn" Grid.Column="5"
+                    Style="{StaticResource HeaderIconButtonStyle}"
+                    AutomationProperties.Name="複数選択モード切替"
+                    ToolTipService.ToolTip="複数選択モードを切り替える"
+                    Click="MultiSelectBtn_Click"
+                    VerticalAlignment="Center">
+                <shared:AppIcon x:Name="MultiSelectIcon" IconName="selectMultiple" IconSize="16" Foreground="{ThemeResource ATextDim}"/>
+            </Button>
+
             <!-- Right: settings gear -->
-            <Button x:Name="SettingsGearBtn" Grid.Column="2"
+            <Button x:Name="SettingsGearBtn" Grid.Column="6"
                     Style="{StaticResource HeaderIconButtonStyle}"
                     ToolTipService.ToolTip="設定"
+                    AutomationProperties.Name="設定"
+                    AutomationProperties.HelpText="アプリの設定画面を開きます"
                     Click="SettingsGearBtn_Click"
                     VerticalAlignment="Center">
                 <shared:AppIcon IconName="settings" IconSize="16" Foreground="{ThemeResource ATextDim}"/>

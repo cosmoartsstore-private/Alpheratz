@@ -9,10 +9,33 @@
             <ColumnDefinition Width="*"/>
             <ColumnDefinition x:Name="MonthNavColumn" Width="56"/>
         </Grid.ColumnDefinitions>
-        <shared:PhotoGrid x:Name="PhotoGridControl" Grid.Column="0"/>
-        <galleryControls:GalleryMasonryView x:Name="MasonryViewControl" Grid.Column="0"
-                                            HorizontalAlignment="Stretch" Visibility="Collapsed"/>
-        <shared:EmptyState x:Name="EmptyStateControl" Grid.Column="0" Visibility="Collapsed"/>
+
+        <Grid Grid.Column="0">
+            <shared:PhotoGrid x:Name="PhotoGridControl"/>
+            <!--
+                MasonryView は ViewMode.gallery のときだけ実体化したいので x:Load=False で
+                初期化を遅延する。SetMasonryActive(true) 時に FindName で初めて生成される。
+            -->
+            <galleryControls:GalleryMasonryView x:Name="MasonryViewControl"
+                                                x:Load="False"
+                                                HorizontalAlignment="Stretch" Visibility="Collapsed"/>
+            <shared:EmptyState x:Name="EmptyStateControl" Visibility="Collapsed"/>
+
+            <!-- Loading veil: 半透明で背景グリッドを覆い、ロード中であることを示す -->
+            <Grid x:Name="LoadingVeil" Visibility="Collapsed"
+                  Background="{ThemeResource ASurfaceVeil}"
+                  IsHitTestVisible="False">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
+                    <ProgressRing Width="36" Height="36" IsActive="True"
+                                  Foreground="{ThemeResource APrimary}"/>
+                    <TextBlock Text="写真を読み込み中..."
+                               Style="{StaticResource CaptionTextStyle}"
+                               Foreground="{ThemeResource ATextDim}"
+                               HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Grid>
+        </Grid>
+
         <galleryControls:MonthNav x:Name="MonthNavControl" Grid.Column="1"/>
     </Grid>
 </UserControl>

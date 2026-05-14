@@ -102,17 +102,12 @@ public sealed partial class GalleryPage : Page
 
             viewModel.selectionState.PropertyChanged += OnSelectionStateChanged;
             viewModel.selectionState.selectedPhotoPaths.CollectionChanged += OnSelectedPathsChanged;
+            viewModel.photosState.PropertyChanged += OnPhotosStateChanged;
 
-            // MasonryView のコールバック結線
-            if (GridStage.MasonryViewControlRef is { } masonry)
-            {
-                masonry.SetColumnCount(5);
-                masonry.SetPhotos(viewModel.photosState.photos);
-                masonry.OnPhotoTapped = photo => viewModel.handlePhotoActivate(
-                    new PhotoGridItem { Photo = photo }, false, p => OnSelectPhoto?.Invoke(p));
-                masonry.OnThumbnailsNeeded = items => viewModel.photosState.requestVisibleThumbnails(items);
-                masonry.OnFirstVisibleIndexChanged = idx => SyncMonthNavToIndex(idx);
-            }
+            // MasonryView のコールバック結線。x:Load=False で遅延生成されるため、
+            // 最初に SetMasonryActive(true) が呼ばれて実体化された瞬間に結線する。
+            GridStage.OnMasonryRealized = WireMasonryCallbacks;
+
             if (GridStage.MonthNavControlRef is { } monthNav)
             {
                 monthNav.OnJumpToMonth = group =>
@@ -214,6 +209,45 @@ public sealed partial class GalleryPage : Page
         catch (Exception ex)
         {
             AppLogger.Error($"GalleryPage.OnDisplayStateChanged: threw: {ex}");
+        }
+    }
+
+    /// <summary>
+    /// MasonryView が遅延生成されたタイミングで一度だけ呼ばれ、コールバックと初期データを結線する。
+    /// 以降のフィルタ変更や ViewMode 切替時は photos コレクション自体が共有参照なので
+    /// 再 SetPhotos しなくても要素変化が伝播する。
+    /// </summary>
+    private void WireMasonryCallbacks(Controls.GalleryMasonryView masonry)
+    {
+        try
+        {
+            masonry.SetColumnCount(5);
+            masonry.SetPhotos(viewModel.photosState.photos);
+            masonry.OnPhotoTapped = photo => viewModel.handlePhotoActivate(
+                new PhotoGridItem { Photo = photo }, false, p => OnSelectPhoto?.Invoke(p));
+            masonry.OnThumbnailsNeeded = items => viewModel.photosState.requestVisibleThumbnails(items);
+            masonry.OnFirstVisibleIndexChanged = idx => SyncMonthNavToIndex(idx);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"GalleryPage.WireMasonryCallbacks: threw: {ex}");
+        }
+    }
+
+    /// <summary>IsLoading / TotalCount の変化を GridStage の表示出し分けに反映する。</summary>
+    private void OnPhotosStateChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        try
+        {
+            if (e.PropertyName == nameof(viewModel.photosState.IsLoading)
+                || e.PropertyName == nameof(viewModel.photosState.TotalCount))
+            {
+                GridStage.UpdateLoadingState(viewModel.photosState.IsLoading, viewModel.photosState.TotalCount);
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"GalleryPage.OnPhotosStateChanged: threw: {ex}");
         }
     }
 
@@ -363,17 +397,12 @@ public sealed partial class GalleryPage : Page
 
     private void Page_Loaded(object sender, RoutedEventArgs e)
     {
-        viewModel.selectionState.PropertyChanged -= OnSelectionStateChanged;
-        viewModel.selectionState.selectedPhotoPaths.CollectionChanged -= OnSelectedPathsChanged;
-        viewModel.displayState.PropertyChanged -= OnDisplayStateChanged;
-
-        viewModel.selectionState.PropertyChanged += OnSelectionStateChanged;
-        viewModel.selectionState.selectedPhotoPaths.CollectionChanged += OnSelectedPathsChanged;
-        viewModel.displayState.PropertyChanged += OnDisplayStateChanged;
-
+        // ctor で購読、Unloaded で解除する片付け済みパスを通すので、ここでは
+        // 二重購読しない。再ナビゲーション時の状態同期のみ実行する。
         var isGallery = viewModel.displayState.ViewMode == Shared.Models.ViewMode.gallery;
         GridStage.SetMasonryActive(isGallery);
         FilterPanel.SetGroupingEnabled(!isGallery);
+        GridStage.UpdateLoadingState(viewModel.photosState.IsLoading, viewModel.photosState.TotalCount);
     }
 
     private void Page_Unloaded(object sender, RoutedEventArgs e)
@@ -381,9 +410,11 @@ public sealed partial class GalleryPage : Page
         viewModel.selectionState.PropertyChanged -= OnSelectionStateChanged;
         viewModel.selectionState.selectedPhotoPaths.CollectionChanged -= OnSelectedPathsChanged;
         viewModel.displayState.PropertyChanged -= OnDisplayStateChanged;
+        viewModel.photosState.PropertyChanged -= OnPhotosStateChanged;
 
         viewModel.photosState.OnMonthGroupsChanged = null;
         viewModel.photosState.OnPhotosReplaced = null;
+        GridStage.OnMasonryRealized = null;
         if (GridStage.MasonryViewControlRef is { } masonry)
         {
             masonry.OnPhotoTapped = null;

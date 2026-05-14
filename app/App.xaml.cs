@@ -82,7 +82,6 @@ public partial class App : Application
         services.AddSingleton<ThumbnailWorker>();
         services.AddSingleton(_ => new DispatcherService(dispatcherQueue));
         services.AddSingleton<PhotoScanner>();
-        services.AddSingleton<NavigationService>();
         services.AddSingleton<ToastService>();
         services.AddSingleton<DialogService>();
         services.AddSingleton<SettingsService>();
