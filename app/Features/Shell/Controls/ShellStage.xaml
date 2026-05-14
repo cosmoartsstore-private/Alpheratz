@@ -9,23 +9,6 @@
                         HorizontalContentAlignment="Stretch"
                         VerticalContentAlignment="Stretch"/>
 
-        <!-- Back to gallery button (non-gallery screens) -->
-        <Button x:Name="BackToGalleryBtn"
-                HorizontalAlignment="Left" VerticalAlignment="Top"
-                Margin="20,16,0,0"
-                Visibility="Collapsed"
-                Style="{StaticResource GhostButtonStyle}"
-                Padding="12,8"
-                Click="BackToGalleryBtn_Click">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <FontIcon Glyph="&#xE72B;" FontSize="13"
-                          Foreground="{ThemeResource ATextDim}"
-                          VerticalAlignment="Center"/>
-                <TextBlock Text="ギャラリーに戻る" FontSize="12" FontWeight="Bold"
-                           Foreground="{ThemeResource ATextDim}"/>
-            </StackPanel>
-        </Button>
-
         <!--
             Modal レイヤは 2 段スタック。
               ModalLayerHost (中位)         : Settings / WorldResolve / GroupDrillDown

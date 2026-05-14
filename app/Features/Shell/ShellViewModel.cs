@@ -26,7 +26,6 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     private const bool DETACH_RUNTIME_DATA = false;
     private const bool DETACH_AUXILIARY_RUNTIME_DATA = false;
 
-    private readonly NavigationService navigationService;
     private readonly SettingsService settingsService;
     private readonly AlpheratzDb db;
     private readonly PhotoScanner scanner;
@@ -61,12 +60,6 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     public TagMasterViewModel tagMasterViewModel { get; }
     public TemplatePageViewModel templatePageViewModel { get; }
 
-    public MainScreen activeMainScreen
-    {
-        get => navigationService.ActiveMainScreen;
-        set { navigationService.ActiveMainScreen = value; OnPropertyChanged(); }
-    }
-
     private string scanStatus = "idle";
     private ScanProgressDto scanProgress = new() { processed = 0, total = 0, current_world = "", phase = "scan" };
     private string photoFolderPath = "";
@@ -99,7 +92,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     public string ActiveTweetTemplate { get => activeTweetTemplate; set => SetProperty(ref activeTweetTemplate, value); }
 
     public ShellViewModel(
-        NavigationService navigationService, SettingsService settingsService, AlpheratzDb db, PhotoScanner scanner,
+        SettingsService settingsService, AlpheratzDb db, PhotoScanner scanner,
         PhashService phashService, OrientationService orientationService, WorldService worldService,
         LocalEventBus eventBus, ToastService toastService, GalleryViewModel galleryViewModel,
         SettingsViewModel settingsViewModel, TagMasterViewModel tagMasterViewModel,
@@ -107,7 +100,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         ThumbnailWorker thumbnailWorker)
     {
         AppLogger.Trace("ShellViewModel.ctor: enter");
-        this.navigationService = navigationService; this.settingsService = settingsService; this.db = db;
+        this.settingsService = settingsService; this.db = db;
         this.scanner = scanner; this.phashService = phashService; this.orientationService = orientationService;
         this.worldService = worldService; this.eventBus = eventBus; this.toastService = toastService;
         this.galleryViewModel = galleryViewModel; this.settingsViewModel = settingsViewModel;
@@ -180,13 +173,6 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         }
         catch (Exception ex) { AppLogger.Error($"ShellViewModel.initialize: threw: {ex}"); throw; }
         AppLogger.Trace("ShellViewModel.initialize: exit");
-    }
-
-    public void setActiveMainScreen(MainScreen screen)
-    {
-        AppLogger.Trace($"ShellViewModel.setActiveMainScreen: enter screen={screen}");
-        activeMainScreen = screen;
-        AppLogger.Trace("ShellViewModel.setActiveMainScreen: exit");
     }
 
     public Task startScan()

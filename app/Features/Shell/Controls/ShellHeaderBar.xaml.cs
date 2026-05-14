@@ -55,32 +55,6 @@ public sealed partial class ShellHeaderBar : UserControl
         AppLogger.Trace("ShellHeaderBar.ctor: exit");
     }
 
-    /// <summary>
-    /// 設定/タグ/テンプレ画面表示時にギャラリー操作系を一括無効化するための API。
-    /// 旧 LeftRail との互換のため残す (Step 9 で TagMaster/Template Page を消した後は
-    /// 呼び出し元が無くなるが、安全のためメソッドは維持)。
-    /// </summary>
-    public void SetGalleryControlsEnabled(bool enabled)
-    {
-        try
-        {
-            FilterPillBtn.IsEnabled = enabled;
-            FilterPillBtn.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
-            SearchBoxBorder.IsHitTestVisible = enabled;
-            SearchBoxBorder.Opacity = enabled ? 1.0 : 0.4;
-            ViewModeBtn.IsEnabled = enabled;
-            GroupingBtn.IsEnabled = enabled && currentViewMode != ViewMode.gallery;
-            MultiSelectBtn.IsEnabled = enabled;
-            var opacity = enabled ? 1.0 : 0.4;
-            ViewModeBtn.Opacity = opacity;
-            GroupingBtn.Opacity = opacity;
-            MultiSelectBtn.Opacity = opacity;
-            // PDQ 進捗チップもギャラリー操作系の dim に合わせる。chip だけ通常視認性で
-            // 浮き立つのを防ぐ (TagMaster/Template Page 表示中の見た目を一貫させる)。
-            PdqProgressChip.Opacity = opacity;
-        }
-        catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.SetGalleryControlsEnabled: threw: {ex}"); }
-    }
 
     // -----------------------------------------------------------------------
     // 状態同期 API (ShellPage から呼ばれる)

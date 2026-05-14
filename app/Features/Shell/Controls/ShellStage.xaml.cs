@@ -8,13 +8,16 @@ using Microsoft.UI.Xaml.Controls;
 namespace Alpheratz.Features.Shell.Controls;
 
 /// <summary>
-/// メインコンテンツ領域。MainContent を差し替えることでギャラリー・設定・タグマスタ等の
-/// ページ遷移を行う。モーダル (PhotoModal/WorldResolve) 表示用の上層スロットも提供する。
+/// メインコンテンツ領域。MainContent (常時 GalleryPage) の上に 2 段スタックの
+/// モーダルレイヤと、ScanningOverlay / ToastHost を重ねる構造。
+///   Layer 0: MainContent (GalleryPage 固定)
+///   Layer 1: ModalLayerHost (中位: Settings / WorldResolve / GroupDrillDown)
+///   Layer 2: TopModalLayerHost (最上位: PhotoModal)
+///   Layer 3: ScanningOverlay (スキャン進捗)
+///   Layer 4: ToastHost
 /// </summary>
 public sealed partial class ShellStage : UserControl
 {
-    /// <summary>ヘッダの戻るボタンが押されたときに発火 (Settings/TagMaster/Template から Gallery 復帰用)。</summary>
-    public Action? OnBackToGallery { get; set; }
     public ShellStage()
     {
         AppLogger.Trace("ShellStage.ctor: enter");
@@ -192,15 +195,4 @@ public sealed partial class ShellStage : UserControl
     }
 
     public Shared.Controls.ScanningOverlay ScanningOverlayControlRef => ScanningOverlayControl;
-
-    public void SetBackButtonVisible(bool visible)
-    {
-        BackToGalleryBtn.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    private void BackToGalleryBtn_Click(object sender, RoutedEventArgs e)
-    {
-        try { OnBackToGallery?.Invoke(); }
-        catch (Exception ex) { AppLogger.Error($"ShellStage.BackToGalleryBtn_Click: threw: {ex}"); }
-    }
 }

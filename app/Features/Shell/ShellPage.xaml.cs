@@ -7,8 +7,6 @@ using Alpheratz.Core;
 using Alpheratz.Features.Gallery;
 using Alpheratz.Features.PhotoModal;
 using Alpheratz.Features.Settings;
-using Alpheratz.Features.TagMaster;
-using Alpheratz.Features.Template;
 using Alpheratz.Features.WorldResolve;
 using Alpheratz.Shared.Animations;
 using Alpheratz.Shared.Models;
@@ -22,8 +20,6 @@ public sealed partial class ShellPage : Page
     private readonly ShellViewModel viewModel;
     private GalleryPage? galleryPage;
     private SettingsPage? settingsPage;
-    private TagMasterPage? tagMasterPage;
-    private TemplatePage? templatePage;
     private PhotoModalPage? cachedModalPage;
     private bool isFilterOpen;
     private bool isModalOpen;
@@ -78,7 +74,6 @@ public sealed partial class ShellPage : Page
             // 知らずに済むようにするため。
             viewModel.galleryViewModel.drillDownPhotosProvider = () => drillDownPhotos;
 
-            Stage.OnBackToGallery = ShowGallery;
             Stage.ScanningOverlayControlRef.OnCancelScan = viewModel.cancelScan;
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ctor: wiring failed: {ex}"); throw; }
@@ -192,10 +187,8 @@ public sealed partial class ShellPage : Page
                 galleryPage.SetMasterTags(viewModel.tagMasterViewModel.masterTags);
             }
             Stage.MainContent = galleryPage;
-            Stage.SetBackButtonVisible(false);
             HeaderBar.SetViewMode(viewModel.ViewMode);
             HeaderBar.SetGroupingMode(viewModel.galleryViewModel.filtersState.GroupingMode);
-            HeaderBar.SetGalleryControlsEnabled(true);
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowGallery: threw: {ex}"); }
         AppLogger.Trace("ShellPage.ShowGallery: exit");
@@ -347,56 +340,6 @@ public sealed partial class ShellPage : Page
         AppLogger.Trace("ShellPage.ShowSettings: exit");
     }
 
-    public void ShowTagMaster()
-    {
-        AppLogger.Trace("ShellPage.ShowTagMaster: enter");
-        try
-        {
-            if (tagMasterPage is null)
-            {
-                tagMasterPage = new TagMasterPage(viewModel.tagMasterViewModel)
-                {
-                    OnCreateTag = viewModel.tagMasterViewModel.createTag,
-                    OnDeleteTag = viewModel.tagMasterViewModel.deleteTag,
-                };
-            }
-            Stage.MainContent = tagMasterPage;
-            Stage.SetBackButtonVisible(true);
-            HeaderBar.SetGalleryControlsEnabled(false);
-        }
-        catch (Exception ex) { AppLogger.Error($"ShellPage.ShowTagMaster: threw: {ex}"); }
-        AppLogger.Trace("ShellPage.ShowTagMaster: exit");
-    }
-
-    public void ShowTemplate()
-    {
-        AppLogger.Trace("ShellPage.ShowTemplate: enter");
-        try
-        {
-            if (templatePage is null)
-            {
-                templatePage = new TemplatePage(viewModel.templatePageViewModel)
-                {
-                    OnCancelEdit = viewModel.templatePageViewModel.cancelEdit,
-                    OnStartEdit = viewModel.templatePageViewModel.startEdit,
-                    // R2-A-2: deleteTemplate は currentSetting を要求するため、ここで現在の設定を取って渡す。
-                    OnDeleteTemplate = template => viewModel.templatePageViewModel.deleteTemplate(template, viewModel.buildSettingPayload()),
-                    OnSaveTemplate = () => viewModel.templatePageViewModel.saveTemplate(viewModel.buildSettingPayload()),
-                    OnSelectTemplate = async template =>
-                    {
-                        viewModel.templatePageViewModel.ActiveTweetTemplate = template;
-                        await viewModel.templatePageViewModel.saveTemplates(viewModel.buildSettingPayload()).ConfigureAwait(false);
-                    },
-                };
-            }
-            Stage.MainContent = templatePage;
-            Stage.SetBackButtonVisible(true);
-            HeaderBar.SetGalleryControlsEnabled(false);
-        }
-        catch (Exception ex) { AppLogger.Error($"ShellPage.ShowTemplate: threw: {ex}"); }
-        AppLogger.Trace("ShellPage.ShowTemplate: exit");
-    }
-
     /// <summary>
     /// 写真詳細モーダルを表示する。最上位レイヤ (Stage.TopModalContent) に出すことで、
     /// 中位モーダル (GroupDrillDown / Settings 等) の上にさらに重ねられる構造になる。
@@ -422,12 +365,14 @@ public sealed partial class ShellPage : Page
             page.OnClose = () => { modalViewModel.closePhotoModal(); CloseModal(); };
             page.OnOpenWorld = modalViewModel.handleOpenWorld;
             page.OnOpenExplorer = modalViewModel.handleOpenExplorer;
-            // PhotoModal からタグマスタ画面への導線。
+            // PhotoModal から「タグマスタを編集」する導線は、Step 1 でタグマスタが
+            // Settings モーダル内のセクションに統合されたので Settings を開く動作に変更。
+            // PhotoModal を閉じてから Settings モーダルを開く。
             page.OnOpenTagMaster = () =>
             {
                 modalViewModel.closePhotoModal();
                 CloseModal();
-                ShowTagMaster();
+                ShowSettings();
             };
             page.OnToggleFavorite = async () =>
             {
