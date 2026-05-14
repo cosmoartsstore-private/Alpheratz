@@ -39,26 +39,27 @@ public sealed partial class ShellPage : Page
 
         try
         {
+            // ヘッダーバーのコールバック (検索条件 / 設定 / 3 つのトグル)。
+            // LeftRail から移植したトグル系も HeaderBar 上で発火するようにする。
             HeaderBar.OnToggleFilter = ToggleFilter;
             HeaderBar.OnShowSettings = ShowSettings;
-            LeftRail.OnShowGallery = ShowGallery;
-            LeftRail.OnShowTagMaster = ShowTagMaster;
-            LeftRail.OnShowTemplate = ShowTemplate;
-            LeftRail.OnToggleMultiSelect = () =>
+            HeaderBar.OnToggleMultiSelect = () =>
             {
                 viewModel.galleryViewModel.selectionState.handleToggleMultiSelectMode();
-                LeftRail.SetMultiSelectActive(viewModel.galleryViewModel.selectionState.IsMultiSelectMode);
+                HeaderBar.SetMultiSelectActive(viewModel.galleryViewModel.selectionState.IsMultiSelectMode);
             };
-            LeftRail.OnGroupingChange = async mode =>
+            HeaderBar.OnGroupingChange = async mode =>
             {
+                // masonry (gallery) 表示中にグループ化 (world) を要求された場合は、先に
+                // 標準グリッドへ戻してからグループ化を適用する。masonry はグループ化非対応。
                 if (mode != GroupingMode.none && viewModel.ViewMode == ViewMode.gallery)
                     await viewModel.handleSetViewMode(ViewMode.standard).ConfigureAwait(true);
                 viewModel.galleryViewModel.displayState.prepareGroupingModeChange(
                     viewModel.galleryViewModel.filtersState.GroupingMode, mode,
                     m => viewModel.galleryViewModel.filtersState.GroupingMode = m);
-                LeftRail.SetGroupingMode(mode);
+                HeaderBar.SetGroupingMode(mode);
             };
-            LeftRail.OnViewModeChange = async modeStr =>
+            HeaderBar.OnViewModeChange = async modeStr =>
             {
                 var mode = modeStr == "gallery" ? ViewMode.gallery : ViewMode.standard;
                 await viewModel.handleSetViewMode(mode).ConfigureAwait(false);
@@ -84,7 +85,8 @@ public sealed partial class ShellPage : Page
 
         AppLogger.Trace("ShellPage.ctor: wiring done, calling ShowGallery");
         ShowGallery();
-        LeftRail.SetViewMode(viewModel.ViewMode);
+        HeaderBar.SetViewMode(viewModel.ViewMode);
+        HeaderBar.SetGroupingMode(viewModel.galleryViewModel.filtersState.GroupingMode);
         AppLogger.Trace("ShellPage.ctor: exit");
     }
 
@@ -94,7 +96,7 @@ public sealed partial class ShellPage : Page
         try
         {
             if (e.PropertyName == nameof(viewModel.galleryViewModel.selectionState.IsMultiSelectMode))
-                LeftRail.SetMultiSelectActive(viewModel.galleryViewModel.selectionState.IsMultiSelectMode);
+                HeaderBar.SetMultiSelectActive(viewModel.galleryViewModel.selectionState.IsMultiSelectMode);
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.OnSelectionStateChanged: threw: {ex}"); }
         AppLogger.Trace("ShellPage.OnSelectionStateChanged: exit");
@@ -107,8 +109,8 @@ public sealed partial class ShellPage : Page
         {
             if (e.PropertyName == nameof(viewModel.ViewMode))
             {
-                LeftRail.SetViewMode(viewModel.ViewMode);
-                LeftRail.SetGroupingMode(viewModel.galleryViewModel.filtersState.GroupingMode);
+                HeaderBar.SetViewMode(viewModel.ViewMode);
+                HeaderBar.SetGroupingMode(viewModel.galleryViewModel.filtersState.GroupingMode);
             }
             else if (e.PropertyName == nameof(viewModel.ScanStatus)) UpdateScanningOverlayVisibility();
             else if (e.PropertyName == nameof(viewModel.PendingFolderPath) && viewModel.PendingFolderPath is not null) _ = ShowFolderChangeConfirmAsync();
@@ -188,9 +190,8 @@ public sealed partial class ShellPage : Page
             }
             Stage.MainContent = galleryPage;
             Stage.SetBackButtonVisible(false);
-            LeftRail.SetActiveScreen(MainScreen.gallery);
-            LeftRail.SetViewMode(viewModel.ViewMode);
-            LeftRail.SetGroupingMode(viewModel.galleryViewModel.filtersState.GroupingMode);
+            HeaderBar.SetViewMode(viewModel.ViewMode);
+            HeaderBar.SetGroupingMode(viewModel.galleryViewModel.filtersState.GroupingMode);
             HeaderBar.SetGalleryControlsEnabled(true);
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowGallery: threw: {ex}"); }
@@ -245,7 +246,7 @@ public sealed partial class ShellPage : Page
             Stage.ModalVisibility = Visibility.Visible;
             isMiddleModalOpen = true;
             HeaderBar.Opacity = 0.4;
-            LeftRail.Opacity = 0.4;
+// LeftRail removed (Step 5)
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowGroupDrillDown: threw: {ex}"); }
         AppLogger.Trace("ShellPage.ShowGroupDrillDown: exit");
@@ -267,7 +268,7 @@ public sealed partial class ShellPage : Page
             if (!isModalOpen)
             {
                 HeaderBar.Opacity = 1.0;
-                LeftRail.Opacity = 1.0;
+// LeftRail removed (Step 5)
             }
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.CloseMiddleModal: threw: {ex}"); }
@@ -340,7 +341,7 @@ public sealed partial class ShellPage : Page
             Stage.ModalVisibility = Visibility.Visible;
             isMiddleModalOpen = true;
             HeaderBar.Opacity = 0.4;
-            LeftRail.Opacity = 0.4;
+// LeftRail removed (Step 5)
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowSettings: threw: {ex}"); }
         AppLogger.Trace("ShellPage.ShowSettings: exit");
@@ -361,7 +362,7 @@ public sealed partial class ShellPage : Page
             }
             Stage.MainContent = tagMasterPage;
             Stage.SetBackButtonVisible(true);
-            LeftRail.SetActiveScreen(MainScreen.tagMaster);
+// LeftRail removed (Step 5)
             HeaderBar.SetGalleryControlsEnabled(false);
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowTagMaster: threw: {ex}"); }
@@ -391,7 +392,7 @@ public sealed partial class ShellPage : Page
             }
             Stage.MainContent = templatePage;
             Stage.SetBackButtonVisible(true);
-            LeftRail.SetActiveScreen(MainScreen.template);
+// LeftRail removed (Step 5)
             HeaderBar.SetGalleryControlsEnabled(false);
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowTemplate: threw: {ex}"); }
@@ -454,7 +455,7 @@ public sealed partial class ShellPage : Page
             Stage.TopModalVisibility = Visibility.Visible;
             isModalOpen = true;
             HeaderBar.Opacity = 0.4;
-            LeftRail.Opacity = 0.4;
+// LeftRail removed (Step 5)
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowPhotoModal: threw: {ex}"); }
         AppLogger.Trace("ShellPage.ShowPhotoModal: exit");
@@ -482,7 +483,7 @@ public sealed partial class ShellPage : Page
             Stage.ModalVisibility = Visibility.Visible;
             isMiddleModalOpen = true;
             HeaderBar.Opacity = 0.4;
-            LeftRail.Opacity = 0.4;
+// LeftRail removed (Step 5)
             await vm.InitializeAsync().ConfigureAwait(false);
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowWorldResolveModalAsync: threw: {ex}"); }
@@ -506,7 +507,7 @@ public sealed partial class ShellPage : Page
             if (!isMiddleModalOpen)
             {
                 HeaderBar.Opacity = 1.0;
-                LeftRail.Opacity = 1.0;
+// LeftRail removed (Step 5)
             }
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.CloseModal: threw: {ex}"); }

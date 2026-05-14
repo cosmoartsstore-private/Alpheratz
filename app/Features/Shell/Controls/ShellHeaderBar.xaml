@@ -9,10 +9,13 @@
         Background="{ThemeResource ASurface}"
         BorderBrush="{ThemeResource ABorder}"
         BorderThickness="0,0,0,1">
-        <Grid ColumnSpacing="12">
+        <Grid ColumnSpacing="10">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
@@ -30,7 +33,7 @@
                         <TextBlock
                             Text="{Binding galleryViewModel.filtersState.ActiveFilterCount}"
                             Foreground="White"
-                            FontSize="10"
+                            FontSize="{StaticResource AFontSizeXs}"
                             FontWeight="ExtraBold"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"/>
@@ -69,8 +72,46 @@
                 </Grid>
             </Border>
 
+            <!--
+                Right side: gallery view controls + settings.
+                LeftRail から移植した 3 つのトグル (ビューモード / グループ化 / 複数選択) を、
+                設定ボタンの直前に並べる。各ボタンは binary トグルで、アクティブ時に
+                背景・枠線・前景色が APrimarySoft / ABorderStrong / APrimary に切り替わる
+                (UpdateActiveStyle ヘルパで code-behind から付与)。
+            -->
+
+            <!-- View mode toggle (standard <-> gallery / masonry) -->
+            <Button x:Name="ViewModeBtn" Grid.Column="2"
+                    Style="{StaticResource HeaderIconButtonStyle}"
+                    AutomationProperties.Name="表示モード切替"
+                    ToolTipService.ToolTip="表示モード切替 (標準グリッド / マソンリー)"
+                    Click="ViewModeBtn_Click"
+                    VerticalAlignment="Center">
+                <shared:AppIcon x:Name="ViewModeIcon" IconName="grid" IconSize="16" Foreground="{ThemeResource ATextDim}"/>
+            </Button>
+
+            <!-- Grouping toggle (none <-> world). Masonry 表示中は無効化される。 -->
+            <Button x:Name="GroupingBtn" Grid.Column="3"
+                    Style="{StaticResource HeaderIconButtonStyle}"
+                    AutomationProperties.Name="グループ化切替"
+                    ToolTipService.ToolTip="ワールド単位でグループ化"
+                    Click="GroupingBtn_Click"
+                    VerticalAlignment="Center">
+                <shared:AppIcon x:Name="GroupingIcon" IconName="group" IconSize="16" Foreground="{ThemeResource ATextDim}"/>
+            </Button>
+
+            <!-- Multi-select toggle -->
+            <Button x:Name="MultiSelectBtn" Grid.Column="4"
+                    Style="{StaticResource HeaderIconButtonStyle}"
+                    AutomationProperties.Name="複数選択モード切替"
+                    ToolTipService.ToolTip="複数選択モードを切り替える"
+                    Click="MultiSelectBtn_Click"
+                    VerticalAlignment="Center">
+                <shared:AppIcon x:Name="MultiSelectIcon" IconName="selectMultiple" IconSize="16" Foreground="{ThemeResource ATextDim}"/>
+            </Button>
+
             <!-- Right: settings gear -->
-            <Button x:Name="SettingsGearBtn" Grid.Column="2"
+            <Button x:Name="SettingsGearBtn" Grid.Column="5"
                     Style="{StaticResource HeaderIconButtonStyle}"
                     ToolTipService.ToolTip="設定"
                     AutomationProperties.Name="設定"
