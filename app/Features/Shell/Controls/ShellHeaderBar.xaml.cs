@@ -75,6 +75,9 @@ public sealed partial class ShellHeaderBar : UserControl
             ViewModeBtn.Opacity = opacity;
             GroupingBtn.Opacity = opacity;
             MultiSelectBtn.Opacity = opacity;
+            // PDQ 進捗チップもギャラリー操作系の dim に合わせる。chip だけ通常視認性で
+            // 浮き立つのを防ぐ (TagMaster/Template Page 表示中の見た目を一貫させる)。
+            PdqProgressChip.Opacity = opacity;
         }
         catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.SetGalleryControlsEnabled: threw: {ex}"); }
     }
