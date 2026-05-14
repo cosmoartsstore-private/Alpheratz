@@ -26,8 +26,20 @@
             </StackPanel>
         </Button>
 
+        <!--
+            Modal レイヤは 2 段スタック。
+              ModalLayerHost (中位)         : Settings / WorldResolve / GroupDrillDown
+              TopModalLayerHost (最上位)    : PhotoModal
+            GroupDrillDown 中に写真をクリックすると、中位の上にさらに PhotoModal が
+            重なる構造になる。各レイヤーは独自の backdrop / scale アニメを持つ。
+        -->
         <Grid x:Name="ModalLayerHost" Background="{ThemeResource AOverlay}" Visibility="Collapsed">
             <ContentControl x:Name="ModalContentHost"
+                            HorizontalContentAlignment="Stretch"
+                            VerticalContentAlignment="Stretch"/>
+        </Grid>
+        <Grid x:Name="TopModalLayerHost" Background="{ThemeResource AOverlay}" Visibility="Collapsed">
+            <ContentControl x:Name="TopModalContentHost"
                             HorizontalContentAlignment="Stretch"
                             VerticalContentAlignment="Stretch"/>
         </Grid>

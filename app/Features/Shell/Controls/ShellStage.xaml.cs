@@ -36,12 +36,17 @@ public sealed partial class ShellStage : UserControl
         set => MainContentHost.Content = value;
     }
 
+    /// <summary>
+    /// 中位モーダルのコンテンツ (Settings / WorldResolve / GroupDrillDown 等)。
+    /// 最上位の PhotoModal は <see cref="TopModalContent"/> を使う。
+    /// </summary>
     public object? ModalContent
     {
         get => ModalContentHost.Content;
         set => ModalContentHost.Content = value;
     }
 
+    /// <summary>中位モーダルレイヤの表示。FadeIn/Out + ScaleIn/Out アニメを伴う。</summary>
     public Visibility ModalVisibility
     {
         get => ModalLayerHost.Visibility;
@@ -60,8 +65,6 @@ public sealed partial class ShellStage : UserControl
                 {
                     DispatcherQueue?.TryEnqueue(() =>
                     {
-                        if (ModalContentHost.Content is PhotoModal.PhotoModalPage modal)
-                            modal.ReleaseImage();
                         ModalContentHost.Content = null;
                         ModalLayerHost.Visibility = Visibility.Collapsed;
                         AnimationHelper.ResetVisual(ModalLayerHost);
@@ -72,6 +75,57 @@ public sealed partial class ShellStage : UserControl
             else
             {
                 ModalLayerHost.Visibility = value;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 最上位モーダルのコンテンツ (PhotoModal 専用)。
+    /// 中位レイヤ (ModalContent) の上にさらに重ねて表示することで、GroupDrillDown 中の
+    /// 写真クリック → PhotoModal を中位 → 最上位の 2 段スタックで描画できる。
+    /// </summary>
+    public object? TopModalContent
+    {
+        get => TopModalContentHost.Content;
+        set => TopModalContentHost.Content = value;
+    }
+
+    /// <summary>
+    /// 最上位モーダルレイヤの表示。閉じるアニメ完了時に PhotoModalPage であれば
+    /// ReleaseImage() を呼んで重い BitmapImage 参照を解放する (再表示時は新規取得)。
+    /// 旧実装ではこの責務が ModalVisibility 側にあったが、PhotoModal を最上位レイヤに
+    /// 移したのに合わせて移動した。
+    /// </summary>
+    public Visibility TopModalVisibility
+    {
+        get => TopModalLayerHost.Visibility;
+        set
+        {
+            if (value == Visibility.Visible)
+            {
+                TopModalLayerHost.Visibility = Visibility.Visible;
+                AnimationHelper.FadeIn(TopModalLayerHost, 250);
+                AnimationHelper.ScaleIn(TopModalContentHost, fromScale: 0.88f, durationMs: 350);
+            }
+            else if (TopModalLayerHost.Visibility == Visibility.Visible)
+            {
+                AnimationHelper.FadeOut(TopModalLayerHost, 200);
+                AnimationHelper.ScaleOut(TopModalContentHost, toScale: 0.92f, durationMs: 200, onCompleted: () =>
+                {
+                    DispatcherQueue?.TryEnqueue(() =>
+                    {
+                        if (TopModalContentHost.Content is PhotoModal.PhotoModalPage modal)
+                            modal.ReleaseImage();
+                        TopModalContentHost.Content = null;
+                        TopModalLayerHost.Visibility = Visibility.Collapsed;
+                        AnimationHelper.ResetVisual(TopModalLayerHost);
+                        AnimationHelper.ResetVisual(TopModalContentHost);
+                    });
+                });
+            }
+            else
+            {
+                TopModalLayerHost.Visibility = value;
             }
         }
     }

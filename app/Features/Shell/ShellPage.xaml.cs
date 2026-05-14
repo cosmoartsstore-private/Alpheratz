@@ -199,11 +199,18 @@ public sealed partial class ShellPage : Page
 
     private GroupDrillDownPage? drillDownPage;
     private IReadOnlyList<PhotoThumbnailItem>? drillDownPhotos;
+    /// <summary>
+    /// 中位モーダル (Stage.ModalContent) が現在開いているかのフラグ。
+    /// PhotoModal は最上位レイヤを使うため別管理 (isModalOpen)。
+    /// </summary>
+    private bool isMiddleModalOpen;
 
     /// <summary>
     /// グループカードをクリックしたときの遷移。
     /// 毎回新しい GroupDrillDownPage と PhotoThumbnailItem リストを確保し、
     /// SQL を発行して取得したデータをメインと同じ PhotoGrid で描画する。
+    /// 中位モーダル (Stage.ModalContent) として表示し、内部の写真クリックで
+    /// PhotoModal が最上位レイヤに重なる 2 段スタック構造になる。
     /// </summary>
     private async Task ShowGroupDrillDown(PhotoGridItem groupItem)
     {
@@ -219,7 +226,7 @@ public sealed partial class ShellPage : Page
             drillDownPhotos = photos;
             drillDownPage = new GroupDrillDownPage
             {
-                OnBack = () => { drillDownPhotos = null; ShowGallery(); },
+                OnBack = CloseMiddleModal,
                 OnPhotoActivated = photo =>
                 {
                     if (drillDownPhotos is not null
@@ -234,10 +241,37 @@ public sealed partial class ShellPage : Page
 
             var displayName = groupItem.Photo?.WorldName ?? groupKey;
             drillDownPage.SetGroupInfo(displayName, photos);
-            Stage.MainContent = drillDownPage;
+            Stage.ModalContent = drillDownPage;
+            Stage.ModalVisibility = Visibility.Visible;
+            isMiddleModalOpen = true;
+            HeaderBar.Opacity = 0.4;
+            LeftRail.Opacity = 0.4;
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowGroupDrillDown: threw: {ex}"); }
         AppLogger.Trace("ShellPage.ShowGroupDrillDown: exit");
+    }
+
+    /// <summary>
+    /// 中位モーダル (Settings / GroupDrillDown / WorldResolve) を閉じる。
+    /// 最上位の PhotoModal が開いていれば、PhotoModal の方を先に閉じる。
+    /// </summary>
+    private void CloseMiddleModal()
+    {
+        AppLogger.Trace("ShellPage.CloseMiddleModal: enter");
+        try
+        {
+            isMiddleModalOpen = false;
+            drillDownPhotos = null;
+            Stage.ModalVisibility = Visibility.Collapsed;
+            // 最上位 (PhotoModal) も開いていなければ HeaderBar / LeftRail の dim を解除
+            if (!isModalOpen)
+            {
+                HeaderBar.Opacity = 1.0;
+                LeftRail.Opacity = 1.0;
+            }
+        }
+        catch (Exception ex) { AppLogger.Error($"ShellPage.CloseMiddleModal: threw: {ex}"); }
+        AppLogger.Trace("ShellPage.CloseMiddleModal: exit");
     }
 
     /// <summary>
@@ -260,7 +294,8 @@ public sealed partial class ShellPage : Page
                 settingsPage = new SettingsPage(compositeVm)
                 {
                     // ===== 共通 =====
-                    OnClose = CloseModal,
+                    // Settings は中位モーダルなので CloseMiddleModal を呼ぶ。
+                    OnClose = CloseMiddleModal,
 
                     // ===== 全般 =====
                     OnChooseFolder = async slot =>
@@ -303,7 +338,7 @@ public sealed partial class ShellPage : Page
             }
             Stage.ModalContent = settingsPage;
             Stage.ModalVisibility = Visibility.Visible;
-            isModalOpen = true;
+            isMiddleModalOpen = true;
             HeaderBar.Opacity = 0.4;
             LeftRail.Opacity = 0.4;
         }
@@ -364,7 +399,8 @@ public sealed partial class ShellPage : Page
     }
 
     /// <summary>
-    /// 写真詳細モーダルを表示する。
+    /// 写真詳細モーダルを表示する。最上位レイヤ (Stage.TopModalContent) に出すことで、
+    /// 中位モーダル (GroupDrillDown / Settings 等) の上にさらに重ねられる構造になる。
     /// cachedModalPage を再利用するのは、初回生成コスト (XAML パース + Border 階層構築)
     /// が非自明に重く、写真切り替えごとに作り直すと体感の遅れに直結するため。
     /// 既存インスタンスがあれば UpdateViewModel(...) で内部 binding を差し替えるだけにする。
@@ -414,8 +450,8 @@ public sealed partial class ShellPage : Page
             page.OnGoPrev = () => modalViewModel.state.goPrevPhoto();
             page.OnGoNext = () => modalViewModel.state.goNextPhoto();
             page.SetMasterTags(viewModel.tagMasterViewModel.masterTags);
-            Stage.ModalContent = page;
-            Stage.ModalVisibility = Visibility.Visible;
+            Stage.TopModalContent = page;
+            Stage.TopModalVisibility = Visibility.Visible;
             isModalOpen = true;
             HeaderBar.Opacity = 0.4;
             LeftRail.Opacity = 0.4;
@@ -424,6 +460,11 @@ public sealed partial class ShellPage : Page
         AppLogger.Trace("ShellPage.ShowPhotoModal: exit");
     }
 
+    /// <summary>
+    /// ワールド解析モーダルを開く。中位モーダル (Stage.ModalContent) に表示する。
+    /// 設定モーダルから呼ばれる場合 (OnStartWorldAnalysis) は Settings の中身を
+    /// ワールド解析に差し替える形になる。
+    /// </summary>
     private async Task ShowWorldResolveModalAsync()
     {
         AppLogger.Trace("ShellPage.ShowWorldResolveModalAsync: enter");
@@ -431,7 +472,7 @@ public sealed partial class ShellPage : Page
         {
             var vm = viewModel.CreateWorldResolveViewModel();
             var page = new WorldResolvePage(vm);
-            page.OnClose = CloseModal;
+            page.OnClose = CloseMiddleModal;
             page.OnApplied = async () =>
             {
                 await viewModel.galleryViewModel.photosState.loadPhotos().ConfigureAwait(false);
@@ -439,7 +480,7 @@ public sealed partial class ShellPage : Page
             };
             Stage.ModalContent = page;
             Stage.ModalVisibility = Visibility.Visible;
-            isModalOpen = true;
+            isMiddleModalOpen = true;
             HeaderBar.Opacity = 0.4;
             LeftRail.Opacity = 0.4;
             await vm.InitializeAsync().ConfigureAwait(false);
@@ -448,16 +489,25 @@ public sealed partial class ShellPage : Page
         AppLogger.Trace("ShellPage.ShowWorldResolveModalAsync: exit");
     }
 
+    /// <summary>
+    /// 最上位モーダル (PhotoModal) を閉じる。中位モーダル (Settings / GroupDrillDown /
+    /// WorldResolve) はそのままで、PhotoModal だけ消えて中位モーダルに戻る。
+    /// 中位も無ければ HeaderBar / LeftRail の dim を解除する。
+    /// </summary>
     public void CloseModal()
     {
         AppLogger.Trace("ShellPage.CloseModal: enter");
         try
         {
             isModalOpen = false;
-            cachedModalPage?.ReleaseImage();
-            Stage.ModalVisibility = Visibility.Collapsed;
-            HeaderBar.Opacity = 1.0;
-            LeftRail.Opacity = 1.0;
+            Stage.TopModalVisibility = Visibility.Collapsed;
+            // 中位モーダル (Settings / GroupDrillDown / WorldResolve) も開いていなければ
+            // HeaderBar / LeftRail の dim を解除する。中位が残っていれば dim 維持。
+            if (!isMiddleModalOpen)
+            {
+                HeaderBar.Opacity = 1.0;
+                LeftRail.Opacity = 1.0;
+            }
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.CloseModal: threw: {ex}"); }
         AppLogger.Trace("ShellPage.CloseModal: exit");
@@ -547,18 +597,23 @@ public sealed partial class ShellPage : Page
                 }
             }
 
-            if (ctrlDown && e.Key == Windows.System.VirtualKey.F)
+            // Ctrl 系ショートカットは modal が一切開いていない時のみ発火する
+            // (modal の上に modal を重ねるショートカットは UX 上混乱を招くため抑制)。
+            if (!isModalOpen && !isMiddleModalOpen)
             {
-                if (!isFilterOpen) ToggleFilter();
-                e.Handled = true;
-                return;
-            }
+                if (ctrlDown && e.Key == Windows.System.VirtualKey.F)
+                {
+                    if (!isFilterOpen) ToggleFilter();
+                    e.Handled = true;
+                    return;
+                }
 
-            if (ctrlDown && e.Key == (Windows.System.VirtualKey)188 /* OEM_COMMA */)
-            {
-                ShowSettings();
-                e.Handled = true;
-                return;
+                if (ctrlDown && e.Key == (Windows.System.VirtualKey)188 /* OEM_COMMA */)
+                {
+                    ShowSettings();
+                    e.Handled = true;
+                    return;
+                }
             }
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShellPage_KeyDown: threw: {ex}"); }
@@ -571,20 +626,24 @@ public sealed partial class ShellPage : Page
 
     /// <summary>
     /// HeaderBar / LeftRail のタップで現在開いているモーダルを閉じる。
-    /// モーダル種別ごとに適切な閉じ方を選ぶ：
-    ///   - PhotoModal: 専用の OnClose ハンドラを呼ぶ (内部で modalViewModel.closePhotoModal +
-    ///     CloseModal を実行する)。VM 側のクリーンアップが必要なため。
-    ///   - その他 (Settings / WorldResolve など): 汎用的に CloseModal を呼ぶだけで十分。
-    /// 旧実装は PhotoModal 専用の cachedModalPage?.OnClose のみを呼んでおり、Settings 等の
-    /// モーダルでは null skipped で何も起きないバグがあった。
+    /// 2 段スタックでは「上から順に」閉じるのが直感的なので、最上位 (PhotoModal) が
+    /// 開いていれば PhotoModal を先に閉じる。残った中位 (Settings / GroupDrillDown /
+    /// WorldResolve) があれば次のタップで中位が閉じる、という挙動。
     /// </summary>
     private void ModalDismissArea_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
     {
-        if (!isModalOpen) return;
-        e.Handled = true;
-        if (Stage.ModalContent is PhotoModalPage)
+        if (isModalOpen)
+        {
+            // 最上位 PhotoModal を閉じる (closePhotoModal + CloseModal を内包)
+            e.Handled = true;
             cachedModalPage?.OnClose?.Invoke();
-        else
-            CloseModal();
+            return;
+        }
+        if (isMiddleModalOpen)
+        {
+            // 中位モーダル (Settings / GroupDrillDown / WorldResolve) を閉じる
+            e.Handled = true;
+            CloseMiddleModal();
+        }
     }
 }
