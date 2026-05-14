@@ -46,6 +46,14 @@ public sealed partial class ShellStage : UserControl
         set => ModalContentHost.Content = value;
     }
 
+    // モーダル開閉のバージョンカウンタ。閉じるアニメの onCompleted から見て、
+    // 「自分が始めたときの version と現在の version が一致する」ときだけ Content=null
+    // などのクリーンアップを実行する。これにより：
+    //   Open → Close (アニメ進行中) → Open (新コンテンツ) のシーケンスで、
+    //   遅延発火した旧 Close の onCompleted が新コンテンツを誤って消すのを防ぐ。
+    private int modalVersion;
+    private int topModalVersion;
+
     /// <summary>中位モーダルレイヤの表示。FadeIn/Out + ScaleIn/Out アニメを伴う。</summary>
     public Visibility ModalVisibility
     {
@@ -54,17 +62,23 @@ public sealed partial class ShellStage : UserControl
         {
             if (value == Visibility.Visible)
             {
+                // version bump で進行中の close onCompleted を無効化する。
+                modalVersion++;
                 ModalLayerHost.Visibility = Visibility.Visible;
                 AnimationHelper.FadeIn(ModalLayerHost, 250);
                 AnimationHelper.ScaleIn(ModalContentHost, fromScale: 0.88f, durationMs: 350);
             }
             else if (ModalLayerHost.Visibility == Visibility.Visible)
             {
+                var ourVersion = ++modalVersion;
                 AnimationHelper.FadeOut(ModalLayerHost, 200);
                 AnimationHelper.ScaleOut(ModalContentHost, toScale: 0.92f, durationMs: 200, onCompleted: () =>
                 {
                     DispatcherQueue?.TryEnqueue(() =>
                     {
+                        // アニメ中に再オープン (もしくは別の close) が発生していたら version が
+                        // 進んでいる。その場合は自分の cleanup は古い遺物なのでスキップ。
+                        if (modalVersion != ourVersion) return;
                         ModalContentHost.Content = null;
                         ModalLayerHost.Visibility = Visibility.Collapsed;
                         AnimationHelper.ResetVisual(ModalLayerHost);
@@ -95,6 +109,8 @@ public sealed partial class ShellStage : UserControl
     /// ReleaseImage() を呼んで重い BitmapImage 参照を解放する (再表示時は新規取得)。
     /// 旧実装ではこの責務が ModalVisibility 側にあったが、PhotoModal を最上位レイヤに
     /// 移したのに合わせて移動した。
+    /// version カウンタで「閉じるアニメ進行中に再オープン」したケースのクリーンアップ
+    /// 競合を防ぐ。
     /// </summary>
     public Visibility TopModalVisibility
     {
@@ -103,17 +119,22 @@ public sealed partial class ShellStage : UserControl
         {
             if (value == Visibility.Visible)
             {
+                topModalVersion++;
                 TopModalLayerHost.Visibility = Visibility.Visible;
                 AnimationHelper.FadeIn(TopModalLayerHost, 250);
                 AnimationHelper.ScaleIn(TopModalContentHost, fromScale: 0.88f, durationMs: 350);
             }
             else if (TopModalLayerHost.Visibility == Visibility.Visible)
             {
+                var ourVersion = ++topModalVersion;
                 AnimationHelper.FadeOut(TopModalLayerHost, 200);
                 AnimationHelper.ScaleOut(TopModalContentHost, toScale: 0.92f, durationMs: 200, onCompleted: () =>
                 {
                     DispatcherQueue?.TryEnqueue(() =>
                     {
+                        // アニメ中に再オープンされていたら version 不一致 → cleanup スキップ。
+                        // ReleaseImage も含めて飛ばす (まだ表示中の image を解放しないように)。
+                        if (topModalVersion != ourVersion) return;
                         if (TopModalContentHost.Content is PhotoModal.PhotoModalPage modal)
                             modal.ReleaseImage();
                         TopModalContentHost.Content = null;
