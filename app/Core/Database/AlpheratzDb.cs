@@ -1143,24 +1143,7 @@ ORDER BY {orderBy}";
             delCmd.CommandText = "DELETE FROM archive_world_visits";
             delCmd.ExecuteNonQuery();
 
-            using var insCmd = conn.CreateCommand();
-            insCmd.Transaction = tx;
-            insCmd.CommandText = @"
-INSERT INTO archive_world_visits (source_log_name, world_name, join_time, leave_time)
-VALUES (@source_log_name, @world_name, @join_time, @leave_time)";
-            insCmd.Parameters.Add("@source_log_name", SqliteType.Text);
-            insCmd.Parameters.Add("@world_name",       SqliteType.Text);
-            insCmd.Parameters.Add("@join_time",        SqliteType.Text);
-            insCmd.Parameters.Add("@leave_time",       SqliteType.Text);
-
-            foreach (var v in visitList)
-            {
-                insCmd.Parameters["@source_log_name"].Value = v.SourceLogName;
-                insCmd.Parameters["@world_name"].Value       = v.WorldName;
-                insCmd.Parameters["@join_time"].Value        = v.JoinTime;
-                insCmd.Parameters["@leave_time"].Value       = (object?)v.LeaveTime ?? DBNull.Value;
-                insCmd.ExecuteNonQuery();
-            }
+            BulkInsertArchiveVisits(conn, tx, visitList, ct);
 
             tx.Commit();
             AppLogger.Trace($"AlpheratzDb.UpsertArchiveWorldVisitsAsync: exit count={visitList.Count}");
@@ -1170,6 +1153,42 @@ VALUES (@source_log_name, @world_name, @join_time, @leave_time)";
         {
             AppLogger.Error($"AlpheratzDb.UpsertArchiveWorldVisitsAsync: threw: {ex}");
             throw;
+        }
+    }
+
+    /// <summary>
+    /// archive_world_visits への一括 INSERT。チャンクサイズは 200 行で、
+    /// 4 列 × 200 = 800 個のパラメータに収まる (SQLite の標準パラメータ上限 999 以下)。
+    /// 1 件ずつ INSERT すると数千件で数百 ms オーダーの遅延になるため、
+    /// VALUES 句を多重化して 1 コマンドで複数行投入する。
+    /// </summary>
+    private static void BulkInsertArchiveVisits(
+        SqliteConnection conn, SqliteTransaction tx,
+        List<ArchiveWorldVisitData> visits, CancellationToken ct)
+    {
+        if (visits.Count == 0) return;
+        const int ChunkSize = 200;
+        var sb = new StringBuilder();
+        for (int i = 0; i < visits.Count; i += ChunkSize)
+        {
+            ct.ThrowIfCancellationRequested();
+            var chunkLen = Math.Min(ChunkSize, visits.Count - i);
+            sb.Clear();
+            sb.Append("INSERT INTO archive_world_visits (source_log_name, world_name, join_time, leave_time) VALUES ");
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            for (int j = 0; j < chunkLen; j++)
+            {
+                if (j > 0) sb.Append(',');
+                sb.Append("(@s").Append(j).Append(",@w").Append(j).Append(",@j").Append(j).Append(",@l").Append(j).Append(')');
+                var v = visits[i + j];
+                cmd.Parameters.AddWithValue($"@s{j}", v.SourceLogName);
+                cmd.Parameters.AddWithValue($"@w{j}", v.WorldName);
+                cmd.Parameters.AddWithValue($"@j{j}", v.JoinTime);
+                cmd.Parameters.AddWithValue($"@l{j}", (object?)v.LeaveTime ?? DBNull.Value);
+            }
+            cmd.CommandText = sb.ToString();
+            cmd.ExecuteNonQuery();
         }
     }
 

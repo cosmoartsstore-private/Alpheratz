@@ -292,7 +292,17 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
                 cts = existing;
             }
         }
-        var ct = cts.Token;
+
+        // 既存 CTS を取った直後に loadPhotos 側が Interlocked.Exchange + Dispose を
+        // 走らせると、ローカル変数 cts は Disposed になっている可能性がある。
+        // cts.Token は ObjectDisposedException を投げるので捕捉して早期 return。
+        CancellationToken ct;
+        try { ct = cts.Token; }
+        catch (ObjectDisposedException)
+        {
+            AppLogger.Trace("GalleryPhotosState.kickThumbnailGeneration: cts disposed mid-flight, skip");
+            return;
+        }
 
         var targets = photoMap.Values
             .Where(p => string.IsNullOrEmpty(p.GridThumbPath) && !string.IsNullOrEmpty(p.PhotoPath))

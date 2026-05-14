@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using Alpheratz.Core;
 using Alpheratz.Features.Gallery;
@@ -49,7 +50,43 @@ public sealed partial class PhotoGridItemsView : UserControl
             throw;
         }
         PhotoItems.Loaded += PhotoItems_Loaded;
+        // Page アンマウント時に各 Image.Tag に積んだ PropertyChanged 購読を一括解除する。
+        // DataContextChanged は recycle 時には必ず呼ばれるが、Page を捨てるパスでは
+        // 個別の DataContextChanged(null) が走らずに済むこともあるため、保険として剥がす。
+        Unloaded += PhotoGridItemsView_Unloaded;
         AppLogger.Trace("PhotoGridItemsView.ctor: exit");
+    }
+
+    private void PhotoGridItemsView_Unloaded(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            UnsubscribeAllCards(PhotoItems);
+        }
+        catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.PhotoGridItemsView_Unloaded: {ex}"); }
+    }
+
+    /// <summary>
+    /// VisualTree を辿って、Image.Tag に保持されている GridImageSubscription を全て解除する。
+    /// PhotoThumbnailItem.PropertyChanged に残ったハンドラを切ることで、Page 破棄後も
+    /// Photo オブジェクトが View 側からの参照で GC されずに残るのを防ぐ。
+    /// </summary>
+    private static void UnsubscribeAllCards(DependencyObject root)
+    {
+        var stack = new Stack<DependencyObject>();
+        stack.Push(root);
+        while (stack.Count > 0)
+        {
+            var node = stack.Pop();
+            if (node is Image img && img.Tag is GridImageSubscription sub)
+            {
+                sub.Photo.PropertyChanged -= sub.Handler;
+                img.Tag = null;
+                img.Source = null;
+            }
+            var count = VisualTreeHelper.GetChildrenCount(node);
+            for (int i = 0; i < count; i++) stack.Push(VisualTreeHelper.GetChild(node, i));
+        }
     }
 
     private void PhotoItems_Loaded(object sender, RoutedEventArgs e)

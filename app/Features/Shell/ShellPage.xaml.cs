@@ -488,12 +488,47 @@ public sealed partial class ShellPage : Page
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShellPage_Unloaded: threw: {ex}"); }
     }
 
+    /// <summary>
+    /// シェルレベルのキーボードショートカット。PhotoModal が開いている時のキー操作は
+    /// PhotoModalPage 側が先に処理して e.Handled=true にするので、ここまで来るのは
+    /// ギャラリー / 設定 / タグマスタ画面のいずれか。
+    ///   - Esc       → フィルタオーバーレイを閉じる / マルチセレクトを解除
+    ///   - Ctrl+F    → フィルタオーバーレイを開く
+    ///   - Ctrl+,    → 設定画面を開く（一般的な「設定」ショートカット）
+    /// </summary>
     private void ShellPage_KeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
-        if (e.Key == Windows.System.VirtualKey.Escape)
+        try
         {
-            if (isFilterOpen) { ToggleFilter(); e.Handled = true; }
+            var ctrlDown = (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control)
+                & Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down;
+
+            if (e.Key == Windows.System.VirtualKey.Escape)
+            {
+                if (isFilterOpen) { ToggleFilter(); e.Handled = true; return; }
+                if (viewModel.galleryViewModel.selectionState.IsMultiSelectMode)
+                {
+                    viewModel.galleryViewModel.selectionState.handleToggleMultiSelectMode();
+                    e.Handled = true;
+                    return;
+                }
+            }
+
+            if (ctrlDown && e.Key == Windows.System.VirtualKey.F)
+            {
+                if (!isFilterOpen) ToggleFilter();
+                e.Handled = true;
+                return;
+            }
+
+            if (ctrlDown && e.Key == (Windows.System.VirtualKey)188 /* OEM_COMMA */)
+            {
+                ShowSettings();
+                e.Handled = true;
+                return;
+            }
         }
+        catch (Exception ex) { AppLogger.Error($"ShellPage.ShellPage_KeyDown: threw: {ex}"); }
     }
 
     private void FilterBackdrop_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)

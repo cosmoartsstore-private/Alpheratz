@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -337,12 +338,15 @@ public sealed partial class PhotoScanner
             return $"{m.Groups[1].Value} {m.Groups[2].Value.Replace('-', ':')}";
         try
         {
+            // ファイルシステムから読んだローカル時刻を InvariantCulture で format することで、
+            // PC の地域設定（区切り文字や曜日表記）に依存しない決定的な文字列にする。
+            // DB 内の比較は文字列ベースで行うため、format が環境ごとに揺れると並び順が壊れる。
             var modified = File.GetLastWriteTime(path);
-            return modified.ToString("yyyy-MM-dd HH:mm:ss");
+            return modified.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
         }
         catch
         {
-            return DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            return DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
         }
     }
 
@@ -422,7 +426,11 @@ public sealed partial class PhotoScanner
         {
             var fileMtime = File.GetLastWriteTimeUtc(path);
             var creationTs = ResolveTimestamp(path, existing.PhotoFilename);
-            if (!DateTime.TryParse(creationTs, out var created))
+            // ResolveTimestamp は InvariantCulture で format した "yyyy-MM-dd HH:mm:ss" を返すので、
+            // パースも明示的に InvariantCulture + ExactFormat にして、地域設定で format 解釈が
+            // 変わる事故を防ぐ。
+            if (!DateTime.TryParseExact(creationTs, "yyyy-MM-dd HH:mm:ss",
+                    CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var created))
                 return false;
             return fileMtime > created.ToUniversalTime().AddMinutes(1);
         }
@@ -590,8 +598,9 @@ public sealed partial class PhotoScanner
             {
                 var timeMatch = ReLogTime.Match(line);
                 var lineTime = timeMatch.Success
-                    ? DateTime.TryParseExact(timeMatch.Groups[1].Value, "yyyy.MM.dd HH:mm:ss", null, System.Globalization.DateTimeStyles.None, out var dt)
-                        ? dt.ToString("yyyy-MM-dd HH:mm:ss") : null
+                    ? DateTime.TryParseExact(timeMatch.Groups[1].Value, "yyyy.MM.dd HH:mm:ss",
+                        CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt)
+                        ? dt.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) : null
                     : null;
 
                 var enterMatch = ReLogEntering.Match(line);

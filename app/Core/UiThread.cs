@@ -29,10 +29,14 @@ public static class UiThread
         if (dq is null || dq.HasThreadAccess)
         {
             action();
+            return;
         }
-        else
+        // TryEnqueue は DispatcherQueue が shutdown 後に false を返すことがある。
+        // アプリ終了直前にバックグラウンドから UI 更新を要求した場合に起き得る。
+        // 静かに失敗すると「最後の状態更新が反映されなかった」バグを生むので警告ログを残す。
+        if (!dq.TryEnqueue(() => action()))
         {
-            dq.TryEnqueue(() => action());
+            AppLogger.Warn("UiThread.Run: TryEnqueue failed (DispatcherQueue likely shutting down)");
         }
     }
 }

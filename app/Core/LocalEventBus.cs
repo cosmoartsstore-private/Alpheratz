@@ -22,6 +22,12 @@ public sealed class LocalEventBus
     /// 指定イベント名の購読者全員に payload を配信する。
     /// 配信中の購読者変更で例外が出ないよう、_handlers をいったん snapshot にコピーしてから配信する。
     /// 個別 handler の例外は警告ログのみで握りつぶし、残りの handler の配信を止めない。
+    ///
+    /// 配信は**意図的に直列**にしている。並列化 (Task.WhenAll) は一見高速化に見えるが、
+    /// 本アプリの主要イベント (scan:completed 等) は複数の購読者がいずれも DB write を伴うため、
+    /// 並列発火させると同一 photos テーブルへの UPDATE 衝突で SQLITE_BUSY が頻発し、
+    /// orientation / phash の部分書込が発生する (ShellViewModel.postScanGate のコメント参照)。
+    /// 直列発火のままにしておくのが安全。
     /// </summary>
     public async Task PublishAsync(string eventName, object? payload = null)
     {
@@ -93,9 +99,22 @@ public sealed class LocalEventBus
         AppLogger.Trace($"LocalEventBus.Subscribe<T>: enter event={eventName} type={typeof(TPayload).Name}");
         var sub = Subscribe(eventName, payload =>
         {
-            var typed = payload.ValueKind == JsonValueKind.Null
-                ? default
-                : payload.Deserialize<TPayload>(_opts);
+            TPayload? typed = default;
+            if (payload.ValueKind != JsonValueKind.Null)
+            {
+                try
+                {
+                    typed = payload.Deserialize<TPayload>(_opts);
+                }
+                catch (Exception ex)
+                {
+                    // payload スキーマが publisher 側で変更されたなどで逆シリアライズ失敗。
+                    // 旧実装は silent に default を返して handler を発火させなかったので、
+                    // 「イベントが配信されたが発火されない」という診断困難な状態になっていた。
+                    AppLogger.Warn($"LocalEventBus.Subscribe<{typeof(TPayload).Name}>: deserialize failed for event={eventName}: {ex.Message}");
+                    return Task.CompletedTask;
+                }
+            }
             return typed is not null ? handler(typed) : Task.CompletedTask;
         });
         AppLogger.Trace($"LocalEventBus.Subscribe<T>: exit event={eventName}");

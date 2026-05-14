@@ -117,7 +117,16 @@ public sealed partial class PhotoModalPage : Page
             // BitmapImage に渡す前にネイティブのディレクトリセパレータへ変換する
             // (ThumbnailService.GenerateThumbnailAsync と同じ正規化)。
             path = path.Replace('/', System.IO.Path.DirectorySeparatorChar);
-            ModalImage.Source = new BitmapImage { CreateOptions = BitmapCreateOptions.IgnoreImageCache, UriSource = new Uri(path, UriKind.Absolute) };
+            // DecodePixelWidth を Modal の最大表示幅 (1920px) で頭打ちにする。
+            // 設定しないと 4K 写真が約 50MB のメモリにフルデコードされ、Modal の開閉だけで
+            // 数百 MB の一時メモリを使う。Modal レイアウト上はこれ以上のピクセルを使い切らない。
+            ModalImage.Source = new BitmapImage
+            {
+                CreateOptions = BitmapCreateOptions.IgnoreImageCache,
+                DecodePixelWidth = 1920,
+                DecodePixelType = DecodePixelType.Logical,
+                UriSource = new Uri(path, UriKind.Absolute),
+            };
         }
         catch (Exception ex)
         {

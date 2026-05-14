@@ -20,7 +20,9 @@
             <Button x:Name="FilterPillBtn" Grid.Column="0"
                     Style="{StaticResource HeaderPillButtonStyle}"
                     Click="FilterButton_Click"
-                    VerticalAlignment="Center">
+                    VerticalAlignment="Center"
+                    AutomationProperties.Name="検索条件を開く"
+                    AutomationProperties.HelpText="ワールド・タグ・撮影日・お気に入りで絞り込むパネルを表示します">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <shared:AppIcon IconName="search" IconSize="16" Foreground="{ThemeResource ATextDim}"/>
                     <TextBlock Text="検索条件" FontSize="{StaticResource AFontSizeSm}" FontWeight="ExtraBold"/>
@@ -61,6 +63,7 @@
                              PlaceholderText="ワールド名で検索..."
                              FontSize="{StaticResource AFontSizeMd}"
                              VerticalAlignment="Center"
+                             AutomationProperties.Name="ワールド名検索"
                              GotFocus="SearchTextBox_GotFocus"
                              LostFocus="SearchTextBox_LostFocus"/>
                 </Grid>
@@ -70,6 +73,8 @@
             <Button x:Name="SettingsGearBtn" Grid.Column="2"
                     Style="{StaticResource HeaderIconButtonStyle}"
                     ToolTipService.ToolTip="設定"
+                    AutomationProperties.Name="設定"
+                    AutomationProperties.HelpText="アプリの設定画面を開きます"
                     Click="SettingsGearBtn_Click"
                     VerticalAlignment="Center">
                 <shared:AppIcon IconName="settings" IconSize="16" Foreground="{ThemeResource ATextDim}"/>

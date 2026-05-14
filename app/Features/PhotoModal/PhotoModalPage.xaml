@@ -28,6 +28,8 @@
                     <Button x:Name="BackButton" HorizontalAlignment="Left" VerticalAlignment="Top"
                             Margin="14" Width="34" Height="34"
                             CornerRadius="{StaticResource ARadiusButton}"
+                            AutomationProperties.Name="戻る"
+                            ToolTipService.ToolTip="前に表示していた写真へ戻る"
                             Background="{ThemeResource ASurface}"
                             BorderBrush="{ThemeResource ABorder}"
                             BorderThickness="1"
@@ -54,6 +56,8 @@
                                 CornerRadius="{StaticResource ARadiusButton}"
                                 Background="Transparent"
                                 BorderBrush="{ThemeResource ABorder}" BorderThickness="1"
+                                AutomationProperties.Name="閉じる"
+                                ToolTipService.ToolTip="写真詳細を閉じる (Esc)"
                                 Click="CloseButton_Click">
                             <shared:AppIcon IconName="close" IconSize="12" Foreground="{ThemeResource ATextDim}"/>
                         </Button>
@@ -122,6 +126,7 @@
                         </Grid.ColumnDefinitions>
                         <Button Grid.Column="0" MinHeight="66" Background="Transparent" BorderThickness="0" CornerRadius="0" Padding="4,8"
                                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                AutomationProperties.Name="お気に入り切り替え"
                                 ToolTipService.ToolTip="お気に入りに追加 / 解除" Click="Favorite_Click"
                                 PointerEntered="BottomAction_PointerEntered" PointerExited="BottomAction_PointerExited">
                             <StackPanel HorizontalAlignment="Center" Spacing="5">
@@ -132,6 +137,7 @@
                         <Border Grid.Column="1" HorizontalAlignment="Left" Width="1" Background="{ThemeResource ABorder}"/>
                         <Button Grid.Column="1" MinHeight="66" Background="Transparent" BorderThickness="0" CornerRadius="0" Padding="4,8"
                                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                AutomationProperties.Name="ツイート投稿"
                                 ToolTipService.ToolTip="ツイート投稿画面を開く" Click="Tweet_Click"
                                 PointerEntered="BottomAction_PointerEntered" PointerExited="BottomAction_PointerExited">
                             <StackPanel HorizontalAlignment="Center" Spacing="5">
@@ -142,6 +148,7 @@
                         <Border Grid.Column="2" HorizontalAlignment="Left" Width="1" Background="{ThemeResource ABorder}"/>
                         <Button Grid.Column="2" MinHeight="66" Background="Transparent" BorderThickness="0" CornerRadius="0" Padding="4,8"
                                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                AutomationProperties.Name="ワールドを開く"
                                 ToolTipService.ToolTip="ワールドリンクを開く" Click="OpenWorld_Click"
                                 PointerEntered="BottomAction_PointerEntered" PointerExited="BottomAction_PointerExited">
                             <StackPanel HorizontalAlignment="Center" Spacing="5">
@@ -152,6 +159,7 @@
                         <Border Grid.Column="3" HorizontalAlignment="Left" Width="1" Background="{ThemeResource ABorder}"/>
                         <Button Grid.Column="3" MinHeight="66" Background="Transparent" BorderThickness="0" CornerRadius="0" Padding="4,8"
                                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                AutomationProperties.Name="エクスプローラーで表示"
                                 ToolTipService.ToolTip="エクスプローラーで表示" Click="OpenExplorer_Click"
                                 PointerEntered="BottomAction_PointerEntered" PointerExited="BottomAction_PointerExited">
                             <StackPanel HorizontalAlignment="Center" Spacing="5">
