@@ -569,12 +569,22 @@ public sealed partial class ShellPage : Page
         if (isFilterOpen) ToggleFilter();
     }
 
+    /// <summary>
+    /// HeaderBar / LeftRail のタップで現在開いているモーダルを閉じる。
+    /// モーダル種別ごとに適切な閉じ方を選ぶ：
+    ///   - PhotoModal: 専用の OnClose ハンドラを呼ぶ (内部で modalViewModel.closePhotoModal +
+    ///     CloseModal を実行する)。VM 側のクリーンアップが必要なため。
+    ///   - その他 (Settings / WorldResolve など): 汎用的に CloseModal を呼ぶだけで十分。
+    /// 旧実装は PhotoModal 専用の cachedModalPage?.OnClose のみを呼んでおり、Settings 等の
+    /// モーダルでは null skipped で何も起きないバグがあった。
+    /// </summary>
     private void ModalDismissArea_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
     {
-        if (isModalOpen)
-        {
-            e.Handled = true;
+        if (!isModalOpen) return;
+        e.Handled = true;
+        if (Stage.ModalContent is PhotoModalPage)
             cachedModalPage?.OnClose?.Invoke();
-        }
+        else
+            CloseModal();
     }
 }
