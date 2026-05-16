@@ -20,7 +20,7 @@ namespace Alpheratz.Features.Shell.Controls;
 public sealed partial class ShellHeaderBar : UserControl
 {
     // ===== コールバック =====
-    /// <summary>フィルタオーバーレイ開閉ボタンが押されたとき発火。</summary>
+    /// <summary>「検索条件」ピル押下時に発火。ShellPage 側で左レーン (RailColumn) を開閉する。</summary>
     public Action? OnToggleFilter { get; set; }
     /// <summary>設定ボタンが押されたとき発火。</summary>
     public Action? OnShowSettings { get; set; }

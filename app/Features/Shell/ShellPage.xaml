@@ -3,6 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:shellControls="using:Alpheratz.Features.Shell.Controls"
+    xmlns:galleryControls="using:Alpheratz.Features.Gallery.Controls"
     Background="{ThemeResource ABg}"
     Loaded="ShellPage_Loaded"
     Unloaded="ShellPage_Unloaded"
@@ -17,16 +18,16 @@
         <shellControls:ShellHeaderBar x:Name="HeaderBar" Grid.Row="0"
                                        Tapped="ModalDismissArea_Tapped"/>
 
-        <!--
-            LeftRail は撤去 (Step 5)。LeftRail にあった 3 トグル (複数選択 / グループ化 /
-            ビューモード) は HeaderBar 右側に移植済み。TagMaster/Template 画面への遷移ボタンも
-            撤去 (これらは Settings モーダルに統合済み)。
-            「ギャラリーに戻る」ボタンは Stage 内蔵の BackToGalleryBtn を使う (TagMaster/Template
-            の旧 Page 経路で使われる)。
-        -->
         <shellControls:ShellStage x:Name="Stage" Grid.Row="1"/>
 
-        <!-- Filter overlay: covers entire window below header -->
+        <!--
+            検索条件 overlay。ヘッダーの「検索条件」ピルでトグルする。
+            重要: 旧実装は FilterPanel を GalleryPage 内に置き、開く時に
+            GetFilterPanel() で親付け替えしていたが、これが ActualTheme の
+            継承チェーンを切り、テーマ切替が反映されない原因だった。
+            ここでは FilterPanel を最初から FilterPanelContainer 配下に固定配置し、
+            開閉は FilterOverlay.Visibility のみで行う。親は一切変わらない。
+        -->
         <Grid x:Name="FilterOverlay" Grid.Row="1" Visibility="Collapsed">
             <Border x:Name="FilterBackdrop"
                     Background="{ThemeResource AOverlay}"
@@ -34,11 +35,8 @@
             <Border x:Name="FilterPanelContainer" HorizontalAlignment="Left"
                     MaxWidth="540" MinWidth="320"
                     Background="{ThemeResource ASurface}">
-                <ContentControl x:Name="FilterPanelHost"
-                                HorizontalContentAlignment="Stretch"
-                                VerticalContentAlignment="Stretch"/>
+                <galleryControls:GalleryFilterPanel x:Name="FilterPanel"/>
             </Border>
         </Grid>
     </Grid>
 </Page>
-

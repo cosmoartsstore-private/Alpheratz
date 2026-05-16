@@ -101,6 +101,26 @@ public sealed partial class GalleryMasonryView : UserControl
             throw;
         }
         this.SizeChanged += (_, _) => Rebuild();
+        // テーマ切替時に既存カードの Border (code-behind で ThemeHelper.Brush から代入済み)
+        // を現在テーマで再着色する。カード自体は仮想化されていて、表示中のものはレイアウトを
+        // 維持したまま色だけ更新される。
+        ActualThemeChanged += OnActualThemeChanged;
+        Unloaded += (_, _) => ActualThemeChanged -= OnActualThemeChanged;
+    }
+
+    private void OnActualThemeChanged(FrameworkElement sender, object args)
+    {
+        try
+        {
+            foreach (var entry in activeCards.Values)
+            {
+                if (ThemeHelper.Brush(entry.Container, "ASurface") is { } bg)
+                    entry.Container.Background = bg;
+                if (ThemeHelper.Brush(entry.Container, "ABorder") is { } br)
+                    entry.Container.BorderBrush = br;
+            }
+        }
+        catch (Exception ex) { AppLogger.Error($"GalleryMasonryView.OnActualThemeChanged: {ex}"); }
     }
 
     /// <summary>写真コレクションをバインドし、CollectionChanged を購読する。</summary>

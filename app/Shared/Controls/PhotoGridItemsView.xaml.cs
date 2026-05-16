@@ -55,7 +55,41 @@ public sealed partial class PhotoGridItemsView : UserControl
         // DataContextChanged は recycle 時には必ず呼ばれるが、Page を捨てるパスでは
         // 個別の DataContextChanged(null) が走らずに済むこともあるため、保険として剥がす。
         Unloaded += PhotoGridItemsView_Unloaded;
+        // PhotoCardBorderStyle は {ThemeResource} でテーマ追従設計だが、hover/recycle で
+        // code-behind が border.Background/BorderBrush に直接代入するため、その瞬間に
+        // {ThemeResource} バインディングが local value で上書きされ、以降テーマ切替に
+        // 追従しなくなる。テーマ切替時に rest 色を再適用してこれを補正する。
+        ActualThemeChanged += OnActualThemeChanged;
         AppLogger.Trace("PhotoGridItemsView.ctor: exit");
+    }
+
+    private void OnActualThemeChanged(FrameworkElement sender, object args)
+    {
+        try { ResetAllCardBrushes(PhotoItems); }
+        catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.OnActualThemeChanged: {ex}"); }
+    }
+
+    /// <summary>
+    /// 表示中の写真カード Border を visual tree から拾い、現在テーマの rest ブラシで
+    /// Background/BorderBrush を再代入する。テーマ切替後の最初のフレームで呼ぶ。
+    /// </summary>
+    private static void ResetAllCardBrushes(DependencyObject root)
+    {
+        var photoCardStyle = ThemeHelper.AppResource<Style>("PhotoCardBorderStyle");
+        if (photoCardStyle is null) return;
+        var stack = new Stack<DependencyObject>();
+        stack.Push(root);
+        while (stack.Count > 0)
+        {
+            var node = stack.Pop();
+            if (node is Border border && border.Style == photoCardStyle)
+            {
+                if (ThemeHelper.Brush(border, "ABorder") is { } restBorder) border.BorderBrush = restBorder;
+                if (ThemeHelper.Brush(border, "ASurface") is { } restFill) border.Background = restFill;
+            }
+            var count = VisualTreeHelper.GetChildrenCount(node);
+            for (int i = 0; i < count; i++) stack.Push(VisualTreeHelper.GetChild(node, i));
+        }
     }
 
     private void PhotoGridItemsView_Unloaded(object sender, RoutedEventArgs e)
@@ -63,6 +97,7 @@ public sealed partial class PhotoGridItemsView : UserControl
         try
         {
             UnsubscribeAllCards(PhotoItems);
+            ActualThemeChanged -= OnActualThemeChanged;
         }
         catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.PhotoGridItemsView_Unloaded: {ex}"); }
     }

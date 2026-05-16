@@ -20,9 +20,9 @@ public sealed partial class ShellPage : Page
     private readonly ShellViewModel viewModel;
     private GalleryPage? galleryPage;
     private SettingsPage? settingsPage;
-    private bool isFilterOpen;
     private bool isModalOpen;
     private long lastModalOpenTick;
+    private bool isFilterOpen;
 
     public ShellPage(ShellViewModel viewModel)
     {
@@ -35,8 +35,10 @@ public sealed partial class ShellPage : Page
 
         try
         {
-            // ヘッダーバーのコールバック (検索条件 / 設定 / 3 つのトグル)。
-            // LeftRail から移植したトグル系も HeaderBar 上で発火するようにする。
+            // ヘッダーバーのコールバック (検索条件ピル / 設定 / 3 つのトグル)。
+            // 「検索条件」ピルは FilterOverlay を表示/非表示でトグルする。
+            // FilterPanel 自体は overlay 内 FilterPanelContainer に固定配置されており
+            // 親が変わらないので、テーマ切替が ActualTheme 経由で正しく伝播する。
             HeaderBar.OnToggleFilter = ToggleFilter;
             HeaderBar.OnShowSettings = ShowSettings;
             HeaderBar.OnToggleMultiSelect = () =>
@@ -175,14 +177,16 @@ public sealed partial class ShellPage : Page
         {
             if (galleryPage is null)
             {
-                galleryPage = new GalleryPage(viewModel.galleryViewModel)
+                // FilterPanel は ShellPage の XAML (FilterRailHost 内) で生成済みのインスタンスを
+                // 引き渡す。所有を ShellPage 側に置くことで、UserControl の再 parent に伴う
+                // ContentControl 例外を回避している。
+                galleryPage = new GalleryPage(viewModel.galleryViewModel, FilterPanel)
                 {
                     OnResetFilters = viewModel.galleryViewModel.resetFilters,
                     OnDatePresetSelect = preset => viewModel.galleryViewModel.filtersState.handleDatePresetSelect(preset),
                     OnSelectPhoto = photo => { if (viewModel.createPhotoModalViewModel(photo) is { } vm) ShowPhotoModal(vm); },
                     OnDrillIntoGroup = item => _ = ShowGroupDrillDown(item),
                     OnChooseFolder = () => viewModel.settingsViewModel.handleChooseFolderPathOnly(),
-                    OnDismissFilter = () => { if (isFilterOpen) ToggleFilter(); },
                 };
                 galleryPage.SetMasterTags(viewModel.tagMasterViewModel.masterTags);
             }
@@ -454,6 +458,12 @@ public sealed partial class ShellPage : Page
         AppLogger.Trace("ShellPage.CloseModal: exit");
     }
 
+    /// <summary>
+    /// 検索条件 overlay の表示/非表示を切り替える。
+    /// FilterPanel は overlay 内に固定配置されており、ここでは FilterOverlay.Visibility と
+    /// アニメーションだけ操作する。FilterPanel の親は一切変わらないので ActualTheme は
+    /// 切替時も継承され、code-behind の ActualThemeChanged で再着色が走る。
+    /// </summary>
     private void ToggleFilter()
     {
         AppLogger.Trace($"ShellPage.ToggleFilter: enter isFilterOpen={isFilterOpen}");
@@ -466,8 +476,6 @@ public sealed partial class ShellPage : Page
     {
         if (isOpen)
         {
-            if (FilterPanelHost.Content is null && galleryPage is not null)
-                FilterPanelHost.Content = galleryPage.GetFilterPanel();
             FilterOverlay.Visibility = Visibility.Visible;
             AnimationHelper.FadeIn(FilterBackdrop, 250);
             AnimationHelper.SlideIn(FilterPanelContainer, fromX: -16f, durationMs: 180);
@@ -482,13 +490,17 @@ public sealed partial class ShellPage : Page
         }
     }
 
+    private void FilterBackdrop_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
+    {
+        if (isFilterOpen) ToggleFilter();
+    }
 
     /// <summary>
     /// シェルレベルのキーボードショートカット。PhotoModal が開いている時のキー操作は
     /// PhotoModalPage 側が先に処理して e.Handled=true にするので、ここまで来るのは
     /// ギャラリー / 設定 / タグマスタ画面のいずれか。
-    ///   - Esc       → フィルタオーバーレイを閉じる / マルチセレクトを解除
-    ///   - Ctrl+F    → フィルタオーバーレイを開く
+    ///   - Esc       → 検索条件 overlay を閉じる / マルチセレクトを解除
+    ///   - Ctrl+F    → 検索条件 overlay を開く
     ///   - Ctrl+,    → 設定画面を開く（一般的な「設定」ショートカット）
     /// </summary>
     private void ShellPage_KeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
@@ -529,11 +541,6 @@ public sealed partial class ShellPage : Page
             }
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShellPage_KeyDown: threw: {ex}"); }
-    }
-
-    private void FilterBackdrop_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
-    {
-        if (isFilterOpen) ToggleFilter();
     }
 
     /// <summary>

@@ -82,6 +82,11 @@ public sealed partial class ShellPage
                 activeTopModal.RequestedTheme = theme;
             if (Stage.ModalContent is Microsoft.UI.Xaml.FrameworkElement activeMidModal)
                 activeMidModal.RequestedTheme = theme;
+            // FilterPanel は FilterOverlay.Visibility=Collapsed 配下に常駐しており、
+            // 親が Collapsed のときは ActualThemeChanged が確実に伝播しないことがあるため
+            // 明示的に RequestedTheme を直接セットして、Open 時に正しい theme で
+            // 解決されるよう保険をかける。
+            FilterPanel.RequestedTheme = theme;
 
             // IValueConverter のように element context を渡せない経路向けに通知する。
             Shared.Services.ThemeHelper.NotifySelectedThemeChanged(theme);

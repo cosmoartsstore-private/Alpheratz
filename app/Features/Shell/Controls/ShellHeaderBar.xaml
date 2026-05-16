@@ -9,6 +9,11 @@
         Background="{ThemeResource ASurface}"
         BorderBrush="{ThemeResource ABorder}"
         BorderThickness="0,0,0,1">
+        <!--
+            "検索条件" ピル (Grid.Column=0) はクリックで左レーン (ShellPage.RailColumn) を
+            開閉する。検索条件パネル自体は左レーンに常駐表示で、Visibility ではなく
+            RailColumn.Width を 320 ⇄ 0 に切替する形で展開/収納を表現する。
+        -->
         <Grid ColumnSpacing="10">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
@@ -20,13 +25,13 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Left: filter pill -->
+            <!-- Left: 検索条件ピル (左レーン開閉トリガ) -->
             <Button x:Name="FilterPillBtn" Grid.Column="0"
                     Style="{StaticResource HeaderPillButtonStyle}"
                     Click="FilterButton_Click"
                     VerticalAlignment="Center"
-                    AutomationProperties.Name="検索条件を開く"
-                    AutomationProperties.HelpText="ワールド・タグ・撮影日・お気に入りで絞り込むパネルを表示します">
+                    AutomationProperties.Name="検索条件レーン開閉"
+                    AutomationProperties.HelpText="左レーンの検索条件パネルを開閉します">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <shared:AppIcon IconName="search" IconSize="16" Foreground="{ThemeResource ATextDim}"/>
                     <TextBlock Text="検索条件" FontSize="{StaticResource AFontSizeSm}" FontWeight="ExtraBold"/>

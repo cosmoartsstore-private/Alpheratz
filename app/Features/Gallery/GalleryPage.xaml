@@ -46,7 +46,5 @@
             </Border>
         </Grid>
 
-        <!-- FilterPanel is hosted by ShellPage overlay -->
-        <galleryControls:GalleryFilterPanel x:Name="FilterPanel" Visibility="Collapsed"/>
     </Grid>
 </Page>

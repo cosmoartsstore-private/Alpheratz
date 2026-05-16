@@ -17,14 +17,20 @@ public sealed partial class GalleryPage : Page
 {
     private readonly GalleryViewModel viewModel;
 
+    /// <summary>
+    /// 検索条件パネル。ShellPage 側の XAML (FilterRailHost) で生成されたインスタンスを
+    /// constructor で受け取って結線する。XAML の中に直接置くと再 parent で COM 例外が
+    /// 出るケースがあったため、所有を ShellPage に持たせて参照だけ受け取る形にした。
+    /// </summary>
+    private readonly GalleryFilterPanel FilterPanel;
+
     public Action? OnResetFilters { get; set; }
     public Action<string>? OnDatePresetSelect { get; set; }
     public Action<PhotoThumbnailItem>? OnSelectPhoto { get; set; }
     public Action<PhotoGridItem>? OnDrillIntoGroup { get; set; }
     public Func<Task<string?>>? OnChooseFolder { get; set; }
-    public Action? OnDismissFilter { get; set; }
 
-    public GalleryPage(GalleryViewModel viewModel)
+    public GalleryPage(GalleryViewModel viewModel, GalleryFilterPanel filterPanel)
     {
         AppLogger.Trace("GalleryPage.ctor: enter");
         try
@@ -38,6 +44,7 @@ public sealed partial class GalleryPage : Page
         }
         AppLogger.Trace("GalleryPage.ctor: InitializeComponent done");
         this.viewModel = viewModel;
+        this.FilterPanel = filterPanel;
         DataContext = viewModel;
 
         try
@@ -176,14 +183,6 @@ public sealed partial class GalleryPage : Page
             AppLogger.Error($"GalleryPage.SetMasterTags: threw: {ex}");
         }
         AppLogger.Trace("GalleryPage.SetMasterTags: exit");
-    }
-
-    public GalleryFilterPanel GetFilterPanel()
-    {
-        if (FilterPanel.Parent is Panel parent)
-            parent.Children.Remove(FilterPanel);
-        FilterPanel.Visibility = Visibility.Visible;
-        return FilterPanel;
     }
 
     private void OnSelectedPathsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
