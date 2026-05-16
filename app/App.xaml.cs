@@ -28,6 +28,36 @@ public partial class App : Application
     public App()
     {
         AppLogger.Trace("App.ctor: enter");
+
+        // Application.RequestedTheme must be set BEFORE InitializeComponent().
+        // Read the persisted theme directly from setting.json (DI not available yet).
+        // Without this, the OS theme is used, and Application.Current.Resources["key"]
+        // plus {ThemeResource} at the Application level all resolve to the wrong theme.
+        try
+        {
+            var settingDir = AppPaths.GetSettingDir();
+            if (settingDir is not null)
+            {
+                var path = System.IO.Path.Combine(settingDir, "setting.json");
+                if (System.IO.File.Exists(path))
+                {
+                    var json = System.IO.File.ReadAllText(path, System.Text.Encoding.UTF8);
+                    var setting = System.Text.Json.JsonSerializer.Deserialize<AlpheratzSetting>(json);
+                    RequestedTheme = setting?.ThemeMode == "dark"
+                        ? ApplicationTheme.Dark
+                        : ApplicationTheme.Light;
+                }
+                else
+                {
+                    RequestedTheme = ApplicationTheme.Light;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Warn($"App.ctor: theme pre-set failed: {ex.Message}");
+        }
+
         try
         {
             InitializeComponent();

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Alpheratz.Core;
 using Alpheratz.Features.Template;
 using Alpheratz.Services;
+using Alpheratz.Shared.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -91,6 +92,7 @@ public sealed partial class SettingsPage : Page
         {
             viewModel.TagMaster.masterTags.CollectionChanged += MasterTags_CollectionChanged;
             viewModel.Template.PropertyChanged += TemplateViewModel_PropertyChanged;
+            ActualThemeChanged += OnActualThemeChanged;
             UpdateTagEmptyState();
             UpdateEditorState();
         }
@@ -103,8 +105,16 @@ public sealed partial class SettingsPage : Page
         {
             viewModel.TagMaster.masterTags.CollectionChanged -= MasterTags_CollectionChanged;
             viewModel.Template.PropertyChanged -= TemplateViewModel_PropertyChanged;
+            ActualThemeChanged -= OnActualThemeChanged;
         }
         catch (Exception ex) { AppLogger.Error($"SettingsPage.SettingsPage_Unloaded: threw: {ex}"); }
+    }
+
+    /// <summary>テーマ切替時に code-behind で着色したテンプレートカードを再描画する。</summary>
+    private void OnActualThemeChanged(FrameworkElement sender, object args)
+    {
+        try { RefreshTemplateCardVisuals(); }
+        catch (Exception ex) { AppLogger.Error($"SettingsPage.OnActualThemeChanged: {ex}"); }
     }
 
     // -----------------------------------------------------------------------
@@ -425,15 +435,15 @@ public sealed partial class SettingsPage : Page
 
     private static void ApplyTemplateCardStyle(Border card, bool isActive)
     {
-        card.BorderBrush = (Brush)Application.Current.Resources[isActive ? "ABorderStrong" : "ABorder"];
-        card.Background = (Brush)Application.Current.Resources[isActive ? "AAccentSoft" : "ASurfaceSoft"];
+        card.BorderBrush = ThemeHelper.Brush(card, isActive ? "ABorderStrong" : "ABorder");
+        card.Background = ThemeHelper.Brush(card, isActive ? "AAccentSoft" : "ASurfaceSoft");
 
         var grid = card.Child as Grid;
         var stack = grid?.Children[0] as StackPanel;
         if (stack?.Children[0] is TextBlock label)
         {
             label.Text = isActive ? "使用中" : "テンプレート";
-            label.Foreground = (Brush)Application.Current.Resources[isActive ? "APrimary" : "ATextDim"];
+            label.Foreground = ThemeHelper.Brush(card, isActive ? "APrimary" : "ATextDim");
         }
     }
 }

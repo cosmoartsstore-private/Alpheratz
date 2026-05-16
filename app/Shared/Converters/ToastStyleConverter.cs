@@ -1,15 +1,17 @@
 using System;
 using Alpheratz.Shared.Models;
-using Microsoft.UI.Xaml;
+using Alpheratz.Shared.Services;
 using Microsoft.UI.Xaml.Data;
-using Microsoft.UI.Xaml.Media;
 
 namespace Alpheratz.Shared.Converters;
 
 /// <summary>
 /// ToastType を見出し色（左端ストライプ / アイコン色）に変換する。
 /// success → APrimary、error → ADangerSolid、info → ATextDim。
-/// テーマ辞書から取り出すため、ライト/ダーク両方で意図した色が使われる。
+///
+/// IValueConverter は element context を受け取れないため、
+/// ThemeHelper.SelectedTheme (ShellPage.ApplyTheme から最後に通知された値) を使って解決する。
+/// 既に表示中のトーストはテーマ切替に追従しないが、トースト自体が短命なため許容範囲。
 /// </summary>
 public sealed class ToastAccentBrushConverter : IValueConverter
 {
@@ -21,26 +23,11 @@ public sealed class ToastAccentBrushConverter : IValueConverter
             ToastType.error => "ADangerSolid",
             _ => "ATextDim",
         } : "ATextDim";
-        return ResolveThemeBrush(key);
+        return ThemeHelper.BrushForSelectedTheme(key);
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)
         => throw new NotSupportedException();
-
-    private static Brush? ResolveThemeBrush(string key)
-    {
-        try
-        {
-            var themeKey = Application.Current.RequestedTheme == ApplicationTheme.Dark ? "Dark" : "Light";
-            if (Application.Current.Resources.ThemeDictionaries.TryGetValue(themeKey, out var raw)
-                && raw is ResourceDictionary dict
-                && dict.TryGetValue(key, out var value)
-                && value is Brush brush)
-                return brush;
-        }
-        catch { }
-        return null;
-    }
 }
 
 /// <summary>

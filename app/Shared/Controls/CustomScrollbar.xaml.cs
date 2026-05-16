@@ -1,6 +1,7 @@
 using System;
 using Alpheratz.Core;
 using Alpheratz.Shared.Animations;
+using Alpheratz.Shared.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -100,7 +101,7 @@ public sealed partial class CustomScrollbar : UserControl
         {
             AnimationHelper.FadeTo(TrackRail, 1f, 200);
             Thumb.Width = 8;
-            Thumb.Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AScrollbarThumbHover"];
+            Thumb.Background = ThemeHelper.Brush(this, "AScrollbarThumbHover");
         }
         catch (Exception ex) { AppLogger.Error($"CustomScrollbar.Track_PointerEntered: threw: {ex}"); }
     }
@@ -112,7 +113,7 @@ public sealed partial class CustomScrollbar : UserControl
             if (isDragging) return;
             AnimationHelper.FadeTo(TrackRail, 0f, 200);
             Thumb.Width = 6;
-            Thumb.Background = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AScrollbarThumb"];
+            Thumb.Background = ThemeHelper.Brush(this, "AScrollbarThumb");
         }
         catch (Exception ex) { AppLogger.Error($"CustomScrollbar.Track_PointerExited: threw: {ex}"); }
     }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Numerics;
 using Alpheratz.Core;
+using Alpheratz.Shared.Services;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -475,8 +476,8 @@ public sealed partial class GalleryMasonryView : UserControl
             Width = item.Width,
             Height = item.Height,
             CornerRadius = new CornerRadius(12),
-            Background = (Brush)Application.Current.Resources["ASurface"],
-            BorderBrush = (Brush)Application.Current.Resources["ABorder"],
+            Background = ThemeHelper.Brush(this, "ASurface"),
+            BorderBrush = ThemeHelper.Brush(this, "ABorder"),
             BorderThickness = new Thickness(1),
         };
         Canvas.SetLeft(border, item.Left);
@@ -497,7 +498,7 @@ public sealed partial class GalleryMasonryView : UserControl
         // --- Shimmer placeholder ---
         var shimmerBase = new Border
         {
-            Background = (Brush)Application.Current.Resources["ASurfaceSoft"],
+            Background = ThemeHelper.Brush(this, "ASurfaceSoft"),
             Width = item.Width,
             Height = item.Height,
         };
@@ -505,7 +506,7 @@ public sealed partial class GalleryMasonryView : UserControl
 
         var shimmerHighlight = new Border
         {
-            Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0x15, 0xFF, 0xFF, 0xFF)),
+            Background = ThemeHelper.Brush(this, "ASurfaceHover"),
             Width = item.Width * 0.4,
             Height = item.Height,
             HorizontalAlignment = HorizontalAlignment.Left,
@@ -565,14 +566,14 @@ public sealed partial class GalleryMasonryView : UserControl
         {
             AppLogger.Warn($"GalleryMasonryView.ImageFailed: {args.ErrorMessage}");
             StopShimmer();
-            shimmerBase.Background = (Brush)Application.Current.Resources["ASurfaceSoft"];
+            shimmerBase.Background = ThemeHelper.Brush(this, "ASurfaceSoft");
             shimmerBase.Opacity = 1;
             var errorIcon = new TextBlock
             {
                 Text = "",
                 FontFamily = new FontFamily("Segoe MDL2 Assets"),
                 FontSize = 24,
-                Foreground = (Brush)Application.Current.Resources["ATextDisabled"],
+                Foreground = ThemeHelper.Brush(this, "ATextDisabled"),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
             };
@@ -612,7 +613,7 @@ public sealed partial class GalleryMasonryView : UserControl
             Text = item.Photo.Timestamp ?? string.Empty,
             FontSize = 10,
             Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(0xBB, 0xFF, 0xFF, 0xFF)),
-            FontFamily = (FontFamily)Application.Current.Resources["AFontMono"],
+            FontFamily = ThemeHelper.AppResource<FontFamily>("AFontMono"),
             TextTrimming = TextTrimming.CharacterEllipsis,
             MaxLines = 1,
         };

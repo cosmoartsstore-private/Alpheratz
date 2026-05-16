@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using Alpheratz.Core;
 using Alpheratz.Shared.Models;
+using Alpheratz.Shared.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -52,7 +53,21 @@ public sealed partial class ShellHeaderBar : UserControl
         SyncMultiSelectStyle();
         SyncGroupingStyle();
         SyncViewModeStyle();
+        ActualThemeChanged += OnActualThemeChanged;
+        Unloaded += (_, _) => ActualThemeChanged -= OnActualThemeChanged;
         AppLogger.Trace("ShellHeaderBar.ctor: exit");
+    }
+
+    /// <summary>テーマ切替時に code-behind で塗ったトグルボタンを再着色する。</summary>
+    private void OnActualThemeChanged(FrameworkElement sender, object args)
+    {
+        try
+        {
+            SyncMultiSelectStyle();
+            SyncGroupingStyle();
+            SyncViewModeStyle();
+        }
+        catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.OnActualThemeChanged: {ex}"); }
     }
 
 
@@ -256,18 +271,5 @@ public sealed partial class ShellHeaderBar : UserControl
     }
 
     /// <summary>ActualTheme に応じた ThemeDictionaries から指定キーのブラシを取り出す。</summary>
-    private Brush? ResolveThemeBrush(string key)
-    {
-        try
-        {
-            var themeKey = ActualTheme == ElementTheme.Dark ? "Dark" : "Light";
-            if (Application.Current.Resources.ThemeDictionaries.TryGetValue(themeKey, out var raw)
-                && raw is ResourceDictionary dict
-                && dict.TryGetValue(key, out var value)
-                && value is Brush brush)
-                return brush;
-        }
-        catch { }
-        return null;
-    }
+    private Brush? ResolveThemeBrush(string key) => ThemeHelper.Brush(this, key);
 }

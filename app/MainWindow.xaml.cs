@@ -60,6 +60,13 @@ public partial class MainWindow : Window
         AppLogger.Trace("MainWindow.ctor(Page): exit");
     }
 
+    /// <summary>RootHost に RequestedTheme を設定し、ウィンドウ全体のテーマを切り替える。</summary>
+    public void SetTheme(ElementTheme theme)
+    {
+        try { RootHost.RequestedTheme = theme; }
+        catch (Exception ex) { AppLogger.Error($"MainWindow.SetTheme: threw: {ex}"); }
+    }
+
     /// <summary>RootHost の子要素を差し替えてルートページを設定する。</summary>
     public void SetRoot(Page rootPage)
     {

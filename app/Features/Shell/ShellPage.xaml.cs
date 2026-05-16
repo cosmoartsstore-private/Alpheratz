@@ -20,9 +20,9 @@ public sealed partial class ShellPage : Page
     private readonly ShellViewModel viewModel;
     private GalleryPage? galleryPage;
     private SettingsPage? settingsPage;
-    private PhotoModalPage? cachedModalPage;
     private bool isFilterOpen;
     private bool isModalOpen;
+    private long lastModalOpenTick;
 
     public ShellPage(ShellViewModel viewModel)
     {
@@ -241,6 +241,7 @@ public sealed partial class ShellPage : Page
             Stage.ModalContent = drillDownPage;
             Stage.ModalVisibility = Visibility.Visible;
             isMiddleModalOpen = true;
+            lastModalOpenTick = Environment.TickCount64;
             HeaderBar.Opacity = 0.4;
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowGroupDrillDown: threw: {ex}"); }
@@ -334,6 +335,7 @@ public sealed partial class ShellPage : Page
             Stage.ModalContent = settingsPage;
             Stage.ModalVisibility = Visibility.Visible;
             isMiddleModalOpen = true;
+            lastModalOpenTick = Environment.TickCount64;
             HeaderBar.Opacity = 0.4;
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowSettings: threw: {ex}"); }
@@ -343,25 +345,21 @@ public sealed partial class ShellPage : Page
     /// <summary>
     /// 写真詳細モーダルを表示する。最上位レイヤ (Stage.TopModalContent) に出すことで、
     /// 中位モーダル (GroupDrillDown / Settings 等) の上にさらに重ねられる構造になる。
-    /// cachedModalPage を再利用するのは、初回生成コスト (XAML パース + Border 階層構築)
-    /// が非自明に重く、写真切り替えごとに作り直すと体感の遅れに直結するため。
-    /// 既存インスタンスがあれば UpdateViewModel(...) で内部 binding を差し替えるだけにする。
-    /// OnAddTag/OnRemoveTag は VM 横断のロジックなので初回に固定で結線し、その他の
-    /// コールバックは modalViewModel に依存するので毎回上書きする。
+    /// 毎回 new で生成する: キャッシュ＋UpdateViewModel 方式だと、visual tree から
+    /// detach されている間に親の RequestedTheme が変わってもページが追従せず、
+    /// 再オープン時に古いテーマの {ThemeResource} が残ってしまう問題があったため。
     /// </summary>
     public void ShowPhotoModal(PhotoModalViewModel modalViewModel)
     {
         AppLogger.Trace("ShellPage.ShowPhotoModal: enter");
         try
         {
-            if (cachedModalPage is null)
-            {
-                cachedModalPage = new PhotoModalPage(modalViewModel);
-                cachedModalPage.OnAddTag = (photoPath, tag) => viewModel.galleryViewModel.addTag(photoPath, tag);
-                cachedModalPage.OnRemoveTag = (photoPath, tag) => viewModel.galleryViewModel.removeTag(photoPath, tag);
-            }
-            else cachedModalPage.UpdateViewModel(modalViewModel);
-            var page = cachedModalPage;
+            var page = new PhotoModalPage(modalViewModel);
+            // WinUI 3 では Page が ContentControl にホストされたとき RequestedTheme が
+            // 親から自動継承されないことがある。明示的に ShellPage 側のテーマを伝える。
+            page.RequestedTheme = RequestedTheme;
+            page.OnAddTag = (photoPath, tag) => viewModel.galleryViewModel.addTag(photoPath, tag);
+            page.OnRemoveTag = (photoPath, tag) => viewModel.galleryViewModel.removeTag(photoPath, tag);
             page.OnClose = () => { modalViewModel.closePhotoModal(); CloseModal(); };
             page.OnOpenWorld = modalViewModel.handleOpenWorld;
             page.OnOpenExplorer = modalViewModel.handleOpenExplorer;
@@ -397,6 +395,7 @@ public sealed partial class ShellPage : Page
             Stage.TopModalContent = page;
             Stage.TopModalVisibility = Visibility.Visible;
             isModalOpen = true;
+            lastModalOpenTick = Environment.TickCount64;
             HeaderBar.Opacity = 0.4;
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowPhotoModal: threw: {ex}"); }
@@ -424,6 +423,7 @@ public sealed partial class ShellPage : Page
             Stage.ModalContent = page;
             Stage.ModalVisibility = Visibility.Visible;
             isMiddleModalOpen = true;
+            lastModalOpenTick = Environment.TickCount64;
             HeaderBar.Opacity = 0.4;
             await vm.InitializeAsync().ConfigureAwait(false);
         }
@@ -482,35 +482,6 @@ public sealed partial class ShellPage : Page
         }
     }
 
-    private void ShellPage_Loaded(object sender, RoutedEventArgs e)
-    {
-        // ctor で全結線済み。Loaded は冪等な再ハイドレートのみ。
-    }
-
-    /// <summary>
-    /// アンマウント時に GalleryViewModel 側に残った drillDownPhotosProvider などの
-    /// 参照を切る。Page を捨てた後も VM がコールバックを保持していると、
-    /// ガベージコレクトされず古い ShellPage インスタンスがリークする。
-    /// </summary>
-    private void ShellPage_Unloaded(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            viewModel.galleryViewModel.drillDownPhotosProvider = null;
-            viewModel.galleryViewModel.selectionState.PropertyChanged -= OnSelectionStateChanged;
-            viewModel.PropertyChanged -= OnShellViewModelChanged;
-            drillDownPhotos = null;
-            if (drillDownPage is not null)
-            {
-                drillDownPage.OnBack = null;
-                drillDownPage.OnPhotoActivated = null;
-                drillDownPage.OnFavoriteClicked = null;
-                drillDownPage.OnThumbnailsNeeded = null;
-                drillDownPage = null;
-            }
-        }
-        catch (Exception ex) { AppLogger.Error($"ShellPage.ShellPage_Unloaded: threw: {ex}"); }
-    }
 
     /// <summary>
     /// シェルレベルのキーボードショートカット。PhotoModal が開いている時のキー操作は
@@ -573,11 +544,13 @@ public sealed partial class ShellPage : Page
     /// </summary>
     private void ModalDismissArea_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
     {
+        if (Environment.TickCount64 - lastModalOpenTick < 400) return;
+
         if (isModalOpen)
         {
             // 最上位 PhotoModal を閉じる (closePhotoModal + CloseModal を内包)
             e.Handled = true;
-            cachedModalPage?.OnClose?.Invoke();
+            (Stage.TopModalContent as PhotoModalPage)?.OnClose?.Invoke();
             return;
         }
         if (isMiddleModalOpen)

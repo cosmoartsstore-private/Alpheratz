@@ -2,5 +2,21 @@
     x:Class="Alpheratz.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Grid x:Name="RootHost" Background="{ThemeResource ABg}"/>
+    <Grid x:Name="RootHost" Background="{ThemeResource ABg}">
+        <!--
+            Brushes.xaml を Application.Resources でなく RootHost.Resources にも置く。
+            {ThemeResource} は visual tree を辿るので、ここで見つかれば RootHost.ActualTheme で
+            解決される (App.RequestedTheme は WinUI 3 ではランタイム変更不可なので
+            App.Resources 側で見つかると light/dark の切替に追従しない)。
+            App.Resources にも残してあるのは Buttons.xaml/Containers.xaml/Typography.xaml が
+            App レベルで Brushes.xaml の Style を組み立てる前提でビルドされているため。
+        -->
+        <Grid.Resources>
+            <ResourceDictionary>
+                <ResourceDictionary.MergedDictionaries>
+                    <ResourceDictionary Source="Themes/Brushes.xaml"/>
+                </ResourceDictionary.MergedDictionaries>
+            </ResourceDictionary>
+        </Grid.Resources>
+    </Grid>
 </Window>

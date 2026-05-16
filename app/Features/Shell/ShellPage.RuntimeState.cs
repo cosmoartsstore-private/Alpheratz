@@ -55,12 +55,36 @@ public sealed partial class ShellPage
         AppLogger.Trace($"ShellPage.ApplyTheme: enter mode={mode}");
         try
         {
-            // Setting RequestedTheme on the page propagates to all descendants
-            // and resolves Light/Dark ResourceDictionary lookups for the entire
-            // visual tree (header, stage, right rail, modals, dialogs).
-            RequestedTheme = mode == ThemeMode.dark
+            // ShellPage と MainWindow.RootHost の RequestedTheme をセットすることで、
+            // RootHost.Resources にマージされた Brushes.xaml の ThemeDictionaries が
+            // 要素の ActualTheme で解決される (構造的に theme 切替に追従する経路)。
+            // Application.RequestedTheme は WinUI 3 では InitializeComponent 後に
+            // 変更できないためここでは触らない。
+            var theme = mode == ThemeMode.dark
                 ? ElementTheme.Dark
                 : ElementTheme.Light;
+
+            RequestedTheme = theme;
+
+            if (App.MainWindowInstance is MainWindow mw)
+                mw.SetTheme(theme);
+
+            // 他のキャッシュページ (Settings / Gallery / GroupDrillDown) は閉じている間
+            // visual tree から外れていて親の RequestedTheme 変更を受け取れないため、
+            // 直接 RequestedTheme をセットして再表示時に正しいテーマで解決されるようにする。
+            if (settingsPage is not null) settingsPage.RequestedTheme = theme;
+            if (galleryPage is not null) galleryPage.RequestedTheme = theme;
+            if (drillDownPage is not null) drillDownPage.RequestedTheme = theme;
+            // PhotoModal は毎回 new で生成するためキャッシュは不要だが、表示中に切替
+            // された場合は Page が ContentControl 経由でテーマを自動継承しないので
+            // 直接セットして即時反映する。
+            if (Stage.TopModalContent is Microsoft.UI.Xaml.FrameworkElement activeTopModal)
+                activeTopModal.RequestedTheme = theme;
+            if (Stage.ModalContent is Microsoft.UI.Xaml.FrameworkElement activeMidModal)
+                activeMidModal.RequestedTheme = theme;
+
+            // IValueConverter のように element context を渡せない経路向けに通知する。
+            Shared.Services.ThemeHelper.NotifySelectedThemeChanged(theme);
         }
         catch (System.Exception ex)
         {
@@ -72,8 +96,22 @@ public sealed partial class ShellPage
     private void ShellPage_Unloaded(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("ShellPage.ShellPage_Unloaded: enter");
-        viewModel.galleryViewModel.selectionState.PropertyChanged -= OnSelectionStateChanged;
-        viewModel.PropertyChanged -= OnShellViewModelChanged;
+        try
+        {
+            viewModel.galleryViewModel.drillDownPhotosProvider = null;
+            viewModel.galleryViewModel.selectionState.PropertyChanged -= OnSelectionStateChanged;
+            viewModel.PropertyChanged -= OnShellViewModelChanged;
+            drillDownPhotos = null;
+            if (drillDownPage is not null)
+            {
+                drillDownPage.OnBack = null;
+                drillDownPage.OnPhotoActivated = null;
+                drillDownPage.OnFavoriteClicked = null;
+                drillDownPage.OnThumbnailsNeeded = null;
+                drillDownPage = null;
+            }
+        }
+        catch (System.Exception ex) { AppLogger.Error($"ShellPage.ShellPage_Unloaded: threw: {ex}"); }
         AppLogger.Trace("ShellPage.ShellPage_Unloaded: exit");
     }
 

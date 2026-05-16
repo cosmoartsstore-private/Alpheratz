@@ -9,9 +9,9 @@
         <Setter Property="Padding" Value="0"/>
         <Setter Property="CornerRadius" Value="{StaticResource ARadiusButton}"/>
         <Setter Property="BorderBrush" Value="Transparent"/>
-        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="Background" Value="Transparent"/>
-        <Setter Property="Foreground" Value="{ThemeResource ATextDim}"/>
+        <Setter Property="Foreground" Value="{ThemeResource AText}"/>
     </Style>
 
     <!-- Header pill button (text + bold) -->
@@ -44,8 +44,8 @@
         <Setter Property="Padding" Value="12,7"/>
         <Setter Property="CornerRadius" Value="{StaticResource ARadiusMd}"/>
         <Setter Property="Background" Value="{ThemeResource ASurfaceSoft}"/>
-        <Setter Property="BorderBrush" Value="{ThemeResource ABorder}"/>
-        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="Foreground" Value="{ThemeResource ATextDim}"/>
     </Style>
 

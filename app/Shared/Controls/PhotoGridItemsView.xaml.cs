@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using Alpheratz.Core;
 using Alpheratz.Features.Gallery;
+using Alpheratz.Shared.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
@@ -248,26 +249,6 @@ public sealed partial class PhotoGridItemsView : UserControl
     }
 
     /// <summary>
-    /// FrameworkElement の ActualTheme に対応した ThemeDictionaries からブラシを取り出す。
-    /// Application.Current.Resources["X"] では ThemeDictionaries 内のキーは解決されないため、
-    /// 明示的に ThemeDictionaries 経由で取得する必要がある。
-    /// </summary>
-    private static Brush? ResolveThemeBrush(FrameworkElement element, string key)
-    {
-        try
-        {
-            var themeKey = element.ActualTheme == ElementTheme.Dark ? "Dark" : "Light";
-            if (Application.Current.Resources.ThemeDictionaries.TryGetValue(themeKey, out var raw)
-                && raw is ResourceDictionary dict
-                && dict.TryGetValue(key, out var value)
-                && value is Brush brush)
-                return brush;
-        }
-        catch { }
-        return null;
-    }
-
-    /// <summary>
     /// Recycle 時にホバー残留（BorderBrush/Background が hover 状態のまま）を解除する。
     /// PointerExited はスクロールで pointer が抜けたケースで発火しないことがあるため、
     /// DataContext 差し替えタイミングで明示的にリセットする。
@@ -278,9 +259,9 @@ public sealed partial class PhotoGridItemsView : UserControl
         {
             if (sender is not Border border) return;
             ElementCompositionPreview.GetElementVisual(border).Offset = Vector3.Zero;
-            if (ResolveThemeBrush(border, "ABorder") is { } restBorder)
+            if (ThemeHelper.Brush(border, "ABorder") is { } restBorder)
                 border.BorderBrush = restBorder;
-            if (ResolveThemeBrush(border, "ASurface") is { } restFill)
+            if (ThemeHelper.Brush(border, "ASurface") is { } restFill)
                 border.Background = restFill;
         }
         catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.CardBorder_DataContextChanged: {ex}"); }
@@ -301,9 +282,9 @@ public sealed partial class PhotoGridItemsView : UserControl
 
             // 色フィードバック: 枠線をアクセント寄りに、背景をわずかに持ち上げる。
             // Y オフセットだけだと視覚的フィードバックが弱いため。
-            if (ResolveThemeBrush(border, "ABorderStrong") is { } hoverBorder)
+            if (ThemeHelper.Brush(border, "ABorderStrong") is { } hoverBorder)
                 border.BorderBrush = hoverBorder;
-            if (ResolveThemeBrush(border, "ASurfaceHover") is { } hoverFill)
+            if (ThemeHelper.Brush(border, "ASurfaceHover") is { } hoverFill)
                 border.Background = hoverFill;
         }
         catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.CardBorder_PointerEntered: {ex}"); }
@@ -322,9 +303,9 @@ public sealed partial class PhotoGridItemsView : UserControl
             offsetAnim.Duration = TimeSpan.FromMilliseconds(180);
             visual.StartAnimation("Offset", offsetAnim);
 
-            if (ResolveThemeBrush(border, "ABorder") is { } restBorder)
+            if (ThemeHelper.Brush(border, "ABorder") is { } restBorder)
                 border.BorderBrush = restBorder;
-            if (ResolveThemeBrush(border, "ASurface") is { } restFill)
+            if (ThemeHelper.Brush(border, "ASurface") is { } restFill)
                 border.Background = restFill;
         }
         catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.CardBorder_PointerExited: {ex}"); }

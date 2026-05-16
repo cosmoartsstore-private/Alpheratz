@@ -6,6 +6,7 @@ using Alpheratz.Core;
 using Alpheratz.Features.Gallery;
 using Alpheratz.Models;
 using Alpheratz.Shared.Models;
+using Alpheratz.Shared.Services;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -53,7 +54,28 @@ public sealed partial class GalleryFilterPanel : UserControl
             AppLogger.Error($"GalleryFilterPanel.ctor: InitializeComponent failed: {ex}");
             throw;
         }
+        ActualThemeChanged += OnActualThemeChanged;
         AppLogger.Trace("GalleryFilterPanel.ctor: exit");
+    }
+
+    /// <summary>
+    /// テーマ切替時に code-behind で設定したブラシを再適用する。
+    /// {ThemeResource} はランタイム解決されるが、setActive/syncFavoriteToggle で直接代入した
+    /// SolidColorBrush は古いテーマの値が残るため、明示的に再評価する必要がある。
+    /// </summary>
+    private void OnActualThemeChanged(FrameworkElement sender, object args)
+    {
+        try
+        {
+            syncActiveStates();
+            syncFavoriteToggle();
+            buildWeekdayHeaders();
+            rebuildTagCheckboxList();
+            rebuildWorldCheckboxList();
+            if (DatePickerPopup.Visibility == Visibility.Visible)
+                buildCalendar();
+        }
+        catch (Exception ex) { AppLogger.Error($"GalleryFilterPanel.OnActualThemeChanged: {ex}"); }
     }
 
     /// <summary>
@@ -70,6 +92,7 @@ public sealed partial class GalleryFilterPanel : UserControl
                 boundFiltersState.PropertyChanged -= OnFiltersChanged;
                 boundFiltersState = null;
             }
+            ActualThemeChanged -= OnActualThemeChanged;
         }
         catch (Exception ex)
         {
@@ -163,6 +186,9 @@ public sealed partial class GalleryFilterPanel : UserControl
             setActive(OrientationAllBtn, boundFiltersState.OrientationFilter == "all");
             setActive(OrientationPortraitBtn, boundFiltersState.OrientationFilter == "portrait");
             setActive(OrientationLandscapeBtn, boundFiltersState.OrientationFilter == "landscape");
+            OrientationAllIcon.Foreground = ThemeHelper.Brush(OrientationAllIcon, boundFiltersState.OrientationFilter == "all" ? "APrimary" : "ATextFaint");
+            OrientationLandscapeIcon.Foreground = ThemeHelper.Brush(OrientationLandscapeIcon, boundFiltersState.OrientationFilter == "landscape" ? "APrimary" : "ATextFaint");
+            OrientationPortraitIcon.Foreground = ThemeHelper.Brush(OrientationPortraitIcon, boundFiltersState.OrientationFilter == "portrait" ? "APrimary" : "ATextFaint");
 
             setActive(SortDateBtn, boundFiltersState.SortMode == SortMode.dateDesc);
             setActive(SortWorldBtn, boundFiltersState.SortMode == SortMode.worldAsc);
@@ -216,15 +242,15 @@ public sealed partial class GalleryFilterPanel : UserControl
         FavoriteStarIcon.Liked = active;
         if (active)
         {
-            FavoriteToggleBtn.Background = (Brush)Application.Current.Resources["AFavoriteSoft"];
-            FavoriteToggleBtn.BorderBrush = (Brush)Application.Current.Resources["AFavoriteBorder"];
-            FavoriteLabel.Foreground = (Brush)Application.Current.Resources["AFavorite"];
+            FavoriteToggleBtn.Background = ThemeHelper.Brush(FavoriteToggleBtn, "AFavoriteSoft");
+            FavoriteToggleBtn.BorderBrush = ThemeHelper.Brush(FavoriteToggleBtn, "AFavoriteBorder");
+            FavoriteLabel.Foreground = ThemeHelper.Brush(FavoriteLabel, "AFavorite");
         }
         else
         {
-            FavoriteToggleBtn.Background = (Brush)Application.Current.Resources["ASurfaceSoft"];
-            FavoriteToggleBtn.BorderBrush = (Brush)Application.Current.Resources["ABorder"];
-            FavoriteLabel.Foreground = (Brush)Application.Current.Resources["ATextDim"];
+            FavoriteToggleBtn.Background = ThemeHelper.Brush(FavoriteToggleBtn, "ASurfaceSoft");
+            FavoriteToggleBtn.BorderBrush = new SolidColorBrush(Colors.Transparent);
+            FavoriteLabel.Foreground = ThemeHelper.Brush(FavoriteLabel, "ATextDim");
         }
     }
 
@@ -244,18 +270,19 @@ public sealed partial class GalleryFilterPanel : UserControl
 
     private static void setActive(Button btn, bool active)
     {
-        var resources = Application.Current.Resources;
         if (active)
         {
-            btn.Background = (Brush)resources["APrimarySoft"];
-            btn.Foreground = (Brush)resources["APrimary"];
-            btn.BorderBrush = (Brush)resources["ABorderStrong"];
+            btn.Background = ThemeHelper.Brush(btn, "APrimarySoft");
+            btn.Foreground = ThemeHelper.Brush(btn, "APrimary");
+            btn.BorderBrush = ThemeHelper.Brush(btn, "ABorderStrong");
+            btn.BorderThickness = new Thickness(1);
         }
         else
         {
-            btn.Background = (Brush)resources["ASurfaceSoft"];
-            btn.Foreground = (Brush)resources["ATextDim"];
-            btn.BorderBrush = (Brush)resources["ABorder"];
+            btn.Background = ThemeHelper.Brush(btn, "ASurfaceSoft");
+            btn.Foreground = ThemeHelper.Brush(btn, "ATextDim");
+            btn.BorderBrush = new SolidColorBrush(Colors.Transparent);
+            btn.BorderThickness = new Thickness(0);
         }
     }
 
@@ -457,7 +484,7 @@ public sealed partial class GalleryFilterPanel : UserControl
                 Text = WeekLabels[i],
                 FontSize = 10,
                 FontWeight = Microsoft.UI.Text.FontWeights.ExtraBold,
-                Foreground = (Brush)Application.Current.Resources["ATextFaint"],
+                Foreground = ThemeHelper.Brush(WeekdayHeaderGrid, "ATextFaint"),
                 HorizontalAlignment = HorizontalAlignment.Center,
             };
             Grid.SetColumn(tb, i);
@@ -499,24 +526,25 @@ public sealed partial class GalleryFilterPanel : UserControl
             bool inRange = activeStart.HasValue && activeEnd.HasValue
                            && cellDate.Date >= activeStart.Value.Date && cellDate.Date <= activeEnd.Value.Date;
 
-            var resources = Application.Current.Resources;
-            Brush bg;
-            Brush fg;
+            Brush? bg;
+            Brush? fg;
 
             if (isStart || isEnd)
             {
-                bg = (Brush)resources["APrimary"];
+                bg = ThemeHelper.Brush(CalendarDayGrid, "APrimary");
                 fg = new SolidColorBrush(Colors.White);
             }
             else if (inRange)
             {
-                bg = (Brush)resources["APrimarySoft"];
-                fg = (Brush)resources["AText"];
+                bg = ThemeHelper.Brush(CalendarDayGrid, "APrimarySoft");
+                fg = ThemeHelper.Brush(CalendarDayGrid, "AText");
             }
             else
             {
                 bg = new SolidColorBrush(Colors.Transparent);
-                fg = inCurrentMonth ? (Brush)resources["AText"] : (Brush)resources["ATextDisabled"];
+                fg = inCurrentMonth
+                    ? ThemeHelper.Brush(CalendarDayGrid, "AText")
+                    : ThemeHelper.Brush(CalendarDayGrid, "ATextDisabled");
             }
 
             var btn = new Button
@@ -739,8 +767,6 @@ public sealed partial class GalleryFilterPanel : UserControl
     // ── Shared checkbox item builder ──
     private void addCheckboxItem(StackPanel parent, string label, string? countText, bool isChecked, Action onToggle)
     {
-        var resources = Application.Current.Resources;
-
         var grid = new Grid { Padding = new Thickness(10, 8, 10, 8) };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         if (countText is not null)
@@ -752,7 +778,7 @@ public sealed partial class GalleryFilterPanel : UserControl
             Text = label,
             FontSize = 12,
             FontWeight = Microsoft.UI.Text.FontWeights.Bold,
-            Foreground = isChecked ? (Brush)resources["APrimary"] : (Brush)resources["ATextFaint"],
+            Foreground = ThemeHelper.Brush(parent, isChecked ? "APrimary" : "ATextFaint"),
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
@@ -766,8 +792,8 @@ public sealed partial class GalleryFilterPanel : UserControl
             {
                 Text = countText,
                 FontSize = 11,
-                FontFamily = (FontFamily)resources["AFontMono"],
-                Foreground = (Brush)resources["ATextDisabled"],
+                FontFamily = ThemeHelper.AppResource<FontFamily>("AFontMono"),
+                Foreground = ThemeHelper.Brush(parent, "ATextDisabled"),
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(8, 0, 8, 0),
             };
@@ -782,8 +808,8 @@ public sealed partial class GalleryFilterPanel : UserControl
             Height = 18,
             CornerRadius = new CornerRadius(5),
             BorderThickness = new Thickness(1),
-            BorderBrush = isChecked ? (Brush)resources["ABorderStrong"] : (Brush)resources["ABorder"],
-            Background = isChecked ? (Brush)resources["APrimarySoft"] : (Brush)resources["ASurfaceSoft"],
+            BorderBrush = ThemeHelper.Brush(parent, isChecked ? "ABorderStrong" : "ABorder"),
+            Background = ThemeHelper.Brush(parent, isChecked ? "APrimarySoft" : "ASurfaceSoft"),
             VerticalAlignment = VerticalAlignment.Center,
         };
 
@@ -794,7 +820,7 @@ public sealed partial class GalleryFilterPanel : UserControl
                 Text = "✓",
                 FontSize = 10,
                 FontWeight = Microsoft.UI.Text.FontWeights.ExtraBold,
-                Foreground = (Brush)resources["APrimary"],
+                Foreground = ThemeHelper.Brush(parent, "APrimary"),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
             };
@@ -806,8 +832,8 @@ public sealed partial class GalleryFilterPanel : UserControl
         var itemBorder = new Border
         {
             CornerRadius = new CornerRadius(8),
-            Background = isChecked ? (Brush)resources["APrimarySoft"] : new SolidColorBrush(Colors.Transparent),
-            BorderBrush = isChecked ? (Brush)resources["ABorderStrong"] : new SolidColorBrush(Colors.Transparent),
+            Background = isChecked ? ThemeHelper.Brush(parent, "APrimarySoft") : new SolidColorBrush(Colors.Transparent),
+            BorderBrush = isChecked ? ThemeHelper.Brush(parent, "ABorderStrong") : new SolidColorBrush(Colors.Transparent),
             BorderThickness = new Thickness(1),
             Child = grid,
         };
@@ -835,7 +861,7 @@ public sealed partial class GalleryFilterPanel : UserControl
         {
             Height = 1,
             Margin = new Thickness(4, 4, 4, 4),
-            Background = (Brush)Application.Current.Resources["ABorder"],
+            Background = ThemeHelper.Brush(parent, "ABorder"),
         });
     }
 
@@ -846,7 +872,7 @@ public sealed partial class GalleryFilterPanel : UserControl
             Text = text,
             FontSize = 10,
             FontWeight = Microsoft.UI.Text.FontWeights.ExtraBold,
-            Foreground = (Brush)Application.Current.Resources["ATextFaint"],
+            Foreground = ThemeHelper.Brush(parent, "ATextFaint"),
             Margin = new Thickness(10, 4, 0, 2),
         });
     }

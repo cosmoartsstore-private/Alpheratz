@@ -68,8 +68,7 @@
                                     Padding="10,8" CornerRadius="{StaticResource ARadiusMd}" Click="DateTrigger_Click">
                                 <StackPanel Orientation="Horizontal" Spacing="10">
                                     <Border Width="24" Height="24" CornerRadius="{StaticResource ARadiusSm}"
-                                            BorderBrush="{ThemeResource ABorder}" BorderThickness="1"
-                                            Background="{ThemeResource ASurface}">
+                                            Background="{ThemeResource ASurfaceSofter}">
                                         <TextBlock Text="&#x1F4C5;" FontSize="{StaticResource AFontSizeXs}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     </Border>
                                     <StackPanel Spacing="1">
@@ -209,23 +208,23 @@
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <Button x:Name="OrientationAllBtn" Style="{StaticResource GhostButtonStyle}"
-                                    HorizontalAlignment="Stretch" MinHeight="70" CornerRadius="{StaticResource ARadiusMd}" Click="OrientationAll_Click">
+                                    HorizontalAlignment="Stretch" MinHeight="62" CornerRadius="{StaticResource ARadiusMd}" Click="OrientationAll_Click">
                                 <StackPanel HorizontalAlignment="Center" Spacing="4">
-                                    <TextBlock Text="&#x229E;" FontSize="18" HorizontalAlignment="Center" Foreground="{ThemeResource ATextDim}"/>
+                                    <TextBlock x:Name="OrientationAllIcon" Text="&#x229E;" FontSize="18" HorizontalAlignment="Center"/>
                                     <TextBlock Text="すべて" FontSize="{StaticResource AFontSizeXs}" FontWeight="Bold" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
                             <Button x:Name="OrientationLandscapeBtn" Grid.Column="1" Style="{StaticResource GhostButtonStyle}"
-                                    HorizontalAlignment="Stretch" MinHeight="70" CornerRadius="{StaticResource ARadiusMd}" Click="OrientationLandscape_Click">
+                                    HorizontalAlignment="Stretch" MinHeight="62" CornerRadius="{StaticResource ARadiusMd}" Click="OrientationLandscape_Click">
                                 <StackPanel HorizontalAlignment="Center" Spacing="4">
-                                    <TextBlock Text="&#x229F;" FontSize="18" HorizontalAlignment="Center" Foreground="{ThemeResource ATextDim}"/>
+                                    <TextBlock x:Name="OrientationLandscapeIcon" Text="&#x229F;" FontSize="18" HorizontalAlignment="Center"/>
                                     <TextBlock Text="横長" FontSize="{StaticResource AFontSizeXs}" FontWeight="Bold" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
                             <Button x:Name="OrientationPortraitBtn" Grid.Column="2" Style="{StaticResource GhostButtonStyle}"
-                                    HorizontalAlignment="Stretch" MinHeight="70" CornerRadius="{StaticResource ARadiusMd}" Click="OrientationPortrait_Click">
+                                    HorizontalAlignment="Stretch" MinHeight="62" CornerRadius="{StaticResource ARadiusMd}" Click="OrientationPortrait_Click">
                                 <StackPanel HorizontalAlignment="Center" Spacing="4">
-                                    <TextBlock Text="&#x25AF;" FontSize="18" HorizontalAlignment="Center" Foreground="{ThemeResource ATextDim}"/>
+                                    <TextBlock x:Name="OrientationPortraitIcon" Text="&#x25AF;" FontSize="18" HorizontalAlignment="Center"/>
                                     <TextBlock Text="縦長" FontSize="{StaticResource AFontSizeXs}" FontWeight="Bold" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
@@ -339,8 +338,7 @@
                                 HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                                 Padding="14,11" CornerRadius="14"
                                 Background="{ThemeResource ASurfaceSoft}"
-                                BorderBrush="{ThemeResource ABorder}"
-                                BorderThickness="1"
+                                BorderThickness="0"
                                 Click="FavoriteToggle_Click">
                             <StackPanel Orientation="Horizontal" Spacing="10">
                                 <shared:AnimatedFavoriteStar x:Name="FavoriteStarIcon"

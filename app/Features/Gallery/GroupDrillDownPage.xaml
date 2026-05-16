@@ -33,8 +33,8 @@
                     <Button x:Name="CloseButton" Grid.Column="1"
                             Width="34" Height="34"
                             CornerRadius="{StaticResource ARadiusButton}"
-                            Background="Transparent"
-                            BorderBrush="{ThemeResource ABorder}" BorderThickness="1"
+                            Background="{ThemeResource ASurfaceSoft}"
+                            BorderThickness="0"
                             AutomationProperties.Name="閉じる"
                             ToolTipService.ToolTip="グループ表示を閉じる (Esc)"
                             Click="CloseButton_Click">

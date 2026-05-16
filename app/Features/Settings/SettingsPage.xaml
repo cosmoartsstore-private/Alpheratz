@@ -7,7 +7,7 @@
     IsTabStop="True"
     KeyDown="Page_KeyDown">
     <Grid Background="Transparent" Tapped="Backdrop_Tapped">
-        <Border MaxWidth="1100" MaxHeight="820" MinWidth="640" Margin="40"
+        <Border MaxWidth="1400" MaxHeight="960" MinWidth="640" Margin="24"
                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                 CornerRadius="{StaticResource ARadiusModal}"
                 Background="{ThemeResource ASurface}"
@@ -26,8 +26,8 @@
                     <Button x:Name="CloseButtonOverlay" HorizontalAlignment="Right" VerticalAlignment="Top"
                             Width="34" Height="34"
                             CornerRadius="{StaticResource ARadiusButton}"
-                            Background="Transparent"
-                            BorderBrush="{ThemeResource ABorder}" BorderThickness="1"
+                            Background="{ThemeResource ASurfaceSoft}"
+                            BorderThickness="0"
                             AutomationProperties.Name="閉じる"
                             ToolTipService.ToolTip="設定を閉じる (Esc)"
                             Click="CloseButton_Click">

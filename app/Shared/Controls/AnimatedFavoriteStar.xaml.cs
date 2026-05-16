@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using Alpheratz.Core;
+using Alpheratz.Shared.Services;
 using Microsoft.UI;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
@@ -45,6 +46,11 @@ public sealed partial class AnimatedFavoriteStar : UserControl
             }
             catch (Exception ex) { AppLogger.Error($"AnimatedFavoriteStar.Loaded: {ex}"); }
         };
+        ActualThemeChanged += (_, _) =>
+        {
+            try { ApplyLiked(false); }
+            catch (Exception ex) { AppLogger.Error($"AnimatedFavoriteStar.ActualThemeChanged: {ex}"); }
+        };
     }
 
     /// <summary>UI Automation 用に、現在の Liked 状態に応じたアクセシブル名をセット。</summary>
@@ -84,13 +90,13 @@ public sealed partial class AnimatedFavoriteStar : UserControl
 
             if (liked)
             {
-                StarFill = (Brush)Application.Current.Resources["AFavorite"];
-                StarStroke = (Brush)Application.Current.Resources["AFavorite"];
+                StarFill = ThemeHelper.Brush(this, "AFavorite") ?? new SolidColorBrush(Colors.Transparent);
+                StarStroke = ThemeHelper.Brush(this, "AFavorite") ?? new SolidColorBrush(Colors.Gray);
             }
             else
             {
                 StarFill = new SolidColorBrush(Colors.Transparent);
-                StarStroke = (Brush)Application.Current.Resources["ATextFaint"];
+                StarStroke = ThemeHelper.Brush(this, "ATextFaint") ?? new SolidColorBrush(Colors.Gray);
             }
 
             if (animate && liked != previousLiked)

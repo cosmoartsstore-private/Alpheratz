@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Alpheratz.Core;
+using Alpheratz.Shared.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -26,7 +27,16 @@ public sealed partial class MonthNav : UserControl
             AppLogger.Error($"MonthNav.ctor: InitializeComponent failed: {ex}");
             throw;
         }
+        ActualThemeChanged += OnActualThemeChanged;
+        Unloaded += (_, _) => ActualThemeChanged -= OnActualThemeChanged;
         AppLogger.Trace("MonthNav.ctor: exit");
+    }
+
+    /// <summary>テーマ切替時に code-behind で構築した月ボタンの色を更新する。</summary>
+    private void OnActualThemeChanged(FrameworkElement sender, object args)
+    {
+        try { Rebuild(); }
+        catch (Exception ex) { AppLogger.Error($"MonthNav.OnActualThemeChanged: {ex}"); }
     }
 
     public void SetGroups(IReadOnlyList<GalleryMonthGroup> next)
@@ -69,7 +79,7 @@ public sealed partial class MonthNav : UserControl
         }
     }
 
-    private static Border BuildYearHeader(int year)
+    private Border BuildYearHeader(int year)
     {
         return new Border
         {
@@ -79,7 +89,7 @@ public sealed partial class MonthNav : UserControl
                 Text = year.ToString(),
                 FontSize = 11,
                 FontWeight = Microsoft.UI.Text.FontWeights.ExtraBold,
-                Foreground = (Brush)Application.Current.Resources["ATextFaint"],
+                Foreground = ThemeHelper.Brush(this, "ATextFaint"),
                 HorizontalAlignment = HorizontalAlignment.Center,
             }
         };
@@ -94,7 +104,7 @@ public sealed partial class MonthNav : UserControl
             FontWeight = isActive
                 ? Microsoft.UI.Text.FontWeights.ExtraBold
                 : Microsoft.UI.Text.FontWeights.SemiBold,
-            Foreground = (Brush)Application.Current.Resources[isActive ? "APrimary" : "ATextDim"],
+            Foreground = ThemeHelper.Brush(this, isActive ? "APrimary" : "ATextDim"),
             HorizontalAlignment = HorizontalAlignment.Center,
         };
 
@@ -105,7 +115,7 @@ public sealed partial class MonthNav : UserControl
             Padding = new Thickness(4, 4, 4, 4),
             Margin = new Thickness(4, 1, 4, 1),
             Background = isActive
-                ? (Brush)Application.Current.Resources["APrimarySoft"]
+                ? ThemeHelper.Brush(this, "APrimarySoft")
                 : new SolidColorBrush(Microsoft.UI.Colors.Transparent),
             BorderThickness = new Thickness(0),
             CornerRadius = new CornerRadius(8),

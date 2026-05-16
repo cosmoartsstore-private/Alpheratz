@@ -22,7 +22,7 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto" MinWidth="300" MaxWidth="420"/>
                 </Grid.ColumnDefinitions>
-                <Grid x:Name="ImagePanel" Grid.Column="0" Background="{ThemeResource ABg}"
+                <Grid x:Name="ImagePanel" Grid.Column="0" Background="{ThemeResource AMediaBg}"
                       CornerRadius="{StaticResource ARadiusModalRight}">
                     <Image x:Name="ModalImage" Stretch="Uniform"/>
                     <Button x:Name="BackButton" HorizontalAlignment="Left" VerticalAlignment="Top"
@@ -30,16 +30,16 @@
                             CornerRadius="{StaticResource ARadiusButton}"
                             AutomationProperties.Name="戻る"
                             ToolTipService.ToolTip="前に表示していた写真へ戻る"
-                            Background="{ThemeResource ASurface}"
-                            BorderBrush="{ThemeResource ABorder}"
+                            Background="#80000000"
+                            BorderBrush="#40FFFFFF"
                             BorderThickness="1"
                             IsEnabled="{Binding state.CanGoBack}"
                             Click="BackButton_Click">
-                        <shared:AppIcon IconName="back" IconSize="14" Foreground="{ThemeResource AText}"/>
+                        <shared:AppIcon IconName="back" IconSize="14" Foreground="#F0F2F3"/>
                     </Button>
                     <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="14" MaxWidth="500"
                             Padding="10,6" CornerRadius="{StaticResource ARadiusMd}" Background="{ThemeResource ADarkOverlay}">
-                        <TextBlock Text="{Binding state.SelectedPhoto.PhotoFilename}" Foreground="{ThemeResource AText}" FontSize="{StaticResource AFontSizeXs}" TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding state.SelectedPhoto.PhotoFilename}" Foreground="{ThemeResource ATextOnMedia}" FontSize="{StaticResource AFontSizeXs}" TextWrapping="Wrap"/>
                     </Border>
                 </Grid>
                 <Grid Grid.Column="1" Background="{ThemeResource ASurface}" CornerRadius="0,28,28,0"
@@ -54,8 +54,8 @@
                         <Button x:Name="CloseButtonOverlay" HorizontalAlignment="Right" VerticalAlignment="Top"
                                 Width="34" Height="34"
                                 CornerRadius="{StaticResource ARadiusButton}"
-                                Background="Transparent"
-                                BorderBrush="{ThemeResource ABorder}" BorderThickness="1"
+                                Background="{ThemeResource ASurfaceSoft}"
+                                BorderThickness="0"
                                 AutomationProperties.Name="閉じる"
                                 ToolTipService.ToolTip="写真詳細を閉じる (Esc)"
                                 Click="CloseButton_Click">
