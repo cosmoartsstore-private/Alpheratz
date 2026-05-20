@@ -30,46 +30,58 @@ public static class PdqImageReader
     private static async Task<(float[] luma, int width, int height)?> ReadLumaCoreAsync(IRandomAccessStream stream)
     {
         var decoder = await BitmapDecoder.CreateAsync(stream);
-        var origW = (int)decoder.PixelWidth;
-        var origH = (int)decoder.PixelHeight;
-        if (origW < PdqHasher.MinHashableDim || origH < PdqHasher.MinHashableDim) return null;
+        // OrientedPixelWidth/Height は EXIF 回転 *後* の寸法 (ユーザ視点)。
+        // EXIF が 90°/270° 回転を指示しているケースでは Oriented と Raw で軸が入れ替わる。
+        var orientedW = (int)decoder.OrientedPixelWidth;
+        var orientedH = (int)decoder.OrientedPixelHeight;
+        if (orientedW < PdqHasher.MinHashableDim || orientedH < PdqHasher.MinHashableDim) return null;
 
-        int targetW, targetH;
-        if (origW > PdqHasher.DownsampleDims || origH > PdqHasher.DownsampleDims)
+        int finalW, finalH;
+        if (orientedW > PdqHasher.DownsampleDims || orientedH > PdqHasher.DownsampleDims)
         {
-            if (origW >= origH)
+            if (orientedW >= orientedH)
             {
-                targetW = PdqHasher.DownsampleDims;
-                targetH = Math.Max(1, (int)((double)origH / origW * PdqHasher.DownsampleDims));
+                finalW = PdqHasher.DownsampleDims;
+                finalH = Math.Max(1, (int)((double)orientedH / orientedW * PdqHasher.DownsampleDims));
             }
             else
             {
-                targetH = PdqHasher.DownsampleDims;
-                targetW = Math.Max(1, (int)((double)origW / origH * PdqHasher.DownsampleDims));
+                finalH = PdqHasher.DownsampleDims;
+                finalW = Math.Max(1, (int)((double)orientedW / orientedH * PdqHasher.DownsampleDims));
             }
         }
         else
         {
-            targetW = origW;
-            targetH = origH;
+            finalW = orientedW;
+            finalH = orientedH;
         }
+
+        // BitmapTransform.ScaledWidth/Height は EXIF 回転 *前* の raw 寸法に適用されるため、
+        // EXIF が軸入れ替えしているなら transform 側も入れ替える必要がある
+        // (ThumbnailService.GenerateThumbnailAsync と同じロジック)。
+        bool axisSwapped = orientedW != (int)decoder.PixelWidth;
+        var transformW = axisSwapped ? finalH : finalW;
+        var transformH = axisSwapped ? finalW : finalH;
 
         var transform = new BitmapTransform
         {
-            ScaledWidth = (uint)targetW,
-            ScaledHeight = (uint)targetH,
+            ScaledWidth = (uint)transformW,
+            ScaledHeight = (uint)transformH,
             InterpolationMode = BitmapInterpolationMode.Linear,
         };
 
+        // EXIF Orientation を尊重して「ユーザに見える向き」の luma を計算する。
+        // ThumbnailService 側も RespectExifOrientation を使っているので両者で一致させる
+        // (旧実装 IgnoreExifOrientation だと EXIF 回転のみで同一内容の重複が検出できなかった)。
         var pixelData = await decoder.GetPixelDataAsync(
             BitmapPixelFormat.Bgra8,
             BitmapAlphaMode.Ignore,
             transform,
-            ExifOrientationMode.IgnoreExifOrientation,
+            ExifOrientationMode.RespectExifOrientation,
             ColorManagementMode.DoNotColorManage);
         var bgra = pixelData.DetachPixelData();
 
-        var pixelCount = targetW * targetH;
+        var pixelCount = finalW * finalH;
         var luma = new float[pixelCount];
         for (var i = 0; i < pixelCount; i++)
         {
@@ -79,6 +91,6 @@ public static class PdqImageReader
             var r = bgra[idx + 2];
             luma[i] = r * PdqHasher.LumaFromR + g * PdqHasher.LumaFromG + b * PdqHasher.LumaFromB;
         }
-        return (luma, targetW, targetH);
+        return (luma, finalW, finalH);
     }
 }

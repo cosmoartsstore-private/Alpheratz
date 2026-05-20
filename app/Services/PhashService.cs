@@ -52,7 +52,7 @@ public sealed class PhashService
         string? errorMessage = null;
         try
         {
-            var total = await db.GetPendingPhashCountAsync(ct).ConfigureAwait(false);
+            var total = await db.GetPendingPhashCountAsync(PdqHasher.CurrentVersion, ct).ConfigureAwait(false);
             UpdateProgress(0, total, null);
             if (total == 0)
             {
@@ -64,7 +64,7 @@ public sealed class PhashService
             var done = 0;
             while (!ct.IsCancellationRequested)
             {
-                var batch = await db.GetPendingPhashBatchAsync(BatchSize, ct).ConfigureAwait(false);
+                var batch = await db.GetPendingPhashBatchAsync(BatchSize, PdqHasher.CurrentVersion, ct).ConfigureAwait(false);
                 if (batch.Count == 0) break;
 
                 foreach (var item in batch)
@@ -90,9 +90,9 @@ public sealed class PhashService
                             UpdateProgress(done, total, item.PhotoFilename);
                             continue;
                         }
-                        await db.UpdatePhotoPhashAsync(item.PhotoPath, combinedHex, ct).ConfigureAwait(false);
+                        await db.UpdatePhotoPhashAsync(item.PhotoPath, combinedHex, PdqHasher.CurrentVersion, ct).ConfigureAwait(false);
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) when (ex is not OperationCanceledException)
                     {
                         AppLogger.Warn($"PhashService: skip [{item.PhotoFilename}]: {ex.Message}");
                     }

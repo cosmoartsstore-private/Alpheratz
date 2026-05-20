@@ -238,6 +238,39 @@
 
 ---
 
+## 🛠️ 2026-05-20 修正実施 (FIX-NEW-01〜04 + 動線改善 1 件)
+
+| ID | 場所 | 状態 | メモ |
+|---|---|---|---|
+| FIX-NEW-01 | `app/Core/Imaging/Pdq/PdqImageReader.cs:30-95` + `PdqHasher.cs:33-40` + `AlpheratzDb.cs:1428-1513` + `PhashService.cs:55,67,93` | **DONE** | `RespectExifOrientation` 化 (+ axis-swap 対応で 90°/270° 寸法も正しく) / `PdqHasher.CurrentVersion = 1` 導入 / `phash_version` カラムを実活用し旧 version (0) 行を再計算対象に / `UpdatePhotoPhashAsync` に version を書く |
+| FIX-NEW-02 | `app/Core/Imaging/ThumbnailService.cs:32-44,102-110,133` | **DONE** | thumb filename に `ComputePathHash(photoPath)` (SHA1 先頭 64bit hex) を混ぜて別ディレクトリ同名衝突を回避。`_pathLocks.TryRemove` クリーンアップを撤去 (Release→GetOrAdd→TryRemove→GetOrAdd の race で同一ファイル並行書込が成立していた) |
+| FIX-NEW-03 | `app/Services/PhashService.cs:95` | **DONE** | `catch (Exception ex) when (ex is not OperationCanceledException)` で cancellation を素通しに |
+| FIX-NEW-04 | `app/Core/Scanner/PhotoScanner.cs:425-444` | **DONE** | `IsFileModifiedSinceTimestamp` を local 時刻に揃え `ToUniversalTime()` 経由の DST/TZ skew を排除。DST 跨ぎ + clock skew 吸収用に fudge を 1 分 → 90 分に拡張 |
+| FIX-NEW-05 | `app/Features/PhotoModal/PhotoModalPage.xaml.cs:124-130` | **DONE** | (動線監査由来) FIX-05 で gallery 側は外したが PhotoModal の `BitmapCreateOptions.IgnoreImageCache` が残存。modal 連続表示でフルデコード強制 → URI cache 有効化で解消 |
+
+---
+
+## 📋 動線・保守性レビュー結果 (2026-05-20、参考)
+
+致命的ではないが将来優先度として記録。要対応化したくなったら別タスクで。
+
+### 動線まだ気になる点 (低〜中)
+- **ShellPage:552-568** modal dismiss の 400ms dead-zone — 経過時間判定でなく fade-in 完了フラグ参照に置換すべき
+- **ShellViewModel cancelScan fire-and-forget** — 「キャンセル中…」の visible feedback が欠ける
+- **GalleryFilterPanel dropdowns** — 開閉で scroll offset が保持されない (再オープン時に最後位置に飛ぶ)
+- **空ギャラリー時のメッセージ不在** — フィルタ 0 件と loading が区別できない
+- **GalleryMasonryView shimmer** — 高速ロード時に shimmer 1.5s ループが完了する前に画像 fade-in 開始 → ちらつき (軽微)
+
+### 保守性 (中〜大規模リファクタ候補)
+- **GalleryFilterPanel.xaml.cs (924行)** — calendar / world / tag / theme / preset / state binding が同居。`TagCheckboxList` / `WorldCheckboxList` / `CalendarPicker` への分割が有効
+- **GalleryMasonryView.xaml.cs (743行)** — layout + virtualization + shimmer + image loading + hover + event wiring + CardEntry が同居。`MasonryCard` UserControl 抽出で virtualization と card 振る舞いを分離
+- **ShellPage 3 つの bool (`isModalOpen` / `isMiddleModalOpen` / `isFilterOpen`)** — `ModalStack` enum で valid state 遷移を明示化
+- **GalleryFiltersState ⇄ GalleryDisplayState 責務分散** — GroupingMode の所属など intuitive でない、merge or 責任明文化
+- **SettingsPage の Loaded/Unloaded 対称契約** — subscription を `CompositeDisposable` で束ねればコンパイル時に近い形で対称性を担保
+- **PhotoModalPage `UpdateViewModel` ⇄ `Page_Loaded` の sync 二重化** — 単一 `Refresh()` に統合 or XAML binding 化
+
+---
+
 ## 監査メソッド統計
 
 | Pass | 件数 | 結論 |

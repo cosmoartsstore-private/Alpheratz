@@ -425,7 +425,11 @@ public sealed partial class PhotoScanner
     {
         try
         {
-            var fileMtime = File.GetLastWriteTimeUtc(path);
+            // ResolveTimestamp が返す文字列は VRChat ファイル名または File.GetLastWriteTime(=local)
+            // 由来の local 時刻。旧実装は fileMtime を UTC、creationTs を AssumeLocal→ToUniversalTime と
+            // ずらして比較していたため、DST 跨ぎや TZ 変更後に変換規則差で false positive が出て
+            // 余計な再スキャンが走っていた。両側を local 時刻に揃えて変換を排除する。
+            var fileMtime = File.GetLastWriteTime(path);
             var creationTs = ResolveTimestamp(path, existing.PhotoFilename);
             // ResolveTimestamp は InvariantCulture で format した "yyyy-MM-dd HH:mm:ss" を返すので、
             // パースも明示的に InvariantCulture + ExactFormat にして、地域設定で format 解釈が
@@ -433,7 +437,8 @@ public sealed partial class PhotoScanner
             if (!DateTime.TryParseExact(creationTs, "yyyy-MM-dd HH:mm:ss",
                     CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var created))
                 return false;
-            return fileMtime > created.ToUniversalTime().AddMinutes(1);
+            // DST 切替 (最大 1 時間) + 軽微なクロックスキューを吸収するため 90 分のマージンを取る。
+            return fileMtime > created.AddMinutes(90);
         }
         catch { return false; }
     }

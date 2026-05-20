@@ -1424,10 +1424,13 @@ ORDER BY cnt DESC, world_name COLLATE NOCASE ASC";
     // 区切り処理のために count → batch → update のサイクルで使う。
     // -----------------------------------------------------------------------
 
-    /// <summary>phash 未計算（NULL または空文字列）かつ is_missing=0 の枚数を返す。進捗表示用。</summary>
-    public Task<int> GetPendingPhashCountAsync(CancellationToken ct = default)
+    /// <summary>
+    /// phash 未計算 (NULL/空文字列) または phash_version が現行アルゴリズム未満の枚数を返す。
+    /// アルゴリズム更新時 (PdqHasher.CurrentVersion bump) は version 不一致行も再計算対象に含める。
+    /// </summary>
+    public Task<int> GetPendingPhashCountAsync(int currentVersion, CancellationToken ct = default)
     {
-        AppLogger.Trace("AlpheratzDb.GetPendingPhashCountAsync: enter");
+        AppLogger.Trace($"AlpheratzDb.GetPendingPhashCountAsync: enter currentVersion={currentVersion}");
         try
         {
             ct.ThrowIfCancellationRequested();
@@ -1435,7 +1438,8 @@ ORDER BY cnt DESC, world_name COLLATE NOCASE ASC";
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"SELECT COUNT(*) FROM photos
                                  WHERE is_missing = 0
-                                   AND (phash IS NULL OR phash = '')";
+                                   AND (phash IS NULL OR phash = '' OR COALESCE(phash_version, 0) < @currentVersion)";
+            cmd.Parameters.AddWithValue("@currentVersion", currentVersion);
             var count = Convert.ToInt32(cmd.ExecuteScalar() ?? 0L);
             AppLogger.Trace($"AlpheratzDb.GetPendingPhashCountAsync: exit count={count}");
             return Task.FromResult(count);
@@ -1448,12 +1452,12 @@ ORDER BY cnt DESC, world_name COLLATE NOCASE ASC";
     }
 
     /// <summary>
-    /// phash 未計算写真のうち、新しい順に limit 件を返す。
+    /// phash 未計算 / 旧 version の写真のうち、新しい順に limit 件を返す。
     /// 新しい写真から計算するのは、ユーザが直近の撮影を優先的に閲覧する傾向に合わせるため。
     /// </summary>
-    public Task<IReadOnlyList<PendingPhashItem>> GetPendingPhashBatchAsync(int limit, CancellationToken ct = default)
+    public Task<IReadOnlyList<PendingPhashItem>> GetPendingPhashBatchAsync(int limit, int currentVersion, CancellationToken ct = default)
     {
-        AppLogger.Trace($"AlpheratzDb.GetPendingPhashBatchAsync: enter limit={limit}");
+        AppLogger.Trace($"AlpheratzDb.GetPendingPhashBatchAsync: enter limit={limit} currentVersion={currentVersion}");
         try
         {
             ct.ThrowIfCancellationRequested();
@@ -1461,10 +1465,11 @@ ORDER BY cnt DESC, world_name COLLATE NOCASE ASC";
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"SELECT source_slot, photo_filename, photo_path FROM photos
                                  WHERE is_missing = 0
-                                   AND (phash IS NULL OR phash = '')
+                                   AND (phash IS NULL OR phash = '' OR COALESCE(phash_version, 0) < @currentVersion)
                                  ORDER BY timestamp DESC
                                  LIMIT @limit";
             cmd.Parameters.AddWithValue("@limit", limit);
+            cmd.Parameters.AddWithValue("@currentVersion", currentVersion);
 
             var items = new List<PendingPhashItem>();
             using var r = cmd.ExecuteReader();
@@ -1482,17 +1487,18 @@ ORDER BY cnt DESC, world_name COLLATE NOCASE ASC";
         }
     }
 
-    /// <summary>計算済み phash の hex 文字列を該当写真に保存する。</summary>
-    public Task UpdatePhotoPhashAsync(string photoPath, string phashHex, CancellationToken ct = default)
+    /// <summary>計算済み phash の hex 文字列と version を該当写真に保存する。</summary>
+    public Task UpdatePhotoPhashAsync(string photoPath, string phashHex, int version, CancellationToken ct = default)
     {
-        AppLogger.Trace($"AlpheratzDb.UpdatePhotoPhashAsync: enter path={photoPath}");
+        AppLogger.Trace($"AlpheratzDb.UpdatePhotoPhashAsync: enter path={photoPath} version={version}");
         try
         {
             ct.ThrowIfCancellationRequested();
             using var conn = OpenConnection();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"UPDATE photos SET phash = @phash WHERE photo_path = @photo_path";
+            cmd.CommandText = @"UPDATE photos SET phash = @phash, phash_version = @version WHERE photo_path = @photo_path";
             cmd.Parameters.AddWithValue("@phash", phashHex);
+            cmd.Parameters.AddWithValue("@version", version);
             cmd.Parameters.AddWithValue("@photo_path", photoPath);
             cmd.ExecuteNonQuery();
             AppLogger.Trace("AlpheratzDb.UpdatePhotoPhashAsync: exit");

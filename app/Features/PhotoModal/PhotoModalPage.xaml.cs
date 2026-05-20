@@ -121,9 +121,10 @@ public sealed partial class PhotoModalPage : Page
             // DecodePixelWidth を Modal の最大表示幅 (1920px) で頭打ちにする。
             // 設定しないと 4K 写真が約 50MB のメモリにフルデコードされ、Modal の開閉だけで
             // 数百 MB の一時メモリを使う。Modal レイアウト上はこれ以上のピクセルを使い切らない。
+            // CreateOptions は既定 (URI キャッシュ有効) のまま使う。旧実装 IgnoreImageCache は
+            // 同じ写真を再度開いたときも毎回フルデコードを強制しており、modal の連続表示でジャンクを生んでいた。
             ModalImage.Source = new BitmapImage
             {
-                CreateOptions = BitmapCreateOptions.IgnoreImageCache,
                 DecodePixelWidth = 1920,
                 DecodePixelType = DecodePixelType.Logical,
                 UriSource = new Uri(path, UriKind.Absolute),

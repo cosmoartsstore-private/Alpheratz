@@ -30,6 +30,14 @@ public static class PdqHasher
     public const int MinHashableDim = 5;
     /// <summary>呼び出し側に推奨する事前縮小上限 (長辺 512px)。これ以上はコストが上がるだけで精度向上は微小。</summary>
     public const int DownsampleDims = 512;
+
+    /// <summary>
+    /// 現行 phash アルゴリズム / 入力前処理のバージョン。DB の phash_version 列に書き込む。
+    /// version &lt; CurrentVersion の行は再計算対象として扱う (PhashService が拾う)。
+    /// 0: 旧実装 (PdqImageReader が EXIF Orientation を無視していた)
+    /// 1: EXIF Orientation を尊重 (回転表示の画像と物理回転済み画像で hash が一致)
+    /// </summary>
+    public const int CurrentVersion = 1;
     /// <summary>Jarosz Box フィルタの XY 反復回数 (2 回でガウスフィルタ近似、PDQ 仕様値)。</summary>
     private const int PdqNumJaroszXyPasses = 2;
 
