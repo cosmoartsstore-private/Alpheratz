@@ -23,11 +23,14 @@ internal static class Program
                 return 2;
             }
 
+            // UseShellExecute=true 下では ArgumentList は無音で破棄される (Windows 仕様)。
+            // ランチャーは args をフロントエンドへ転送する責務があるため、ここは
+            // CreateProcess 直接呼出にあたる false を使い、ArgumentList を活かす。
             var startInfo = new ProcessStartInfo
             {
                 FileName = runtimeExe,
                 WorkingDirectory = Path.GetDirectoryName(runtimeExe)!,
-                UseShellExecute = true,
+                UseShellExecute = false,
             };
 
             foreach (var arg in args)

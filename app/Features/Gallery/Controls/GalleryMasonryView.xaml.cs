@@ -100,12 +100,24 @@ public sealed partial class GalleryMasonryView : UserControl
             AppLogger.Error($"GalleryMasonryView.ctor: InitializeComponent failed: {ex}");
             throw;
         }
-        this.SizeChanged += (_, _) => Rebuild();
+        // SizeChanged ハンドラは Unloaded で確実に外せるよう named method として登録する。
+        // 旧実装は匿名ラムダで登録していたため Unloaded で参照を外せず、ページ再 navigate
+        // 時に多重 Rebuild が走る恐れがあった (旧監査 FIX-09)。
+        this.SizeChanged += OnViewSizeChanged;
         // テーマ切替時に既存カードの Border (code-behind で ThemeHelper.Brush から代入済み)
         // を現在テーマで再着色する。カード自体は仮想化されていて、表示中のものはレイアウトを
         // 維持したまま色だけ更新される。
         ActualThemeChanged += OnActualThemeChanged;
-        Unloaded += (_, _) => ActualThemeChanged -= OnActualThemeChanged;
+        Unloaded += OnViewUnloaded;
+    }
+
+    private void OnViewSizeChanged(object sender, SizeChangedEventArgs e) => Rebuild();
+
+    private void OnViewUnloaded(object sender, RoutedEventArgs e)
+    {
+        this.SizeChanged -= OnViewSizeChanged;
+        ActualThemeChanged -= OnActualThemeChanged;
+        Unloaded -= OnViewUnloaded;
     }
 
     private void OnActualThemeChanged(FrameworkElement sender, object args)
@@ -444,9 +456,11 @@ public sealed partial class GalleryMasonryView : UserControl
         if (string.IsNullOrEmpty(sourcePath)) return;
         try
         {
+            // IgnoreImageCache は指定しない。WinUI の URI キャッシュを効かせることで、
+            // スクロールでビューポート外→内の再realize時に再デコードを回避する。
+            // 27K+ アイテムのスクロールで CPU/メモリ負荷が顕著に減る。
             var bmp = new BitmapImage
             {
-                CreateOptions = BitmapCreateOptions.IgnoreImageCache,
                 DecodePixelWidth = Math.Max(1, (int)entry.Container.Width),
                 DecodePixelType = DecodePixelType.Logical,
                 UriSource = new Uri(sourcePath, UriKind.Absolute),

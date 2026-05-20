@@ -1,3 +1,6 @@
+using System;
+using System.IO;
+using Alpheratz.Core;
 using Microsoft.Data.Sqlite;
 using Microsoft.Win32;
 
@@ -72,7 +75,12 @@ internal static class StellaRecordRegistration
             cmd.Parameters.AddWithValue("$name", AppName);
             cmd.ExecuteNonQuery();
         }
-        catch { }
+        catch (Exception ex)
+        {
+            // StellaRecord 未インストール / DB 不在で失敗するのは正常系。
+            // ただし真の異常（DB 破損・権限欠如等）の手掛かりを失わないよう警告ログには残す。
+            AppLogger.Warn($"StellaRecordRegistration.Unregister: failed: {ex.Message}");
+        }
     }
 
     public static bool IsStellaRecordAvailable()

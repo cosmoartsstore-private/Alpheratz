@@ -1,6 +1,6 @@
-# Audit Disposition Memo (作成: 2026-05-20)
+# Audit Disposition Memo (最終更新: 2026-05-20)
 
-3 段階監査 (検出 30 → 検証 30 → 三段精査 30) の結論を記録。
+3 段階監査 (検出 30 → 検証 30 → 三段精査 30) + 修正実施 + 新規調査 5 件の結論を記録。
 **このファイルは Claude の自己参照用メモ。再監査時に同じ指摘で時間を浪費しないために残す。**
 
 ---
@@ -13,22 +13,22 @@
 
 ---
 
-## ✅ 対応必要 (12 件)
+## ✅ 修正実施 (10 件) / 設計通り (2 件)
 
-| ID | 場所 | 内容 | 推奨修正 |
-|---|---|---|---|
-| FIX-01 | `app/App.xaml.cs:259-273` | `shellViewModel.initialize()` 失敗時 `dataReady` 不到達 → スプラッシュ永久停止 | `ContinueWith` の失敗ブランチで error 用 phase 追加 or 強制 `advanceTo(dataReady)` + 失敗状態表示 |
-| FIX-02 | `app/Core/Scanner/PhotoScanner.cs:475-482` | `Directory.EnumerateFileSystemEntries` の遅延列挙 `foreach` を try で囲っておらず権限例外でスキャン全停止 | `foreach` を `try { ... } catch { log; return; }` で囲う |
-| FIX-03 | `app/Features/Shell/ShellViewModel.cs:178-211` | `startScan()` が `Task.CompletedTask` を即返却するが内部で `Task.Run` 実行。呼出側 3 箇所 (172, 406, 433) が `await` しており API 偽装 | `async Task` に変更して内部の処理を `await` する、または明示的に `void` を返す |
-| FIX-04 | `app/Shared/Controls/PhotoGridItemsView.xaml.cs:135-136` | `Loaded` が複数回発火で `ViewChanged/PointerWheelChanged` が二重登録 → スクロール毎にハンドラ多重実行 | `if (internalScrollViewer is not null) return;` を `PhotoItems_Loaded` 先頭に追加 |
-| FIX-05 | `app/Shared/Converters/ThumbnailSourceConverter.cs:22` + `app/Features/Gallery/Controls/GalleryMasonryView.xaml.cs:449` | `BitmapCreateOptions.IgnoreImageCache` 設定で WinUI 内蔵 URI キャッシュ無効化。スクロールごとに同一画像を再デコード | `IgnoreImageCache` を外す、または独自 `BitmapImage` キャッシュを `URI+DecodePixelWidth` で実装 |
-| FIX-06 | `app/Core/AppLogger.cs:76-81` | `StreamWriter` の `AutoFlush=false` かつ明示 `Flush` なし。クラッシュ直前のログ消失 | `new StreamWriter(fs, ...) { AutoFlush = true }` のワンライナー |
-| FIX-07 | `app/Features/Template/TemplatePageViewModel.cs:142-162` | `deleteTemplate` がコレクション削除後に save 失敗してもメモリ状態を巻き戻さない → 再起動でテンプレ復活 | save 失敗時 catch で `tweetTemplates.Add(template)` ロールバック |
-| FIX-08 | `app/Services/StellaRecordRegistration.cs:75` | 空 catch、コメントなし、ログなし | `catch (Exception ex) { AppLogger.Warn($"... {ex.Message}"); }` |
-| FIX-09 | `app/Features/Gallery/Controls/GalleryMasonryView.xaml.cs:103,108` | `SizeChanged += (_,_)=>Rebuild()` 匿名ラムダで購読、Unloaded で `ActualThemeChanged` のみ外す非対称 | 名前付きハンドラ `OnSizeChanged` に変更し Unloaded で `SizeChanged -= OnSizeChanged` |
-| FIX-10 | `BuildWorks/launcher/Program.cs:30` | `UseShellExecute=true` 下で `ArgumentList.Add` は無音破棄される。launcher への argv がフロントエンドに届かない | `UseShellExecute = false` に変更 |
-| FIX-11 | `BuildWorks/nsis/Installer.nsi:167-170` | アプリは `$INSTDIR\Data` をユーザデータ保管場所として使う (`AppPaths.cs:33`)。アンインストール時 `RMDir /r` で DB / ログ / キャッシュ完全消去 | uninstall section から `Data` フォルダ削除を撤去、または「ユーザデータも削除？」プロンプト追加 |
-| FIX-12 | `app/Features/Shell/ShellViewModel.cs:359-367` (要再判断) | `phash:complete` 中の `_ = Task.Run(async () => { ... })` の try/catch は内部にあるが orphan task 自体への保険なし。pass 3 verifier は対応必要としたが try は両ステートメントを包んでいる | 念のため `Task.Run(async () => { try {...} catch (Exception ex) {...} })` を確認、もし既に try が両命令を包むならスキップ可 |
+| ID | 場所 | 状態 |
+|---|---|---|
+| FIX-01 | `app/App.xaml.cs:259-273` | **DONE** — 失敗ブランチでも `lifecycle.advanceTo(dataReady)` を呼ぶように修正、スプラッシュ永久停止を回避 |
+| FIX-02 | `app/Core/Scanner/PhotoScanner.cs:475-482` | **DONE** — foreach 全体を try で囲み、当該ディレクトリのみスキップする防御を追加 |
+| FIX-03 | `app/Features/Shell/ShellViewModel.cs:178-211` | **DONE** — シグネチャを `void startScan()` に変更、3 箇所 (initialize/applyFolderChange/executeResetFolder) の `await` を撤去、XMLDoc で fire-and-forget を明示 |
+| FIX-04 | `app/Shared/Controls/PhotoGridItemsView.xaml.cs:135-136` | **DONE** — `if (internalScrollViewer is not null) return;` で再 Loaded 時の二重登録を防止 |
+| FIX-05 | `ThumbnailSourceConverter.cs:22` + `GalleryMasonryView.xaml.cs:449` | **DONE** — 両方の `CreateOptions = IgnoreImageCache` を除去、WinUI URI キャッシュ有効化 |
+| FIX-06 | `app/Core/AppLogger.cs:76-81` | **DONE** — `StreamWriter { AutoFlush = true }` でクラッシュ直前のログ欠落を抑制 |
+| FIX-07 | `app/Features/Template/TemplatePageViewModel.cs:142-162` | **DONE** — `deleteTemplate` の状態退避＋失敗時ロールバック (元位置への Insert) で in-memory と DB の整合を維持 |
+| FIX-08 | `app/Services/StellaRecordRegistration.cs:75` | **DONE** — `catch (Exception ex) { AppLogger.Warn(...) }` に置換、`using System;` `using Alpheratz.Core;` 追加 |
+| FIX-09 | `app/Features/Gallery/Controls/GalleryMasonryView.xaml.cs:103,108` | **DONE** — `OnViewSizeChanged` `OnViewUnloaded` 名前付きハンドラ化、Unloaded で 3 件すべて `-=` |
+| FIX-10 | `BuildWorks/launcher/Program.cs:30` | **DONE** — `UseShellExecute = false` に変更、コメントで仕様根拠明示 |
+| FIX-11 | `BuildWorks/nsis/Installer.nsi:167-170` | **対応不要 → FP-47** — ユーザ判断: アンインストール時の `$INSTDIR\Data` 削除は意図通り (お気に入り等の永続保持は不要、ゴミ残し回避が目的) |
+| FIX-12 | `app/Features/Shell/ShellViewModel.cs:359-367` | **対応不要 → FP-48** — try/catch がラムダ内の両 await を正しく包んでおり、pass 3 verifier の懸念は架空 |
 
 ---
 
@@ -186,6 +186,56 @@
 ### FP-46: `app/Features/Gallery/Controls/GalleryMasonryView.xaml.cs:450` — `DecodePixelWidth` NaN/Inf → OOM
 - **誤認理由**: `entry.Container.Width` は `GalleryMasonryLayout.Build()` の `columnWidth ≥ 220` 保証経由で必ず有限正の値。NaN/Inf 経路は到達不能
 
+### FP-47: `BuildWorks/nsis/Installer.nsi:167-170` — アンインストール時の `$INSTDIR\Data` 削除
+- **誤認理由**: ユーザ判断で「アンインストール = 完全クリーンアップ」が意図された設計。お気に入り・スキャン結果等は再インストール時に再構築可能なため永続保持は不要。むしろ `$INSTDIR` 内のゴミ残し回避を優先する UX 判断
+- **再検証ポイント**: 将来「アンインストール時にユーザデータ保持オプション」要望が来た場合に再評価
+
+### FP-48: `app/Features/Shell/ShellViewModel.cs:359-367` — `phash:complete` 内 orphan `Task.Run`
+- **誤認理由**: pass 3 verifier の指摘を実コードで再確認したところ、try/catch がラムダ本体の全 await を完全に囲んでおり「surrounding context」で例外が漏れる経路は実在しない
+- **再検証ポイント**: pass 2/pass 3 verdict が割れた場合は必ず実コードのインデント構造を直接確認する
+
+---
+
+## 🔍 新規調査 (2026-05-20、修正実施後) — triage
+
+修正完了後に 5 エージェントで未検出問題を再探索。結果は下記の通り、REAL 4 件は別途 FIX として追跡、その他は本メモに FP として恒久的に登録する。
+
+### REAL (要対応 = 別途 FIX-NEW として追跡)
+
+| 新規 ID | 場所 | 概要 |
+|---|---|---|
+| FIX-NEW-01 | `app/Core/Imaging/Pdq/PdqImageReader.cs:68` | `ExifOrientationMode.IgnoreExifOrientation` で PDQ 計算 → EXIF 回転表示と物理回転済み画像が同一視されず重複検出されない。サムネルパイプラインと整合させ `RespectExifOrientation` へ |
+| FIX-NEW-02 | `app/Core/Imaging/ThumbnailService.cs:80-83,109-110` | `_pathLocks` のキーが filename 由来 `thumbPath` のため別ディレクトリ同名で衝突。さらに `CurrentCount == 1` での `TryRemove` に再取得 race window あり。キーは正規化フルパス + `imgCacheDir` で安定化 |
+| FIX-NEW-03 | `app/Services/PhashService.cs:95-98` | `OperationCanceledException` を一般例外として握り潰し進捗カウンタを進めてしまう。`when (ex is not OperationCanceledException)` を付与しキャンセルは素通しに |
+| FIX-NEW-04 | `app/Core/Scanner/PhotoScanner.cs:345-350` | `File.GetLastWriteTime(path)` がローカル時刻を返す → DST 跨ぎや TZ 変更で同一ファイルでも timestamp が変化。`GetLastWriteTimeUtc` へ移行 (既存 DB 値とのマイグレーション要設計) |
+
+### FALSE / 重複 / 低優先 — 終了済みとして記録
+
+- **FP-49**: `PdqHasher.cs:295` bit ordering "double reversal" → PDQ spec 準拠で正常 (pass 2 検証済)
+- **FP-50**: `PdqHasher.cs:179,182` decimation drift → 数学的に範囲内であることを証明済み (FP-07 と重複)
+- **FP-51**: `ThumbnailService` `DetachPixelData` の Dispose 漏れ → `DetachPixelData()` は plain `byte[]` を返すのみで IDisposable ではない
+- **FP-52**: `AppIcons.GetGeometry` 並行 parse → Compositor 側 cache で十分、追加最適化不要
+- **FP-53**: `ThemeHelper.SelectedTheme` enum race → enum 代入は CLR で原子的
+- **FP-54**: `AppLifecycleService:60` `PhaseAdvanced` snapshot 化 → `lock(_gate)` 内発火のため snapshot 不要
+- **FP-55**: `ToastService._idCounter` 初期化 race → 過去 pass で FALSE 判定済み
+- **FP-56**: `DispatcherService` null/disposed パス → DI 解決順序で保証
+- **FP-57**: `GalleryMasonryView` `DispatcherQueue` field-init 順 → ctor は UI スレッド上で実行が保証されており `GetForCurrentThread` が確実に返す
+- **FP-58**: `AnimatedFavoriteStar` `Loaded`/`ActualThemeChanged` 未解除 → コントロール自体が parent と同一寿命のため leak 不可
+- **FP-59**: `CompositionBatch.Completed` 後処理 → `batch.End()` 後 GC 対象となるため追加 unsubscribe 不要
+- **FP-60**: `WorldService.cs:94` `Process.Start` タイムアウト → explorer.exe は Windows シェル、fire-and-forget 設計で OK
+- **FP-61**: `AppLogger.cs:47` `Directory.CreateDirectory` 沈黙 → fallback パス計算用、失敗時は別 path で再試行
+- **FP-62**: `AlpheratzDb.cs:211` `StringComparer.Ordinal` → scanner が forward-slash 正規化済みパスのみ書込、上流契約で吸収
+- **FP-63**: `AlpheratzDb.cs:1277-1281` NULL vs empty `world_name` → 実運用で NULL のみ書込、空文字経路存在せず
+- **FP-64**: `AlpheratzDb.cs:1329` vs `1404` validation 非対称 → write 側は `WorldService` 内で trim/validate 済み
+- **FP-65**: `AlpheratzDb.cs:921` `DeleteMissingPhotos` casing → パスは scanner で正規化済み、casing 不一致は発生し得ない
+- **FP-66**: `GalleryPhotosState.cs:317-333` fire-forget → pass 2/3 で try/catch 完備を確認済み
+
+### 要観察 (新規)
+
+| ID | 場所 | 内容 | 観察ポイント |
+|---|---|---|---|
+| WATCH-02 | `app/Features/Gallery/Controls/GalleryMasonryView.xaml.cs` shimmer animations | shimmer 停止漏れの可能性 | Compositor が detached 要素の animation を自動破棄するため現状実害なし。Profiler で leak が観測されたら明示停止を追加 |
+
 ---
 
 ## 監査メソッド統計
@@ -210,5 +260,13 @@
 - `OrientationProgress` 購読者なし → FP-39
 - XAML DataContext 未設定 / ThemeResource 未定義 → FP-01〜FP-03
 - DI シングルトンの「破棄漏れ」「再 init 多重購読」 → FP-37, FP-40, FP-41
+- アンインストール時の `$INSTDIR\Data` 削除 → FP-47 (意図通り)
+- `phash:complete` ラムダの try/catch 外漏れ → FP-48
+- PDQ bit ordering / decimation 算式 → FP-49, FP-50 (PDQ spec 準拠)
+- `DetachPixelData` の Dispose → FP-51 (`byte[]` 返却で非 IDisposable)
+- `ThemeHelper.SelectedTheme` enum race → FP-53 (CLR 原子代入)
+- `Compositor.Completed` 後処理・shimmer animation 停止 → FP-59, WATCH-02
+- `Process.Start` (explorer.exe) タイムアウト → FP-60
+- `AlpheratzDb` パス正規化 / NULL vs empty 議論 → FP-62〜FP-65 (上流契約で吸収)
 
-これらは設計上 OK と判断済み。
+これらは設計上 OK と判断済み。なお 2026-05-20 の新規調査で実コードに影響する 4 件 (FIX-NEW-01〜04) が見つかっており、別タスクで追跡中。

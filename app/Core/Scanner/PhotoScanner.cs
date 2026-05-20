@@ -479,22 +479,34 @@ public sealed partial class PhotoScanner
             return;
         }
 
-        foreach (var entry in entries)
+        // EnumerateFileSystemEntries は遅延列挙のため foreach 反復中に
+        // UnauthorizedAccessException / PathTooLongException 等が投げられる。
+        // 1 件の権限例外でスキャン全停止しないよう、列挙 try とは別に foreach
+        // 自体も囲って例外時は当該ディレクトリのみスキップする。
+        try
         {
-            ct.ThrowIfCancellationRequested();
-            var name = Path.GetFileName(entry);
-            if (Directory.Exists(entry))
+            foreach (var entry in entries)
             {
-                if (name.StartsWith('.')) continue;
-                if (Array.Exists(SkipDirs, s => s.Equals(name, StringComparison.OrdinalIgnoreCase))) continue;
-                CollectPhotosRecursive(slot, entry, files, visitedDirs, ct);
+                ct.ThrowIfCancellationRequested();
+                var name = Path.GetFileName(entry);
+                if (Directory.Exists(entry))
+                {
+                    if (name.StartsWith('.')) continue;
+                    if (Array.Exists(SkipDirs, s => s.Equals(name, StringComparison.OrdinalIgnoreCase))) continue;
+                    CollectPhotosRecursive(slot, entry, files, visitedDirs, ct);
+                }
+                else if (File.Exists(entry))
+                {
+                    var ext = Path.GetExtension(entry).TrimStart('.').ToLowerInvariant();
+                    if (Array.Exists(SupportedExtensions, s => s == ext))
+                        files.Add((slot, name, entry));
+                }
             }
-            else if (File.Exists(entry))
-            {
-                var ext = Path.GetExtension(entry).TrimStart('.').ToLowerInvariant();
-                if (Array.Exists(SupportedExtensions, s => s == ext))
-                    files.Add((slot, name, entry));
-            }
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            AppLogger.Warn($"ディレクトリ走査中に例外 [{dir}]: {ex.Message}");
         }
     }
 

@@ -169,16 +169,24 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
                 return;
             }
 
-            await startScan().ConfigureAwait(false);
+            startScan();
         }
         catch (Exception ex) { AppLogger.Error($"ShellViewModel.initialize: threw: {ex}"); throw; }
         AppLogger.Trace("ShellViewModel.initialize: exit");
     }
 
-    public Task startScan()
+    /// <summary>
+    /// スキャンをバックグラウンドで開始する fire-and-forget 関数。
+    /// 戻り値の <see cref="Task"/> はスキャンの完了ではなく「キックオフ完了」を表し、
+    /// 常に <see cref="Task.CompletedTask"/> を即時返却する。
+    /// 呼出側はこの戻り値を <c>await</c> する必要はない（await しても挙動は同じだが、
+    /// スキャン完了を待っていると勘違いさせるので非推奨）。
+    /// スキャン完了は <c>scan:completed</c> イベントの購読で検知すること。
+    /// </summary>
+    public void startScan()
     {
         AppLogger.Trace($"ShellViewModel.startScan: enter isScanningRef={isScanningRef}");
-        if (DETACH_RUNTIME_DATA || isScanningRef) return Task.CompletedTask;
+        if (DETACH_RUNTIME_DATA || isScanningRef) return;
         isScanningRef = true; ScanStatus = "scanning";
         ScanProgress = new ScanProgressDto { processed = 0, total = 0, current_world = "", phase = "scan" };
         try
@@ -208,7 +216,6 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
             toastService.addToast($"スキャンの開始に失敗しました: {err}", ToastType.error);
         }
         AppLogger.Trace("ShellViewModel.startScan: exit");
-        return Task.CompletedTask;
     }
 
     public Task cancelScan()
@@ -403,7 +410,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
             })).ConfigureAwait(false);
             await refreshSettings().ConfigureAwait(false);
             await galleryViewModel.photosState.loadPhotos().ConfigureAwait(false);
-            await startScan().ConfigureAwait(false);
+            startScan();
             toastService.addToast("写真フォルダを更新しました");
         }
         catch (Exception err)
@@ -430,7 +437,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
             { photoFolderPath = nextPrimaryPath, secondaryPhotoFolderPath = nextSecondaryPath })).ConfigureAwait(false);
             await refreshSettings().ConfigureAwait(false);
             await galleryViewModel.photosState.loadPhotos().ConfigureAwait(false);
-            if (!string.IsNullOrEmpty(nextPrimaryPath) || !string.IsNullOrEmpty(nextSecondaryPath)) await startScan().ConfigureAwait(false);
+            if (!string.IsNullOrEmpty(nextPrimaryPath) || !string.IsNullOrEmpty(nextSecondaryPath)) startScan();
             PendingResetRequest = null;
             toastService.addToast(slot == 1 ? "1st 写真フォルダをリセットしました" : "2nd 写真フォルダをリセットしました");
         }

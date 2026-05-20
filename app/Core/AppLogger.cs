@@ -73,7 +73,9 @@ public static class AppLogger
 
             // 同一プロセス内のリーダー（外部ツールでの tail 等）が握っていてもログを書き続けたい。
             using var fs = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
-            using var writer = new StreamWriter(fs, System.Text.Encoding.UTF8);
+            // AutoFlush=true により WriteLine 毎に disk まで書き込む。クラッシュ直前の数行が
+            // StreamWriter の内部バッファに残ったまま失われるのを防ぐ。
+            using var writer = new StreamWriter(fs, System.Text.Encoding.UTF8) { AutoFlush = true };
             while (_queue.TryDequeue(out var line))
             {
                 pending.Add(line);

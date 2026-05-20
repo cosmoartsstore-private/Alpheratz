@@ -141,11 +141,20 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
     public async Task deleteTemplate(string template, AlpheratzSettingDto currentSetting)
     {
         AppLogger.Trace($"TemplatePageViewModel.deleteTemplate: enter template={template}");
+        // ロールバック用に変更前の状態をキャプチャ。save 失敗時に in-memory が
+        // DB と乖離して「再起動で復活」状態にならないように、save が成功するまで
+        // メモリ側の確定を遅らせる代わりに「失敗時に戻す」アプローチを採る。
+        var prevIndex = tweetTemplates.IndexOf(template);
+        var prevActive = ActiveTweetTemplate;
+        var prevEditing = EditingTweetTemplate;
+        var prevDraft = TweetTemplateDraft;
+        var didRemove = false;
         try
         {
-            if (tweetTemplates.Contains(template))
+            if (prevIndex >= 0)
             {
-                tweetTemplates.Remove(template);
+                tweetTemplates.RemoveAt(prevIndex);
+                didRemove = true;
             }
 
             if (ActiveTweetTemplate == template)
@@ -158,8 +167,29 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
                 cancelEdit();
             }
 
-            // コレクション変更後に即時保存することで、アプリ再起動でも削除を保持する。
-            await saveTemplates(currentSetting).ConfigureAwait(false);
+            // 保存失敗時に呼ばれた場合は in-memory 状態を元に戻し、UI とディスクの整合を保つ。
+            try
+            {
+                await settingsService.SaveSettingAsync(currentSetting with
+                {
+                    tweetTemplates = tweetTemplates,
+                    activeTweetTemplate = ActiveTweetTemplate,
+                }).ConfigureAwait(false);
+                toastService.addToast("テンプレートを削除しました。");
+            }
+            catch (Exception saveEx)
+            {
+                AppLogger.Error($"TemplatePageViewModel.deleteTemplate: save failed, rolling back: {saveEx}");
+                if (didRemove && prevIndex >= 0)
+                {
+                    var insertAt = Math.Min(prevIndex, tweetTemplates.Count);
+                    tweetTemplates.Insert(insertAt, template);
+                }
+                ActiveTweetTemplate = prevActive;
+                EditingTweetTemplate = prevEditing;
+                TweetTemplateDraft = prevDraft;
+                toastService.addToast($"テンプレートの削除に失敗しました: {saveEx.Message}", ToastType.error);
+            }
         }
         catch (Exception ex)
         {

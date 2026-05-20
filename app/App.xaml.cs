@@ -262,9 +262,18 @@ public partial class App : Application
             try
             {
                 if (t.IsCompletedSuccessfully)
+                {
                     lifecycle.advanceTo(AppLifecyclePhase.dataReady);
-                else if (t.Exception is not null)
-                    AppLogger.Error($"App.initContinuation: initialize() failed: {t.Exception}");
+                }
+                else
+                {
+                    // 失敗時もスプラッシュを抜けてシェルを表示する。シェル側で空の状態を出した
+                    // 上で再スキャン誘導等のリカバリ操作を取れるようにするため、ここで永久停止
+                    // させない。例外内容はログに残し、ユーザにはトーストで通知する余地を残す。
+                    if (t.Exception is not null)
+                        AppLogger.Error($"App.initContinuation: initialize() failed: {t.Exception}");
+                    lifecycle.advanceTo(AppLifecyclePhase.dataReady);
+                }
             }
             catch (Exception ex)
             {

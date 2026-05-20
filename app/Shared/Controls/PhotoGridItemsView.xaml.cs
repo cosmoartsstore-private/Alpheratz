@@ -129,6 +129,11 @@ public sealed partial class PhotoGridItemsView : UserControl
     {
         try
         {
+            // WinUI 3 では同一インスタンスでも可視性切替や visual tree 再アタッチで
+            // Loaded が複数回発火することがある。 internalScrollViewer がすでに
+            // セット済みなら以前のサブスクリプションが残っているはずなので、
+            // 二重購読を避けるためここで早期 return する。
+            if (internalScrollViewer is not null) return;
             var sv = FindChildScrollViewer(PhotoItems);
             if (sv is null) return;
             internalScrollViewer = sv;
