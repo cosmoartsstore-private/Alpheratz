@@ -96,11 +96,22 @@ public sealed partial class PhotoModalPage : Page
     {
         if (e.PropertyName == nameof(PhotoModalState.SelectedPhoto))
         {
-            syncWorldName();
-            syncMatchSource();
-            syncEmptyTagNote();
-            syncModalImage();
+            RefreshFromState();
         }
+    }
+
+    /// <summary>
+    /// state.SelectedPhoto 変更時 / ページ再 Loaded 時の両方で呼ばれる同期。
+    /// sync を追加する場合はここに 1 箇所だけ追記すれば、両経路から拾われる。
+    /// (旧実装は OnStatePropertyChanged と Page_Loaded で 4 つの sync を別々に列挙していたため、
+    ///  新規 sync を片方だけに追加する sub-bug が入りやすかった)。
+    /// </summary>
+    private void RefreshFromState()
+    {
+        syncWorldName();
+        syncMatchSource();
+        syncEmptyTagNote();
+        syncModalImage();
     }
 
     private void syncModalImage()
@@ -217,10 +228,7 @@ public sealed partial class PhotoModalPage : Page
         try
         {
             _ = Focus(FocusState.Programmatic);
-            syncWorldName();
-            syncMatchSource();
-            syncEmptyTagNote();
-            syncModalImage();
+            RefreshFromState();
         }
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.Page_Loaded: {ex}"); }
     }

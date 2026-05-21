@@ -250,24 +250,54 @@
 
 ---
 
-## 📋 動線・保守性レビュー結果 (2026-05-20、参考)
+## 📋 動線・保守性レビュー結果 (2026-05-20)
 
-致命的ではないが将来優先度として記録。要対応化したくなったら別タスクで。
+### 着手済 (1 件)
 
-### 動線まだ気になる点 (低〜中)
-- **ShellPage:552-568** modal dismiss の 400ms dead-zone — 経過時間判定でなく fade-in 完了フラグ参照に置換すべき
-- **ShellViewModel cancelScan fire-and-forget** — 「キャンセル中…」の visible feedback が欠ける
-- **GalleryFilterPanel dropdowns** — 開閉で scroll offset が保持されない (再オープン時に最後位置に飛ぶ)
+| ID | 場所 | 状態 | メモ |
+|---|---|---|---|
+| MAINT-01 | `app/Features/PhotoModal/PhotoModalPage.xaml.cs:95-104, 215-226` | **DONE** | `OnStatePropertyChanged` と `Page_Loaded` が 4 つの sync を別々に列挙していた。`RefreshFromState()` private method に統合し、sync 追加時の片方忘れバグを構造的に防ぐ |
+
+### 動線で気になる点 (低〜中、未対応 / 観察継続)
+
+- **ShellPage:552-568** modal dismiss の 400ms dead-zone — 経過時間判定でなく fade-in 完了フラグ参照に置換できるが現状実害なし
+- **ShellViewModel cancelScan fire-and-forget** — 「キャンセル中…」の visible feedback が欠ける (UX 改善案、致命的でない)
+- **GalleryFilterPanel dropdowns** — 開閉で scroll offset が保持されない
 - **空ギャラリー時のメッセージ不在** — フィルタ 0 件と loading が区別できない
-- **GalleryMasonryView shimmer** — 高速ロード時に shimmer 1.5s ループが完了する前に画像 fade-in 開始 → ちらつき (軽微)
+- **GalleryMasonryView shimmer** — 高速ロード時のちらつき (軽微)
 
-### 保守性 (中〜大規模リファクタ候補)
-- **GalleryFilterPanel.xaml.cs (924行)** — calendar / world / tag / theme / preset / state binding が同居。`TagCheckboxList` / `WorldCheckboxList` / `CalendarPicker` への分割が有効
-- **GalleryMasonryView.xaml.cs (743行)** — layout + virtualization + shimmer + image loading + hover + event wiring + CardEntry が同居。`MasonryCard` UserControl 抽出で virtualization と card 振る舞いを分離
-- **ShellPage 3 つの bool (`isModalOpen` / `isMiddleModalOpen` / `isFilterOpen`)** — `ModalStack` enum で valid state 遷移を明示化
-- **GalleryFiltersState ⇄ GalleryDisplayState 責務分散** — GroupingMode の所属など intuitive でない、merge or 責任明文化
-- **SettingsPage の Loaded/Unloaded 対称契約** — subscription を `CompositeDisposable` で束ねればコンパイル時に近い形で対称性を担保
-- **PhotoModalPage `UpdateViewModel` ⇄ `Page_Loaded` の sync 二重化** — 単一 `Refresh()` に統合 or XAML binding 化
+---
+
+## 🚫 「分割しない」判断の恒久メモ (FP-MAINT-01〜05)
+
+2026-05-20 の動線・保守性監査で「god class」「責務分散」と指摘された 5 件について、実コードを精査した結果 **分割は保守性をむしろ下げる** と判断。再監査エージェントが同じ提案をしてきても以下を参照。
+
+### FP-MAINT-01: `GalleryFilterPanel.xaml.cs` (924 行) を子コントロールに分割
+- **却下理由**: `OnActualThemeChanged` と `boundFiltersState.PropertyChanged` が calendar / tag list / world list / orientation / active states を**一括で再描画する共通アンカー**になっている。分割すると 3 子コントロールが各々 theme と filter state を購読し、親が子を listen して整合させる必要が生じる。924 行の内訳は ~10 のごく短い handler (例: `Orientation*_Click` が 3 行ずつ) で密結合 spaghetti ではなく、**整列した平坦リスト**
+- **再検証ポイント**: もし calendar セクションだけが将来 200 行以上に膨らんだら `CalendarPicker` 単独抽出は再検討余地あり
+
+### FP-MAINT-02: `GalleryMasonryView.xaml.cs` (743 行) から `MasonryCard` UserControl を抽出
+- **却下理由**: クラス冒頭 doc に明記の通り「WinUI 標準 ItemsRepeater が 27,000 枚で OOM」を回避するための hand-rolled 仮想化。UserControl 化はテンプレート実体化コスト + DependencyProperty 経由 binding + 仮想化と card lifecycle の物理分離で **性能 regression**。本質的にこれは「単一責任を破ってでも性能を取った」設計
+- **再検証ポイント**: 仮想化を捨てて良い小規模ユースケースが現れた場合のみ別途検討
+
+### FP-MAINT-03: ShellPage の 3 つの bool (`isModalOpen` / `isMiddleModalOpen` / `isFilterOpen`) を `ModalStack` enum に
+- **却下理由**: 3 次元は **独立した直交フラグ**。実コードで以下のすべての組合せが正当に処理されている:
+  - filter 開きながら写真モーダル開く → `isFilterOpen && isModalOpen`
+  - 設定モーダル → そこから写真モーダル → `isMiddleModalOpen && isModalOpen` (2 段スタック、`CloseMiddleModal` で `isModalOpen` を見て HeaderBar dim 維持)
+  - キーボード判定 `!isModalOpen && !isMiddleModalOpen` でも `isFilterOpen` だけ独立
+  - 2^3 = 8 通りすべて valid → enum で表現すると flags enum になり結局 bool と等価
+- **再検証ポイント**: もし modal layer 種別 (middle) が 4 種以上に増えたら別途 enum 化
+
+### FP-MAINT-04: `GalleryFiltersState` ⇄ `GalleryDisplayState` を merge
+- **却下理由**: 責務は**意味的に分離**されている:
+  - FiltersState = 「何を見せたいか」(search/date/world/tag/sort/grouping)
+  - DisplayState = 「どう描画するか」(ViewMode/PanelWidth/GridWrapperHeight/ViewPreparationLabel)
+  - 「GroupingMode は FiltersState なのに `prepareGroupingModeChange` が DisplayState」という指摘は誤読。実装は **値の所有 (FiltersState) と視覚遷移の調整役 (DisplayState)** の綺麗な分担で、`prepareGroupingModeChange(current, next, setter)` が setter を callback として受け取り、`clearPendingViewPreparations` → `setGroupingMode` → label クリアの遷移責務だけを引き受けている
+  - merge すると filter 変更が直接 view preparation 副作用を持つ god-state になる
+
+### FP-MAINT-05: `SettingsPage` の Loaded/Unloaded subscription を `CompositeDisposable` で束ねる
+- **却下理由**: 現状 3 subs の対称ペア (3 行 + 3 行)、視認できる距離。`CompositeDisposable` は Rx 系の依存追加 + indirection コストで「3 ペアの並びを見落とすミス」を防ぐが、現状サイズなら肉眼で十分検査可能
+- **再検証ポイント**: subs が 10+ に膨らんだ時に再評価
 
 ---
 
