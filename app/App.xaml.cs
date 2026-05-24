@@ -285,12 +285,26 @@ public partial class App : Application
     private async void SwapToShell(MainWindow win, ShellViewModel shellViewModel, BootstrapPage bootstrapPage)
     {
         if (shellSwapped) return;
-        shellSwapped = true;
         AppLogger.Trace("App.SwapToShell: enter");
+        // N-04: 旧実装は FadeOutAsync の後で ShellPage を生成していたため、ShellPage ctor が
+        // 例外を投げると bootstrap が Opacity=0 のまま SetRoot 未実行で空白ウィンドウになっていた
+        // (しかも shellSwapped=true により retry も不能)。
+        // 順序を「ShellPage 生成 → FadeOut → SetRoot」に変更し、ShellPage 生成失敗時は
+        // bootstrap がまだ Opacity=1 のまま残る + shellSwapped を false に保ち retry 可能にする。
+        ShellPage shellPage;
+        try
+        {
+            shellPage = new ShellPage(shellViewModel);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"App.SwapToShell: ShellPage ctor failed: {ex}");
+            return;
+        }
+        shellSwapped = true;
         try
         {
             await bootstrapPage.FadeOutAsync();
-            var shellPage = new ShellPage(shellViewModel);
             win.SetRoot(shellPage);
             AppLogger.Trace("App.SwapToShell: ShellPage mounted");
         }

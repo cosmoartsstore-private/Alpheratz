@@ -276,6 +276,15 @@ public sealed class PhotoService
                         File.Copy(nativeSource, dest, overwrite: false);
                         copied++;
                     }
+                    catch (IOException ex) when ((ex.HResult & 0xFFFF) == 0x70 || (ex.HResult & 0xFFFF) == 0x27)
+                    {
+                        // ERROR_DISK_FULL (0x70) / ERROR_HANDLE_DISK_FULL (0x27) は環境要因で
+                        // 続きを試みても全件失敗確定。ユーザに「重複でスキップ」と区別されるよう
+                        // ループ脱出して上位へ伝播。これまでは disk-full も「skipped」に
+                        // 集計されてユーザは「30 件中 0 件 copied」しか見えず原因が不明だった。
+                        AppLogger.Error($"PhotoService.BulkCopyPhotosAsync: disk full, abort batch [{nativeSource}]: {ex.Message}");
+                        throw;
+                    }
                     catch (IOException ex)
                     {
                         // 既に同名ファイルが存在する場合などは個別にスキップして処理を継続する。

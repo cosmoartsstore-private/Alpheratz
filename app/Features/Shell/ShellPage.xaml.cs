@@ -263,6 +263,14 @@ public sealed partial class ShellPage : Page
         {
             isMiddleModalOpen = false;
             drillDownPhotos = null;
+            // N-24: WorldResolve の worker (Task.Run でサムネ生成 + 候補探索) を中断。
+            // CT が無いと閉鎖後も数秒間 CPU/disk を占有していた。
+            if (worldResolveCts is not null)
+            {
+                try { worldResolveCts.Cancel(); } catch { }
+                worldResolveCts.Dispose();
+                worldResolveCts = null;
+            }
             Stage.ModalVisibility = Visibility.Collapsed;
             // 最上位 (PhotoModal) も開いていなければ HeaderBar の dim を解除
             if (!isModalOpen)
@@ -372,6 +380,17 @@ public sealed partial class ShellPage : Page
             // PhotoModal を閉じてから Settings モーダルを開く。
             page.OnOpenTagMaster = () =>
             {
+                // PhotoModal が GroupDrillDown 経由で開かれていた場合、
+                // ShowSettings() は Stage.ModalContent (= drillDownPage) を settings で
+                // 上書きしてしまい、settings を閉じると GroupDrillDown に戻れない
+                // (navigation context lost)。中位モーダルが既に開いているなら
+                // タグマスタ起動は黙って no-op にし、まず GroupDrillDown を閉じる必要があると
+                // ユーザに伝える経路へ寄せる (現状は無視)。
+                if (isMiddleModalOpen && Stage.ModalContent is not SettingsPage)
+                {
+                    AppLogger.Trace("ShellPage.OpenTagMaster: skip (middle modal occupied by non-settings)");
+                    return;
+                }
                 modalViewModel.closePhotoModal();
                 CloseModal();
                 ShowSettings();
@@ -389,8 +408,8 @@ public sealed partial class ShellPage : Page
             page.OnTweet = async () =>
             {
                 var selectedPhoto = modalViewModel.state.SelectedPhoto;
-                if (selectedPhoto is not null)
-                    await viewModel.templatePageViewModel.openTweetIntent(selectedPhoto).ConfigureAwait(false);
+                if (selectedPhoto is null) return false;
+                return await viewModel.templatePageViewModel.openTweetIntent(selectedPhoto).ConfigureAwait(false);
             };
             page.OnGoBack = () => modalViewModel.goBackPhoto();
             page.OnGoPrev = () => modalViewModel.state.goPrevPhoto();
@@ -407,6 +426,13 @@ public sealed partial class ShellPage : Page
     }
 
     /// <summary>
+    /// ワールド解析モーダル中の `Task.Run` サムネイル生成を中断するための CTS。
+    /// CloseMiddleModal で Cancel + Dispose されることで、modal 閉鎖後に worker が
+    /// CPU/IO を空消費し続けるのを防ぐ (N-24)。
+    /// </summary>
+    private System.Threading.CancellationTokenSource? worldResolveCts;
+
+    /// <summary>
     /// ワールド解析モーダルを開く。中位モーダル (Stage.ModalContent) に表示する。
     /// 設定モーダルから呼ばれる場合 (OnStartWorldAnalysis) は Settings の中身を
     /// ワールド解析に差し替える形になる。
@@ -414,6 +440,14 @@ public sealed partial class ShellPage : Page
     private async Task ShowWorldResolveModalAsync()
     {
         AppLogger.Trace("ShellPage.ShowWorldResolveModalAsync: enter");
+        // N-23: StartWorldAnalysis ボタン連打 (Settings 内) で本メソッドが二重起動すると
+        // CreateWorldResolveViewModel が二重生成され、古い VM の Task.Run thumbnail worker が
+        // orphan のまま走り続けるため、既に WorldResolvePage が中位スロットを占有していれば no-op。
+        if (Stage.ModalContent is WorldResolvePage)
+        {
+            AppLogger.Trace("ShellPage.ShowWorldResolveModalAsync: skip (already open)");
+            return;
+        }
         try
         {
             var vm = viewModel.CreateWorldResolveViewModel();
@@ -429,8 +463,13 @@ public sealed partial class ShellPage : Page
             isMiddleModalOpen = true;
             lastModalOpenTick = Environment.TickCount64;
             HeaderBar.Opacity = 0.4;
-            await vm.InitializeAsync().ConfigureAwait(false);
+
+            // 旧 CTS 残骸があれば破棄してから新規発行。
+            worldResolveCts?.Cancel(); worldResolveCts?.Dispose();
+            worldResolveCts = new System.Threading.CancellationTokenSource();
+            await vm.InitializeAsync(worldResolveCts.Token).ConfigureAwait(false);
         }
+        catch (OperationCanceledException) { /* モーダルを閉じた時の中断は正常 */ }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowWorldResolveModalAsync: threw: {ex}"); }
         AppLogger.Trace("ShellPage.ShowWorldResolveModalAsync: exit");
     }

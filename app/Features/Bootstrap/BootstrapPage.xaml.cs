@@ -68,6 +68,10 @@ public sealed partial class BootstrapPage : Page
     /// </summary>
     public void SetPhase(AppLifecyclePhase phase)
     {
+        // N-59: SwapToShell 完了後にも PhaseAdvanced (uiReady) が届くため、Unloaded 済みの
+        // BootstrapPage で _anim.Start() が呼ばれて DispatcherTimer が空転していた。
+        // IsLoaded が false なら何もしない (Page が visual tree から外れた = もう描画不要)。
+        if (!IsLoaded) return;
         try
         {
             _target = phase switch

@@ -76,6 +76,9 @@ public sealed class PhashService
                         if (image is null)
                         {
                             AppLogger.Warn($"PhashService: skip (unreadable) [{item.PhotoFilename}]");
+                            // N-01: corrupt 画像でも phash_version を上げないと次バッチで再選出され
+                            //       同じ 50 件が永久にループする。phash 列は NULL のまま version だけ進める。
+                            await db.MarkPhashFailedAsync(item.PhotoPath, PdqHasher.CurrentVersion, ct).ConfigureAwait(false);
                             done++;
                             UpdateProgress(done, total, item.PhotoFilename);
                             continue;
@@ -86,6 +89,7 @@ public sealed class PhashService
                         if (string.IsNullOrEmpty(combinedHex))
                         {
                             AppLogger.Warn($"PhashService: skip (no hash) [{item.PhotoFilename}]");
+                            await db.MarkPhashFailedAsync(item.PhotoPath, PdqHasher.CurrentVersion, ct).ConfigureAwait(false);
                             done++;
                             UpdateProgress(done, total, item.PhotoFilename);
                             continue;
@@ -95,6 +99,13 @@ public sealed class PhashService
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
                         AppLogger.Warn($"PhashService: skip [{item.PhotoFilename}]: {ex.Message}");
+                        // 同様に永久ループ回避。DB 更新自体が失敗するケースだとマーク自体も失敗するが、
+                        // その場合は外側 catch (一般 Exception) で全体停止する設計。
+                        try { await db.MarkPhashFailedAsync(item.PhotoPath, PdqHasher.CurrentVersion, ct).ConfigureAwait(false); }
+                        catch (Exception markEx) when (markEx is not OperationCanceledException)
+                        {
+                            AppLogger.Warn($"PhashService: MarkPhashFailedAsync also failed [{item.PhotoFilename}]: {markEx.Message}");
+                        }
                     }
                     done++;
                     UpdateProgress(done, total, item.PhotoFilename);

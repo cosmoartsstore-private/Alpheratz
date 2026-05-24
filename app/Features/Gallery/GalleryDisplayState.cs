@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Threading;
 using Alpheratz.Core;
 using Alpheratz.Shared.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -19,15 +18,11 @@ public partial class GalleryDisplayState : UiThreadSafeObservableObject
 
     [ObservableProperty] private ViewMode viewMode = ViewMode.standard;
     [ObservableProperty] private bool isMasonryEnabled;
-    [ObservableProperty] private string? viewPreparationLabel;
 
     // ギャラリー領域の実測サイズ。MasonryView や標準グリッドの列数・行高計算に使う。
     // PhotoGrid 側の SizeChanged から rightPanelRef/gridWrapperRef 経由で更新される。
     [ObservableProperty] private double panelWidth = 800;
     [ObservableProperty] private double gridWrapperHeight = 600;
-
-    private int viewPreparationTokenRef;
-    private CancellationTokenSource? viewPreparationTimeoutRef;
 
     public string groupedPhotoLabel => "ワールド";
     public bool isGroupingUnavailableInMasonry => ViewMode == ViewMode.gallery;
@@ -75,43 +70,6 @@ public partial class GalleryDisplayState : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryDisplayState.gridWrapperRef: exit");
     }
 
-    public int beginViewPreparation(string label)
-    {
-        AppLogger.Trace($"GalleryDisplayState.beginViewPreparation: enter label={label}");
-        var nextToken = viewPreparationTokenRef + 1;
-        viewPreparationTokenRef = nextToken;
-        ViewPreparationLabel = label;
-        AppLogger.Trace($"GalleryDisplayState.beginViewPreparation: exit token={nextToken}");
-        return nextToken;
-    }
-
-    public void finishViewPreparation(int token)
-    {
-        AppLogger.Trace($"GalleryDisplayState.finishViewPreparation: enter token={token} current={viewPreparationTokenRef}");
-        if (viewPreparationTokenRef == token)
-        {
-            ViewPreparationLabel = null;
-            AppLogger.Trace("GalleryDisplayState.finishViewPreparation: cleared label");
-        }
-        AppLogger.Trace("GalleryDisplayState.finishViewPreparation: exit");
-    }
-
-    public void clearPendingViewPreparations()
-    {
-        AppLogger.Trace("GalleryDisplayState.clearPendingViewPreparations: enter");
-        try
-        {
-            viewPreparationTimeoutRef?.Cancel();
-            viewPreparationTimeoutRef?.Dispose();
-            viewPreparationTimeoutRef = null;
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Error($"GalleryDisplayState.clearPendingViewPreparations: threw: {ex}");
-        }
-        AppLogger.Trace("GalleryDisplayState.clearPendingViewPreparations: exit");
-    }
-
     public void prepareGroupingModeChange(GroupingMode currentGroupingMode, GroupingMode nextGroupingMode, Action<GroupingMode> setGroupingMode)
     {
         AppLogger.Trace($"GalleryDisplayState.prepareGroupingModeChange: enter current={currentGroupingMode} next={nextGroupingMode}");
@@ -123,9 +81,7 @@ public partial class GalleryDisplayState : UiThreadSafeObservableObject
 
         try
         {
-            clearPendingViewPreparations();
             setGroupingMode(nextGroupingMode);
-            ViewPreparationLabel = null;
         }
         catch (Exception ex)
         {
@@ -145,9 +101,7 @@ public partial class GalleryDisplayState : UiThreadSafeObservableObject
 
         try
         {
-            clearPendingViewPreparations();
             setDisplayFolderMode(nextDisplayFolderMode);
-            ViewPreparationLabel = null;
         }
         catch (Exception ex)
         {

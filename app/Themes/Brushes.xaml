@@ -55,7 +55,6 @@
             <SolidColorBrush x:Key="ASurfaceSoft" Color="#F3F4F6"/>
             <SolidColorBrush x:Key="ASurfaceSofter" Color="#F9FAFB"/>
             <SolidColorBrush x:Key="ASurfaceHover" Color="#E5E7EB"/>
-            <SolidColorBrush x:Key="ASurfaceTop" Color="#FFFFFF"/>
             <SolidColorBrush x:Key="ASurfaceSide" Color="#F9FAFB"/>
             <SolidColorBrush x:Key="ASurfaceVeil" Color="#B3FFFFFF"/>
             <SolidColorBrush x:Key="AMediaBg" Color="#111318"/>
@@ -151,7 +150,6 @@
             <SolidColorBrush x:Key="ASurfaceSoft" Color="#1E2126"/>
             <SolidColorBrush x:Key="ASurfaceSofter" Color="#23262C"/>
             <SolidColorBrush x:Key="ASurfaceHover" Color="#262A30"/>
-            <SolidColorBrush x:Key="ASurfaceTop" Color="#0F1115"/>
             <SolidColorBrush x:Key="ASurfaceSide" Color="#13161A"/>
             <SolidColorBrush x:Key="ASurfaceVeil" Color="#B316181C"/>
             <SolidColorBrush x:Key="AMediaBg" Color="#0B0D10"/>

@@ -34,8 +34,11 @@ public sealed partial class PhotoModalPage : Page
     public Func<Task>? OnOpenWorld { get; set; }
     /// <summary>エクスプローラで写真フォルダを開く。</summary>
     public Func<Task>? OnOpenExplorer { get; set; }
-    /// <summary>ツイート投稿テンプレートのクリップボードコピー＋ X 起動。</summary>
-    public Func<Task>? OnTweet { get; set; }
+    /// <summary>
+    /// ツイート投稿テンプレートのクリップボードコピー＋ X 起動。
+    /// 戻り値 true でクリップボード書込み成功を示し、呼出側が成功時のみオーバーレイを出す。
+    /// </summary>
+    public Func<Task<bool>>? OnTweet { get; set; }
     /// <summary>お気に入りフラグの即時トグル。</summary>
     public Func<Task>? OnToggleFavorite { get; set; }
     /// <summary>タグ追加 (photoPath, tag)。</summary>
@@ -296,8 +299,10 @@ public sealed partial class PhotoModalPage : Page
         {
             if (OnTweet is not null)
             {
-                await OnTweet().ConfigureAwait(false);
-                DispatcherQueue?.TryEnqueue(ShowClipboardOverlay);
+                // openTweetIntent 内のクリップボード書込みが失敗してもこれまで「コピーしました」
+                // overlay が無条件で出ていた (false success)。戻り値 true でのみ overlay 表示。
+                var copied = await OnTweet().ConfigureAwait(false);
+                if (copied) DispatcherQueue?.TryEnqueue(ShowClipboardOverlay);
             }
         }
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.Tweet_Click: {ex}"); }

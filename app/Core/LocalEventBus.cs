@@ -48,7 +48,7 @@ public sealed class LocalEventBus
         {
             json = payload is null
                 ? JsonDocument.Parse("null").RootElement
-                : JsonSerializer.SerializeToElement(payload, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                : JsonSerializer.SerializeToElement(payload, _opts);
         }
         catch (Exception ex)
         {

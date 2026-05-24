@@ -42,7 +42,10 @@ public sealed class AlpheratzDb
         var conn = new SqliteConnection($"Data Source={path}");
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;";
+        // busy_timeout: WAL は writer を直列化するため、Phash バッチ更新 / Scanner upsert / UI 起源の
+        // toggleFavorite・addTag が重なると後発が即 SQLITE_BUSY を投げ、ユーザ操作が間欠的に
+        // toast 「お気に入りの更新に失敗しました」で失敗していた。5 秒待ってリトライさせるのが定石。
+        cmd.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;";
         cmd.ExecuteNonQuery();
         return conn;
     }
@@ -302,9 +305,16 @@ WHERE pt.photo_path IN (");
         }
         if (q.WorldQuery is not null)
         {
-            sb.Append($" AND ({tableAlias}.world_name LIKE @worldQuery"
-                + $" OR {tableAlias}.photo_filename LIKE @worldQuery)");
-            cmd.Parameters.AddWithValue("@worldQuery", $"%{q.WorldQuery}%");
+            // LIKE のメタ文字 `%` `_` `\` をユーザ入力に含むケース (e.g. "50%off") では
+            // 単純に `%{value}%` で連結するとワイルドカードとして誤マッチする。
+            // `\` をエスケープ文字として ESCAPE 句で宣言し、メタ文字を `\%` / `\_` / `\\` に置換する。
+            var escaped = q.WorldQuery
+                .Replace("\\", "\\\\", StringComparison.Ordinal)
+                .Replace("%", "\\%", StringComparison.Ordinal)
+                .Replace("_", "\\_", StringComparison.Ordinal);
+            sb.Append($" AND ({tableAlias}.world_name LIKE @worldQuery ESCAPE '\\'"
+                + $" OR {tableAlias}.photo_filename LIKE @worldQuery ESCAPE '\\')");
+            cmd.Parameters.AddWithValue("@worldQuery", $"%{escaped}%");
         }
         if (q.WorldExacts is { Count: > 0 } exacts)
         {
@@ -619,6 +629,12 @@ WHERE photo_path = @p";
     public Task AddPhotoTagAsync(string photoPath, string tag, CancellationToken ct = default)
     {
         AppLogger.Trace($"AlpheratzDb.AddPhotoTagAsync: enter path={photoPath} tag={tag}");
+        // tags マスタ側 (CreateTagMasterAsync) は trim + 空チェック済み。本メソッドが
+        // 別経路 (bulkAddTag 等) から trim されていない値を受けるとマスタと不一致な
+        // 末尾空白付きタグが photo_tags に紛れ込む。入口で対称に正規化する。
+        var normalized = tag.Trim();
+        if (string.IsNullOrEmpty(normalized))
+            throw new ArgumentException("tag must not be empty after trim", nameof(tag));
         try
         {
             ct.ThrowIfCancellationRequested();
@@ -629,7 +645,7 @@ WHERE photo_path = @p";
             using var insertTag = conn.CreateCommand();
             insertTag.Transaction = tx;
             insertTag.CommandText = "INSERT INTO tags (name) VALUES (@tag) ON CONFLICT(name) DO NOTHING";
-            insertTag.Parameters.AddWithValue("@tag", tag);
+            insertTag.Parameters.AddWithValue("@tag", normalized);
             insertTag.ExecuteNonQuery();
 
             using var linkTag = conn.CreateCommand();
@@ -639,7 +655,7 @@ INSERT INTO photo_tags (photo_path, tag_id)
 SELECT @p, id FROM tags WHERE name = @tag
 ON CONFLICT(photo_path, tag_id) DO NOTHING";
             linkTag.Parameters.AddWithValue("@p", photoPath);
-            linkTag.Parameters.AddWithValue("@tag", tag);
+            linkTag.Parameters.AddWithValue("@tag", normalized);
             linkTag.ExecuteNonQuery();
 
             tx.Commit();
@@ -855,16 +871,7 @@ WHERE photo_path = @p
     ///   - EXIF 補完済みの orientation/dimension が空クエリで消えない
     /// is_missing は常に 0 にリセット（スキャンで再発見されたファイルは復活扱い）。
     /// </summary>
-    public Task UpsertPhotoAsync(PhotoUpsertData data, CancellationToken ct = default)
-    {
-        AppLogger.Trace($"AlpheratzDb.UpsertPhotoAsync: enter path={data.PhotoPath}");
-        try
-        {
-            ct.ThrowIfCancellationRequested();
-
-            using var conn = OpenConnection();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
+    private const string UpsertPhotoSql = @"
 INSERT INTO photos (
     photo_path, photo_filename, world_id, world_name, timestamp,
     orientation, image_width, image_height, source_slot, match_source, is_missing
@@ -884,16 +891,17 @@ ON CONFLICT(photo_path) DO UPDATE SET
     match_source   = COALESCE(excluded.match_source,  photos.match_source),
     is_missing     = 0";
 
-            cmd.Parameters.AddWithValue("@photo_path",     data.PhotoPath);
-            cmd.Parameters.AddWithValue("@photo_filename",  data.PhotoFilename);
-            cmd.Parameters.AddWithValue("@world_id",        (object?)data.WorldId   ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@world_name",      (object?)data.WorldName ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@timestamp",       data.Timestamp);
-            cmd.Parameters.AddWithValue("@orientation",     (object?)data.Orientation ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@image_width",     (object?)data.ImageWidth  ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@image_height",    (object?)data.ImageHeight ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@source_slot",     data.SourceSlot);
-            cmd.Parameters.AddWithValue("@match_source",    (object?)data.MatchSource ?? DBNull.Value);
+    public Task UpsertPhotoAsync(PhotoUpsertData data, CancellationToken ct = default)
+    {
+        AppLogger.Trace($"AlpheratzDb.UpsertPhotoAsync: enter path={data.PhotoPath}");
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+
+            using var conn = OpenConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = UpsertPhotoSql;
+            BindUpsertPhotoParams(cmd, data);
             cmd.ExecuteNonQuery();
             AppLogger.Trace("AlpheratzDb.UpsertPhotoAsync: exit");
             return Task.CompletedTask;
@@ -903,6 +911,77 @@ ON CONFLICT(photo_path) DO UPDATE SET
             AppLogger.Error($"AlpheratzDb.UpsertPhotoAsync: threw: {ex}");
             throw;
         }
+    }
+
+    /// <summary>
+    /// N-09: スキャン時に候補が数千件以上ある場合、UpsertPhotoAsync を逐次呼ぶと
+    /// per-row で接続 open / PRAGMA 発行 / 暗黙トランザクション fsync が走り体感が遅い。
+    /// 1 接続 + 単一 transaction で全件を流して I/O を集約する。
+    /// 中断時は tx Dispose の rollback で原子的に巻き戻る (再スキャンで再収束する設計通り)。
+    /// </summary>
+    public Task BulkUpsertPhotosAsync(IReadOnlyList<PhotoUpsertData> items, CancellationToken ct = default)
+    {
+        AppLogger.Trace($"AlpheratzDb.BulkUpsertPhotosAsync: enter count={items.Count}");
+        if (items.Count == 0) return Task.CompletedTask;
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+
+            using var conn = OpenConnection();
+            using var tx = conn.BeginTransaction();
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = UpsertPhotoSql;
+            // Parameters は AddWithValue を最初の 1 件で確保し、以降は Value 上書きで再利用。
+            var pPath = cmd.Parameters.Add("@photo_path", Microsoft.Data.Sqlite.SqliteType.Text);
+            var pName = cmd.Parameters.Add("@photo_filename", Microsoft.Data.Sqlite.SqliteType.Text);
+            var pWid  = cmd.Parameters.Add("@world_id", Microsoft.Data.Sqlite.SqliteType.Text);
+            var pWnm  = cmd.Parameters.Add("@world_name", Microsoft.Data.Sqlite.SqliteType.Text);
+            var pTs   = cmd.Parameters.Add("@timestamp", Microsoft.Data.Sqlite.SqliteType.Text);
+            var pOri  = cmd.Parameters.Add("@orientation", Microsoft.Data.Sqlite.SqliteType.Text);
+            var pIw   = cmd.Parameters.Add("@image_width", Microsoft.Data.Sqlite.SqliteType.Integer);
+            var pIh   = cmd.Parameters.Add("@image_height", Microsoft.Data.Sqlite.SqliteType.Integer);
+            var pSlot = cmd.Parameters.Add("@source_slot", Microsoft.Data.Sqlite.SqliteType.Integer);
+            var pSrc  = cmd.Parameters.Add("@match_source", Microsoft.Data.Sqlite.SqliteType.Text);
+
+            foreach (var data in items)
+            {
+                ct.ThrowIfCancellationRequested();
+                pPath.Value = data.PhotoPath;
+                pName.Value = data.PhotoFilename;
+                pWid.Value  = (object?)data.WorldId   ?? DBNull.Value;
+                pWnm.Value  = (object?)data.WorldName ?? DBNull.Value;
+                pTs.Value   = data.Timestamp;
+                pOri.Value  = (object?)data.Orientation ?? DBNull.Value;
+                pIw.Value   = (object?)data.ImageWidth  ?? DBNull.Value;
+                pIh.Value   = (object?)data.ImageHeight ?? DBNull.Value;
+                pSlot.Value = data.SourceSlot;
+                pSrc.Value  = (object?)data.MatchSource ?? DBNull.Value;
+                cmd.ExecuteNonQuery();
+            }
+            tx.Commit();
+            AppLogger.Trace("AlpheratzDb.BulkUpsertPhotosAsync: exit");
+            return Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"AlpheratzDb.BulkUpsertPhotosAsync: threw: {ex}");
+            throw;
+        }
+    }
+
+    private static void BindUpsertPhotoParams(Microsoft.Data.Sqlite.SqliteCommand cmd, PhotoUpsertData data)
+    {
+        cmd.Parameters.AddWithValue("@photo_path",     data.PhotoPath);
+        cmd.Parameters.AddWithValue("@photo_filename", data.PhotoFilename);
+        cmd.Parameters.AddWithValue("@world_id",       (object?)data.WorldId   ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@world_name",     (object?)data.WorldName ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@timestamp",      data.Timestamp);
+        cmd.Parameters.AddWithValue("@orientation",    (object?)data.Orientation ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@image_width",    (object?)data.ImageWidth  ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@image_height",   (object?)data.ImageHeight ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@source_slot",    data.SourceSlot);
+        cmd.Parameters.AddWithValue("@match_source",   (object?)data.MatchSource ?? DBNull.Value);
     }
 
     /// <summary>
@@ -1227,6 +1306,50 @@ LIMIT 1";
     }
 
     /// <summary>
+    /// N-08: 全 unknown 写真について archive_world_visits との対応する世界名を 1 回の SQL で
+    /// 一括 UPDATE する。旧実装は per-photo で `LookupWorldNameFromArchiveAsync` →
+    /// `UpdatePhotoWorldNameAsync` を呼んで 1 写真あたり 3 接続オープンしていた (N+1)。
+    /// サブクエリで「timestamp に対応する最新の archive 訪問」を引き、世界名が取れた行だけ更新する。
+    /// </summary>
+    public Task<int> BulkResolveUnknownWorldsFromArchiveAsync(CancellationToken ct = default)
+    {
+        AppLogger.Trace("AlpheratzDb.BulkResolveUnknownWorldsFromArchiveAsync: enter");
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            using var conn = OpenConnection();
+            using var cmd = conn.CreateCommand();
+            // UPDATE ... FROM 構文は SQLite 3.33+ で利用可能 (Microsoft.Data.Sqlite 8.x は 3.40+ を同梱)。
+            // 相関サブクエリで「photo.timestamp 時点で開いていた最新ワールド」を引き、
+            // ヒットしたものだけ photos に書き戻す (match_source=polaris_archive)。
+            cmd.CommandText = @"
+WITH resolved AS (
+    SELECT p.photo_path AS photo_path,
+           (SELECT a.world_name FROM archive_world_visits a
+            WHERE a.join_time <= p.timestamp
+              AND (a.leave_time IS NULL OR a.leave_time >= p.timestamp)
+            ORDER BY a.join_time DESC LIMIT 1) AS world_name
+    FROM photos p
+    WHERE p.world_name IS NULL
+      AND p.world_id IS NULL
+      AND p.is_missing = 0
+)
+UPDATE photos
+SET world_name = (SELECT world_name FROM resolved WHERE photo_path = photos.photo_path),
+    match_source = 'polaris_archive'
+WHERE photo_path IN (SELECT photo_path FROM resolved WHERE world_name IS NOT NULL)";
+            var affected = cmd.ExecuteNonQuery();
+            AppLogger.Trace($"AlpheratzDb.BulkResolveUnknownWorldsFromArchiveAsync: exit affected={affected}");
+            return Task.FromResult(affected);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"AlpheratzDb.BulkResolveUnknownWorldsFromArchiveAsync: threw: {ex}");
+            throw;
+        }
+    }
+
+    /// <summary>
     /// source 写真のワールド情報 (world_id / world_name / match_source) を target にコピーする。
     /// 「同じワールドで撮影されたっぽい写真」を手動で結びつける操作の DB 側実装。
     /// </summary>
@@ -1436,9 +1559,12 @@ ORDER BY cnt DESC, world_name COLLATE NOCASE ASC";
             ct.ThrowIfCancellationRequested();
             using var conn = OpenConnection();
             using var cmd = conn.CreateCommand();
+            // pending = phash_version が現行版未満。corrupt 画像で hash 算出に失敗した行は
+            // phash 列を NULL のまま phash_version だけ最新版に上げて pending から除外する
+            // (MarkPhashFailedAsync 参照)。次回 CurrentVersion を上げた時に再試行される。
             cmd.CommandText = @"SELECT COUNT(*) FROM photos
                                  WHERE is_missing = 0
-                                   AND (phash IS NULL OR phash = '' OR COALESCE(phash_version, 0) < @currentVersion)";
+                                   AND COALESCE(phash_version, 0) < @currentVersion";
             cmd.Parameters.AddWithValue("@currentVersion", currentVersion);
             var count = Convert.ToInt32(cmd.ExecuteScalar() ?? 0L);
             AppLogger.Trace($"AlpheratzDb.GetPendingPhashCountAsync: exit count={count}");
@@ -1465,8 +1591,8 @@ ORDER BY cnt DESC, world_name COLLATE NOCASE ASC";
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"SELECT source_slot, photo_filename, photo_path FROM photos
                                  WHERE is_missing = 0
-                                   AND (phash IS NULL OR phash = '' OR COALESCE(phash_version, 0) < @currentVersion)
-                                 ORDER BY timestamp DESC
+                                   AND COALESCE(phash_version, 0) < @currentVersion
+                                 ORDER BY timestamp DESC, photo_path ASC
                                  LIMIT @limit";
             cmd.Parameters.AddWithValue("@limit", limit);
             cmd.Parameters.AddWithValue("@currentVersion", currentVersion);
@@ -1507,6 +1633,35 @@ ORDER BY cnt DESC, world_name COLLATE NOCASE ASC";
         catch (Exception ex)
         {
             AppLogger.Error($"AlpheratzDb.UpdatePhotoPhashAsync: threw: {ex}");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// PDQ ハッシュ計算に失敗した行を「現バージョンで処理済 (= 算出不能と判明)」として記録する。
+    /// phash 列は NULL のまま、phash_version だけを @version に上げることで、pending クエリ
+    /// (COALESCE(phash_version, 0) &lt; @currentVersion) から除外される。
+    /// これがないと corrupt 画像が 1 枚でも残ると同じバッチが永久ループする (N-01)。
+    /// 将来 CurrentVersion を上げた時には自動的に再試行対象に戻る。
+    /// </summary>
+    public Task MarkPhashFailedAsync(string photoPath, int version, CancellationToken ct = default)
+    {
+        AppLogger.Trace($"AlpheratzDb.MarkPhashFailedAsync: enter path={photoPath} version={version}");
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            using var conn = OpenConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"UPDATE photos SET phash_version = @version WHERE photo_path = @photo_path";
+            cmd.Parameters.AddWithValue("@version", version);
+            cmd.Parameters.AddWithValue("@photo_path", photoPath);
+            cmd.ExecuteNonQuery();
+            AppLogger.Trace("AlpheratzDb.MarkPhashFailedAsync: exit");
+            return Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"AlpheratzDb.MarkPhashFailedAsync: threw: {ex}");
             throw;
         }
     }

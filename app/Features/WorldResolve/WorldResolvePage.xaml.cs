@@ -76,9 +76,11 @@ public sealed partial class WorldResolvePage : Page
             PickerTargetImage.Source = null;
             return;
         }
+        // CreateOptions は既定 (URI キャッシュ有効) のまま (FIX-05 系)。
+        // WorldResolve 候補ピッカーは同じ TargetThumbPath を頻繁に開き直す導線のため
+        // キャッシュ有効化の利得が最大化される。
         PickerTargetImage.Source = new BitmapImage
         {
-            CreateOptions = BitmapCreateOptions.IgnoreImageCache,
             DecodePixelWidth = 120,
             DecodePixelType = DecodePixelType.Logical,
             UriSource = new Uri(path, UriKind.Absolute),
@@ -138,6 +140,15 @@ public sealed partial class WorldResolvePage : Page
 
     private async void ApplyConfirmed_Click(object sender, RoutedEventArgs e)
     {
+        // ApplyConfirmedBtn.IsEnabled は IsApplying → PropertyChanged → SyncUi の
+        // 非同期パスで反映されるため、await の前に連打されると ApplyConfirmedAsync が
+        // 二重起動して同一行 UPDATE / OnApplied (loadPhotos + toast) 二重発火に至る。
+        // 同期 flag を ViewModel に既に持っているのでここで早期 return する。
+        if (viewModel.IsApplying)
+        {
+            AppLogger.Trace("WorldResolvePage.ApplyConfirmed_Click: skip (already applying)");
+            return;
+        }
         try
         {
             var count = await viewModel.ApplyConfirmedAsync().ConfigureAwait(false);

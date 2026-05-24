@@ -402,9 +402,11 @@ public sealed partial class PhotoGridItemsView : UserControl
             img.Source = null;
             return;
         }
+        // CreateOptions は既定 (URI キャッシュ有効) のまま使う。FIX-05 / FIX-NEW-05 と同様、
+        // IgnoreImageCache は同一サムネを再表示するたびにフルデコードを強制し、
+        // GroupDrillDown / Gallery 標準 ViewMode のスクロール recycle 時に不要な I/O を生む。
         img.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage
         {
-            CreateOptions = Microsoft.UI.Xaml.Media.Imaging.BitmapCreateOptions.IgnoreImageCache,
             DecodePixelWidth = 300,
             DecodePixelType = Microsoft.UI.Xaml.Media.Imaging.DecodePixelType.Logical,
             UriSource = new Uri(path, UriKind.Absolute),

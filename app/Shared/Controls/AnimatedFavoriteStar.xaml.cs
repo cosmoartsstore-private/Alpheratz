@@ -14,6 +14,10 @@ namespace Alpheratz.Shared.Controls;
 public sealed partial class AnimatedFavoriteStar : UserControl
 {
     private bool previousLiked;
+    // N-18: fadeout の 200ms 中に再 Liked=true で fade-in が走った場合、
+    // 旧 fadeout の batch.Completed が遅延発火して glow を 0 に強制リセットし
+    // 新しい fade-in を打ち消していた。version カウンタで「最新の fade-out 完了」だけ受理する。
+    private int fadeoutVersion;
 
     public static readonly DependencyProperty LikedProperty =
         DependencyProperty.Register(nameof(Liked), typeof(bool), typeof(AnimatedFavoriteStar), new PropertyMetadata(false, OnLikedChanged));
@@ -175,6 +179,7 @@ public sealed partial class AnimatedFavoriteStar : UserControl
 
     private void PlayFadeOutAnimation()
     {
+        var ourVersion = System.Threading.Interlocked.Increment(ref fadeoutVersion);
         var starVisual = ElementCompositionPreview.GetElementVisual(InteractiveButton);
         var glowVisual = ElementCompositionPreview.GetElementVisual(Glow);
         var compositor = starVisual.Compositor;
@@ -220,6 +225,9 @@ public sealed partial class AnimatedFavoriteStar : UserControl
         {
             DispatcherQueue?.TryEnqueue(() =>
             {
+                // 連打中に新しい fade-in が走っているなら、この遅延 reset は破棄。
+                // (fadeoutVersion が進んでいる or Liked=true に戻っている)
+                if (fadeoutVersion != ourVersion || Liked) return;
                 starVisual.Opacity = 1f;
                 starVisual.Scale = new Vector3(1f, 1f, 1f);
                 glowVisual.Opacity = 0f;

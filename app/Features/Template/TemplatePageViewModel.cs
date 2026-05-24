@@ -88,14 +88,17 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
     /// Twitter Web Intent をブラウザで開く。
     /// 「画像クリップボード + テキスト Intent」の組合せにしているのは、Twitter Intent URL に
     /// 画像を直接添付する公式 API が存在しないため。ユーザはブラウザ側で貼り付ける動線になる。
+    /// 戻り値: クリップボード書込みまで成功した場合 true (overlay 表示判定に使う)。
+    /// テンプレ未選択 / 失敗時は false を返し、呼出側で「コピーしました」誤表示を防ぐ。
     /// </summary>
-    public async Task openTweetIntent(PhotoThumbnailItem photo)
+    public async Task<bool> openTweetIntent(PhotoThumbnailItem photo)
     {
         AppLogger.Trace("TemplatePageViewModel.openTweetIntent: enter");
         if (string.IsNullOrWhiteSpace(ActiveTweetTemplate))
         {
             AppLogger.Trace("TemplatePageViewModel.openTweetIntent: skip (no active template)");
-            return;
+            toastService.addToast("投稿テンプレートが未選択です。設定から有効化してください。", ToastType.error);
+            return false;
         }
 
         try
@@ -104,12 +107,15 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
             var intentUrl = $"https://twitter.com/intent/tweet?text={text}";
             await worldService.CopyImageToClipboardAsync(photo.PhotoPath).ConfigureAwait(false);
             await worldService.OpenTweetIntentAsync(intentUrl).ConfigureAwait(false);
+            AppLogger.Trace("TemplatePageViewModel.openTweetIntent: exit (success)");
+            return true;
         }
         catch (Exception ex)
         {
             AppLogger.Error($"TemplatePageViewModel.openTweetIntent: threw: {ex}");
+            toastService.addToast($"ツイート準備に失敗しました: {ex.Message}", ToastType.error);
+            return false;
         }
-        AppLogger.Trace("TemplatePageViewModel.openTweetIntent: exit");
     }
 
     /// <summary>指定テンプレートを編集モードに遷移する（EditingTweetTemplate=template, draft=template）。</summary>
@@ -145,17 +151,21 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
         // DB と乖離して「再起動で復活」状態にならないように、save が成功するまで
         // メモリ側の確定を遅らせる代わりに「失敗時に戻す」アプローチを採る。
         var prevIndex = tweetTemplates.IndexOf(template);
+        // 2 重 click 等で既に削除されたテンプレートに対しては no-op で抜ける。
+        // ここで return しないと save が空振りで走り「削除しました」toast が二重表示される。
+        if (prevIndex < 0)
+        {
+            AppLogger.Trace("TemplatePageViewModel.deleteTemplate: skip (already removed)");
+            return;
+        }
         var prevActive = ActiveTweetTemplate;
         var prevEditing = EditingTweetTemplate;
         var prevDraft = TweetTemplateDraft;
         var didRemove = false;
         try
         {
-            if (prevIndex >= 0)
-            {
-                tweetTemplates.RemoveAt(prevIndex);
-                didRemove = true;
-            }
+            tweetTemplates.RemoveAt(prevIndex);
+            didRemove = true;
 
             if (ActiveTweetTemplate == template)
             {

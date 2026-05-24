@@ -6,6 +6,7 @@ using Alpheratz.Core;
 using Alpheratz.Core.Database;
 using Alpheratz.Core.Imaging.Pdq;
 using Alpheratz.Core.Scanner;
+using Alpheratz.Shared.Services;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 using Windows.Storage.Streams;
@@ -29,12 +30,14 @@ public sealed class WorldService
 
     private readonly AlpheratzDb _db;
     private readonly PhotoScanner _scanner;
+    private readonly DispatcherService _dispatcher;
 
-    public WorldService(AlpheratzDb db, PhotoScanner scanner)
+    public WorldService(AlpheratzDb db, PhotoScanner scanner, DispatcherService dispatcher)
     {
         AppLogger.Trace("WorldService.ctor: enter");
         _db = db;
         _scanner = scanner;
+        _dispatcher = dispatcher;
         AppLogger.Trace("WorldService.ctor: exit");
     }
 
@@ -91,7 +94,9 @@ public sealed class WorldService
             };
             psi.ArgumentList.Add("/select,");
             psi.ArgumentList.Add(normalizedPath);
-            System.Diagnostics.Process.Start(psi);
+            // 戻り値 Process? を using で破棄。explorer.exe 自体は独立プロセスとして残るが、
+            // 親側の Win32 ハンドルが GC まで残るのを防ぐ。
+            using var _ = System.Diagnostics.Process.Start(psi);
         }
         catch (Exception ex)
         {
@@ -102,6 +107,13 @@ public sealed class WorldService
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// 画像と StorageItem をクリップボードへ置く。
+    /// Unpackaged WinUI 3 では <see cref="Clipboard.SetContent"/> / <see cref="Clipboard.Flush"/> は
+    /// UI スレッド (HWND apartment) 上での呼出が必須で、threadpool 上だと
+    /// RPC_E_WRONG_THREAD で失敗する。呼出元 (<see cref="TemplatePageViewModel.openTweetIntent"/>) は
+    /// ConfigureAwait(false) で threadpool に遷移するため、ここで明示的に UI スレッドへ戻す。
+    /// </summary>
     public async Task CopyImageToClipboardAsync(string photoPath, CancellationToken ct = default)
     {
         AppLogger.Trace($"WorldService.CopyImageToClipboardAsync: enter path={photoPath}");
@@ -109,11 +121,14 @@ public sealed class WorldService
         {
             var normalizedPath = System.IO.Path.GetFullPath(photoPath.Replace('/', '\\'));
             var file = await StorageFile.GetFileFromPathAsync(normalizedPath).AsTask(ct).ConfigureAwait(false);
-            var dataPackage = new DataPackage();
-            dataPackage.SetBitmap(RandomAccessStreamReference.CreateFromFile(file));
-            dataPackage.SetStorageItems(new[] { file });
-            Clipboard.SetContent(dataPackage);
-            Clipboard.Flush();
+            await _dispatcher.RunOnUiThread(() =>
+            {
+                var dataPackage = new DataPackage();
+                dataPackage.SetBitmap(RandomAccessStreamReference.CreateFromFile(file));
+                dataPackage.SetStorageItems(new[] { file });
+                Clipboard.SetContent(dataPackage);
+                Clipboard.Flush();
+            }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -139,9 +154,9 @@ public sealed class WorldService
         return task;
     }
 
-    public async Task<int> ResolveUnknownWorldsFromSimilarPhotosAsync(string target, CancellationToken ct = default)
+    public async Task<int> ResolveUnknownWorldsFromSimilarPhotosAsync(CancellationToken ct = default)
     {
-        AppLogger.Trace($"WorldService.ResolveUnknownWorldsFromSimilarPhotosAsync: enter target={target}");
+        AppLogger.Trace("WorldService.ResolveUnknownWorldsFromSimilarPhotosAsync: enter");
         var unknowns = await _db.GetUnknownWorldPhotosWithPhashAsync(ct).ConfigureAwait(false);
         if (unknowns.Count == 0)
         {

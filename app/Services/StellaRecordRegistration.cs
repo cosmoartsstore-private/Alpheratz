@@ -53,9 +53,12 @@ internal static class StellaRecordRegistration
             cmd.Parameters.AddWithValue("$icon", (object?)iconData ?? DBNull.Value);
             cmd.ExecuteNonQuery();
         }
-        catch
+        catch (Exception ex)
         {
-            // StellaRecord 未インストール等で失敗しても握り潰す
+            // StellaRecord 未インストール / DB 不在で失敗するのは正常系。
+            // ただし真の異常 (DB 破損・権限欠如等) の手掛かりを失わないよう警告ログには残す。
+            // Unregister 側 (FIX-08) と対称。
+            AppLogger.Warn($"StellaRecordRegistration.Register: failed: {ex.Message}");
         }
     }
 

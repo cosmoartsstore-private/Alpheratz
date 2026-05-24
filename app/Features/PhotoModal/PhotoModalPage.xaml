@@ -75,10 +75,10 @@
                                 <TextBlock x:Name="MatchSourceLabel" FontSize="{StaticResource AFontSizeSm}" Foreground="{ThemeResource ATextFaint}" VerticalAlignment="Center"/>
                             </StackPanel>
                         </StackPanel>
+                        <!-- MatchSource は MatchSourceLabel (上の StackPanel) で日本語化済みのため、
+                             raw 値 ("phash" / "polaris_archive") を chip として並べると二重表示になる。
+                             SourceSlot は写真の元フォルダ番号 (0,1,...) で raw 表示でも識別子として意味があるため残す。 -->
                         <StackPanel Orientation="Horizontal" Spacing="6">
-                            <Border Padding="8,3" CornerRadius="{StaticResource ARadiusSm}" Background="{ThemeResource APrimarySoft}">
-                                <TextBlock Text="{Binding state.SelectedPhoto.MatchSource}" FontSize="{StaticResource AFontSizeXs}" FontWeight="SemiBold" Foreground="{ThemeResource APrimary}"/>
-                            </Border>
                             <Border Padding="8,3" CornerRadius="{StaticResource ARadiusSm}" Background="{ThemeResource APrimarySoft}">
                                 <TextBlock Text="{Binding state.SelectedPhoto.SourceSlot}" FontSize="{StaticResource AFontSizeXs}" FontWeight="SemiBold" Foreground="{ThemeResource APrimary}"/>
                             </Border>

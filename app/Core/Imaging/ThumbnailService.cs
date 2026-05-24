@@ -184,20 +184,38 @@ public sealed class ThumbnailService
                 ExifOrientationMode.RespectExifOrientation, ColorManagementMode.DoNotColorManage).AsTask(ct).ConfigureAwait(false);
             var pixels = pixelData.DetachPixelData();
 
-            var fileStream = new FileStream(destPath, FileMode.Create, FileAccess.ReadWrite, FileShare.None, 4096, useAsync: true);
-            IRandomAccessStream? outStream = null;
+            // N-12: 旧実装は destPath を直接 FileMode.Create で開いていたため、
+            // FlushAsync 途中で disk-full / cancellation / I/O 例外が起きると
+            // 0 バイト or 部分書きの corrupt JPEG が destPath に残り、
+            // 次回 EnsureThumbAsync が mtime ベースで「cache hit」と誤判定して
+            // 壊れたサムネを永久に返し続けていた。
+            // tmp ファイルに書ききった後で atomic な File.Move で置換し、
+            // 失敗時は tmp を消すだけで destPath は無傷のまま (再試行可能) にする。
+            var tmpPath = destPath + ".tmp";
             try
             {
-                outStream = fileStream.AsRandomAccessStream();
-                var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.JpegEncoderId, outStream).AsTask(ct).ConfigureAwait(false);
-                encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore, finalW, finalH, 96, 96, pixels);
-                await encoder.FlushAsync().AsTask(ct).ConfigureAwait(false);
-                await fileStream.FlushAsync(ct).ConfigureAwait(false);
+                var fileStream = new FileStream(tmpPath, FileMode.Create, FileAccess.ReadWrite, FileShare.None, 4096, useAsync: true);
+                IRandomAccessStream? outStream = null;
+                try
+                {
+                    outStream = fileStream.AsRandomAccessStream();
+                    var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.JpegEncoderId, outStream).AsTask(ct).ConfigureAwait(false);
+                    encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore, finalW, finalH, 96, 96, pixels);
+                    await encoder.FlushAsync().AsTask(ct).ConfigureAwait(false);
+                    await fileStream.FlushAsync(ct).ConfigureAwait(false);
+                }
+                finally
+                {
+                    outStream?.Dispose();
+                    fileStream.Dispose();
+                }
+                File.Move(tmpPath, destPath, overwrite: true);
             }
-            finally
+            catch
             {
-                outStream?.Dispose();
-                fileStream.Dispose();
+                // 失敗時 tmp を掃除。失敗自体は外側 catch で再 throw される。
+                try { if (File.Exists(tmpPath)) File.Delete(tmpPath); } catch { /* 失敗しても致命的でない */ }
+                throw;
             }
         }
         catch (Exception ex)

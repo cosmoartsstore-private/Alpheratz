@@ -55,48 +55,8 @@
         <Setter Property="BorderBrush" Value="{ThemeResource ADangerSolid}"/>
     </Style>
 
-    <!-- Left rail nav button (default / inactive) -->
-    <Style x:Key="RailButtonStyle" TargetType="Button">
-        <Setter Property="HorizontalAlignment" Value="Stretch"/>
-        <Setter Property="HorizontalContentAlignment" Value="Left"/>
-        <Setter Property="MinHeight" Value="44"/>
-        <Setter Property="Padding" Value="12,10"/>
-        <Setter Property="CornerRadius" Value="{StaticResource ARadiusMd}"/>
-        <Setter Property="Background" Value="Transparent"/>
-        <Setter Property="BorderBrush" Value="Transparent"/>
-        <Setter Property="BorderThickness" Value="0"/>
-        <Setter Property="Foreground" Value="{ThemeResource ATextDim}"/>
-        <Setter Property="FontWeight" Value="Bold"/>
-    </Style>
-
-    <!-- Left rail nav button (active / selected) — applied from code-behind -->
-    <Style x:Key="RailButtonActiveStyle" TargetType="Button">
-        <Setter Property="HorizontalAlignment" Value="Stretch"/>
-        <Setter Property="HorizontalContentAlignment" Value="Left"/>
-        <Setter Property="MinHeight" Value="44"/>
-        <Setter Property="Padding" Value="12,10"/>
-        <Setter Property="CornerRadius" Value="{StaticResource ARadiusMd}"/>
-        <Setter Property="Background" Value="{ThemeResource APrimarySoft}"/>
-        <Setter Property="BorderBrush" Value="{ThemeResource ABorderStrong}"/>
-        <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="Foreground" Value="{ThemeResource APrimary}"/>
-        <Setter Property="FontWeight" Value="Bold"/>
-    </Style>
-
-    <!-- Left rail nav button (disabled) — applied from code-behind -->
-    <Style x:Key="RailButtonDisabledStyle" TargetType="Button">
-        <Setter Property="HorizontalAlignment" Value="Stretch"/>
-        <Setter Property="HorizontalContentAlignment" Value="Left"/>
-        <Setter Property="MinHeight" Value="44"/>
-        <Setter Property="Padding" Value="12,10"/>
-        <Setter Property="CornerRadius" Value="{StaticResource ARadiusMd}"/>
-        <Setter Property="Background" Value="Transparent"/>
-        <Setter Property="BorderBrush" Value="Transparent"/>
-        <Setter Property="BorderThickness" Value="0"/>
-        <Setter Property="Foreground" Value="{ThemeResource ATextDisabled}"/>
-        <Setter Property="FontWeight" Value="Bold"/>
-        <Setter Property="IsEnabled" Value="False"/>
-    </Style>
+    <!-- RailButtonStyle / RailButtonActiveStyle / RailButtonDisabledStyle は
+         左レーン廃止 (Step 7 RightRail 削除と同時) で全参照ゼロになったため削除。 -->
 
     <!-- Pill chip button (filter chip with × icon) -->
     <Style x:Key="ChipButtonStyle" TargetType="Button">

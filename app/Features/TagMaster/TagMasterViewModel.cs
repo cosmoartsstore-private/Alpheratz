@@ -44,12 +44,12 @@ public partial class TagMasterViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("TagMasterViewModel.loadTags: enter");
         try
         {
+            // N-50: 旧実装は `masterTags.Clear() → foreach Add` だったため、Clear と
+            // Add の途中で例外 (OOM/UI スレッドエラー) が出ると masterTags が空のまま残り、
+            // DB と UI が乖離した。先にローカルへ全件受けて確定してから ReplaceAll で原子化する。
             var tags = await db.GetAllTagsAsync();
-            masterTags.Clear();
-            foreach (var tag in tags.OrderBy(tag => tag))
-            {
-                masterTags.Add(tag);
-            }
+            var sorted = tags.OrderBy(tag => tag).ToList();
+            masterTags.ReplaceAll(sorted);
         }
         catch (Exception ex)
         {

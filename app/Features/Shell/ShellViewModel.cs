@@ -367,11 +367,22 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
                 {
                     try
                     {
-                        var resolved = await worldService.ResolveUnknownWorldsFromSimilarPhotosAsync("all").ConfigureAwait(false);
+                        var resolved = await worldService.ResolveUnknownWorldsFromSimilarPhotosAsync().ConfigureAwait(false);
                         if (resolved > 0) await galleryViewModel.photosState.loadPhotos().ConfigureAwait(false);
                     }
                     catch (Exception ex) { AppLogger.Error($"ShellViewModel.phash_complete resolver: threw: {ex}"); }
                 });
+                return Task.CompletedTask;
+            }));
+            // N-33: PhashService は失敗時に PhashError を発火するが、これまで購読者ゼロで
+            //       IsPdqRunning=true が固着し UI に「PDQ 計算中」が永久表示されていた。
+            //       購読して状態を落とし、ユーザにも toast で原因を伝える。
+            phashUnlistenFns.Add(eventBus.Subscribe<string>(EventNames.PhashError, message =>
+            {
+                AppLogger.Warn($"ShellViewModel.PhashError: {message}");
+                IsPdqRunning = false;
+                PdqProgress = PdqProgress with { current = null };
+                toastService.addToast($"PDQ 計算に失敗しました: {message}", ToastType.error);
                 return Task.CompletedTask;
             }));
         }

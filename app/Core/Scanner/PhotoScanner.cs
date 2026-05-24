@@ -167,6 +167,14 @@ public sealed partial class PhotoScanner
         var total = candidates.Count;
         await _bus.PublishAsync(EventNames.ScanProgress, new ScanProgressDto { processed = 0, total = total, current_world = $"{total} 件の更新対象を確認しました", phase = "scan" }).ConfigureAwait(false);
 
+        // N-09: AnalyzePhoto は EXIF パース等の純粋計算で I/O は元画像のみ。
+        // DB upsert を 1 件ずつ別接続 / 別 tx で打つと 10000 件で 10000 回 PRAGMA + fsync が
+        // 走り体感が遅い (per-row ~ 数 ms × 件数)。チャンク (1000) ごとに集約して
+        // BulkUpsertPhotosAsync で 1 接続 / 1 tx に圧縮しつつ、進捗イベントは各チャンク境界で出す。
+        const int chunkSize = 1000;
+        var pending = new List<PhotoUpsertData>(Math.Min(chunkSize, total));
+        var processed = 0;
+        string? lastWorld = null;
         for (var i = 0; i < candidates.Count; i++)
         {
             ct.ThrowIfCancellationRequested();
@@ -175,15 +183,19 @@ public sealed partial class PhotoScanner
             existing.TryGetValue(normalizedPath, out var ex);
 
             var photo = AnalyzePhoto(path, filename, slot, ex, kind);
-            await _db.UpsertPhotoAsync(photo, ct).ConfigureAwait(false);
+            pending.Add(photo);
+            lastWorld = photo.WorldName ?? lastWorld;
 
-            if (i % 10 == 0 || i == total - 1)
+            if (pending.Count >= chunkSize || i == total - 1)
             {
+                await _db.BulkUpsertPhotosAsync(pending, ct).ConfigureAwait(false);
+                processed += pending.Count;
+                pending.Clear();
                 await _bus.PublishAsync(EventNames.ScanProgress, new ScanProgressDto
                 {
-                    processed = i + 1,
+                    processed = processed,
                     total = total,
-                    current_world = photo.WorldName ?? "ワールド不明",
+                    current_world = lastWorld ?? "ワールド不明",
                     phase = "scan"
                 }).ConfigureAwait(false);
             }
@@ -530,16 +542,10 @@ public sealed partial class PhotoScanner
         var visits = LoadPolarisWorldVisits(archiveDir);
         await _db.UpsertArchiveWorldVisitsAsync(visits, ct).ConfigureAwait(false);
 
-        var unknownPhotos = await _db.GetUnknownWorldPhotosAsync("all", ct).ConfigureAwait(false);
-        var resolved = 0;
-        foreach (var (photoPath, timestamp) in unknownPhotos)
-        {
-            ct.ThrowIfCancellationRequested();
-            var worldName = await _db.LookupWorldNameFromArchiveAsync(timestamp, ct).ConfigureAwait(false);
-            if (worldName is null) continue;
-            await _db.UpdatePhotoWorldNameAsync(photoPath, worldName, "polaris_archive", ct).ConfigureAwait(false);
-            resolved++;
-        }
+        // N-08: 旧実装は unknown 写真ごとに `LookupWorldNameFromArchiveAsync` +
+        // `UpdatePhotoWorldNameAsync` を呼んで 1 件あたり 3 接続オープンしていた (N+1)。
+        // 単一 UPDATE...FROM (サブクエリで対応する archive 訪問を引く) で一括解決する。
+        var resolved = await _db.BulkResolveUnknownWorldsFromArchiveAsync(ct).ConfigureAwait(false);
         AppLogger.Trace($"PhotoScanner.ResolveUnknownWorldsFromArchiveAsync: exit resolved={resolved}");
         return resolved;
     }

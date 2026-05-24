@@ -369,9 +369,13 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
 
         if (groupingMode == GroupingMode.world)
         {
+            // World グループ間の並び順: グループ内の最新 timestamp で降順。
+            // 旧実装は `g.First().Timestamp` だったが、`First()` は入力順依存で
+            // SortMode != dateDesc のとき任意要素を返し、reload 毎に group 順がブレた。
+            // `g.Max(Timestamp)` でグループ代表時刻を確定させる。
             var groups = photosRef
                 .GroupBy(p => p.WorldName ?? "")
-                .OrderByDescending(g => g.First().Timestamp)
+                .OrderByDescending(g => g.Max(p => p.Timestamp))
                 .Select(g =>
                 {
                     var representative = g.First();
@@ -414,8 +418,9 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
     public async Task loadPhotos(int page = 0)
     {
         AppLogger.Trace("GalleryPhotosState.loadPhotos: enter");
-        var token = transitionToken + 1;
-        transitionToken = token;
+        // loadPhotos は UI スレッド限定ではなく Task.Run / event bus subscribe ラムダから呼ばれるため、
+        // 単純な read-modify-write では並行呼出で同一 token が割り当てられ世代判定が壊れる。
+        var token = Interlocked.Increment(ref transitionToken);
 
         // 既存のサムネイル生成 CTS をアトミックに引き抜いてキャンセル + Dispose。
         var prevCts = Interlocked.Exchange(ref thumbnailCts, null);
@@ -494,7 +499,7 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
             try { prevCts.Cancel(); } catch { }
             prevCts.Dispose();
         }
-        transitionToken += 1;
+        Interlocked.Increment(ref transitionToken);
         AppLogger.Trace("GalleryPhotosState.DisposeAsync: exit");
 
         static async ValueTask dispose(IAsyncDisposable? disposable)
