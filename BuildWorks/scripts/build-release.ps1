@@ -4,11 +4,8 @@ $BuildWorksRoot = Split-Path -Parent $PSScriptRoot
 $RepoRoot = Split-Path -Parent $BuildWorksRoot
 $InstallerScriptPath = Join-Path $BuildWorksRoot "nsis\Installer.nsi"
 $InstallerOutputPath = Join-Path $BuildWorksRoot "Alpheratz-v2-Installer.exe"
-$RuntimeInstallerPath = Join-Path $BuildWorksRoot "runtime\WindowsAppRuntimeInstall-x64.exe"
-
-if (!(Test-Path $RuntimeInstallerPath)) {
-    throw "Windows App Runtime installer not found: $RuntimeInstallerPath`nDownload from: https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads"
-}
+# WindowsAppRuntimeInstall は self-contained 配布で不要になったため事前検査も削除。
+# (csproj の WindowsAppSDKSelfContained=true で WinAppSDK は AppLocal に同梱される)
 
 $MakensisCandidates = @(
     "C:\Program Files (x86)\NSIS\makensis.exe",

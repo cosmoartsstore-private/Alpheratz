@@ -34,10 +34,11 @@ public partial class MainWindow : Window
         Title = "Alpheratz";
         ExtendsContentIntoTitleBar = false;
 
-        // Win32 API 経由でウィンドウを最大化する
+        // Win32 API 経由でウィンドウアイコン設定・最大化する
         var hwnd = WindowNative.GetWindowHandle(this);
         var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
         var appWindow = AppWindow.GetFromWindowId(windowId);
+        appWindow.SetIcon("Assets\\icon.ico");
         if (appWindow.Presenter is OverlappedPresenter presenter)
             presenter.Maximize();
 

@@ -2,63 +2,293 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
+    <!--
+        ===== B-1: 役割色ボタン用カスタム ControlTemplate (3種) =====
+        WinUI 既定の Button テンプレは Brushes.xaml のグローバル上書き
+        ButtonBackgroundPointerOver(中性グレー)を無条件参照するため、hover/press で
+        役割色(青/赤)が消えてグレーになっていた。これを是正するため、役割ごとに
+        専用 ControlTemplate を用意し、各 VisualState に役割色を solid で直書きする。
+
+        共通構造:
+          RootBorder (Background/BorderBrush/BorderThickness/CornerRadius/Padding は TemplateBinding)
+            └ ContentPresenter (Content/ContentTemplate/Foreground/Alignment を TemplateBinding)
+            └ FocusRing (キーボードフォーカス時のみ APrimary の 1px リングを solid で表示)
+
+        半透明 state layer は使わず、CommonStates で RootBorder の面色を solid に差し替える
+        ことで hover/press を表現する。FocusStates でフォーカスリングの Visibility を切替。
+    -->
+
+    <!-- Primary 用: hover/press でも APrimary 系の青を保持 -->
+    <ControlTemplate x:Key="PrimaryControlTemplate" TargetType="Button">
+        <Border x:Name="RootBorder"
+                Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="{TemplateBinding CornerRadius}">
+            <Grid>
+                <ContentPresenter x:Name="ContentPresenter"
+                                  Content="{TemplateBinding Content}"
+                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                  ContentTransitions="{TemplateBinding ContentTransitions}"
+                                  Foreground="{TemplateBinding Foreground}"
+                                  Padding="{TemplateBinding Padding}"
+                                  HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                  VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                  AutomationProperties.AccessibilityView="Raw"/>
+                <!-- フォーカスリング: 通常は不可視、キーボードフォーカス時に APrimary 1px solid 枠 -->
+                <Border x:Name="FocusRing"
+                        BorderBrush="{ThemeResource APrimary}"
+                        BorderThickness="1"
+                        CornerRadius="{TemplateBinding CornerRadius}"
+                        Visibility="Collapsed"
+                        IsHitTestVisible="False"/>
+            </Grid>
+            <VisualStateManager.VisualStateGroups>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal"/>
+                    <VisualState x:Name="PointerOver">
+                        <VisualState.Setters>
+                            <Setter Target="RootBorder.Background" Value="{ThemeResource APrimaryHover}"/>
+                            <Setter Target="RootBorder.BorderBrush" Value="{ThemeResource APrimaryHover}"/>
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                        <VisualState.Setters>
+                            <Setter Target="RootBorder.Background" Value="{ThemeResource APrimaryPressed}"/>
+                            <Setter Target="RootBorder.BorderBrush" Value="{ThemeResource APrimaryPressed}"/>
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Target="ContentPresenter.Opacity" Value="0.5"/>
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+                <VisualStateGroup x:Name="FocusStates">
+                    <VisualState x:Name="Unfocused"/>
+                    <VisualState x:Name="PointerFocused"/>
+                    <VisualState x:Name="Focused">
+                        <VisualState.Setters>
+                            <Setter Target="FocusRing.Visibility" Value="Visible"/>
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateManager.VisualStateGroups>
+        </Border>
+    </ControlTemplate>
+
+    <!-- Danger 用: hover/press でも ADangerSolid 系の赤を保持 -->
+    <ControlTemplate x:Key="DangerControlTemplate" TargetType="Button">
+        <Border x:Name="RootBorder"
+                Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="{TemplateBinding CornerRadius}">
+            <Grid>
+                <ContentPresenter x:Name="ContentPresenter"
+                                  Content="{TemplateBinding Content}"
+                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                  ContentTransitions="{TemplateBinding ContentTransitions}"
+                                  Foreground="{TemplateBinding Foreground}"
+                                  Padding="{TemplateBinding Padding}"
+                                  HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                  VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                  AutomationProperties.AccessibilityView="Raw"/>
+                <Border x:Name="FocusRing"
+                        BorderBrush="{ThemeResource APrimary}"
+                        BorderThickness="1"
+                        CornerRadius="{TemplateBinding CornerRadius}"
+                        Visibility="Collapsed"
+                        IsHitTestVisible="False"/>
+            </Grid>
+            <VisualStateManager.VisualStateGroups>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal"/>
+                    <VisualState x:Name="PointerOver">
+                        <VisualState.Setters>
+                            <Setter Target="RootBorder.Background" Value="{ThemeResource ADangerSolidHover}"/>
+                            <Setter Target="RootBorder.BorderBrush" Value="{ThemeResource ADangerSolidHover}"/>
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                        <VisualState.Setters>
+                            <Setter Target="RootBorder.Background" Value="{ThemeResource ADangerSolidPressed}"/>
+                            <Setter Target="RootBorder.BorderBrush" Value="{ThemeResource ADangerSolidPressed}"/>
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Target="ContentPresenter.Opacity" Value="0.5"/>
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+                <VisualStateGroup x:Name="FocusStates">
+                    <VisualState x:Name="Unfocused"/>
+                    <VisualState x:Name="PointerFocused"/>
+                    <VisualState x:Name="Focused">
+                        <VisualState.Setters>
+                            <Setter Target="FocusRing.Visibility" Value="Visible"/>
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateManager.VisualStateGroups>
+        </Border>
+    </ControlTemplate>
+
+    <!--
+        Neutral 用 (Ghost/Header/Chip/AppliedChip): hover/press は面段差で表現。
+        各ボタンが固有の Background/Border を持つため、CommonStates では
+        ASurfaceHover / ASurfacePressed への面色差だけを与える。
+    -->
+    <ControlTemplate x:Key="NeutralControlTemplate" TargetType="Button">
+        <Border x:Name="RootBorder"
+                Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="{TemplateBinding CornerRadius}">
+            <Grid>
+                <ContentPresenter x:Name="ContentPresenter"
+                                  Content="{TemplateBinding Content}"
+                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                  ContentTransitions="{TemplateBinding ContentTransitions}"
+                                  Foreground="{TemplateBinding Foreground}"
+                                  Padding="{TemplateBinding Padding}"
+                                  HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                  VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                  AutomationProperties.AccessibilityView="Raw"/>
+                <Border x:Name="FocusRing"
+                        BorderBrush="{ThemeResource APrimary}"
+                        BorderThickness="1"
+                        CornerRadius="{TemplateBinding CornerRadius}"
+                        Visibility="Collapsed"
+                        IsHitTestVisible="False"/>
+            </Grid>
+            <VisualStateManager.VisualStateGroups>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal"/>
+                    <VisualState x:Name="PointerOver">
+                        <VisualState.Setters>
+                            <Setter Target="RootBorder.Background" Value="{ThemeResource ASurfaceHover}"/>
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                        <VisualState.Setters>
+                            <Setter Target="RootBorder.Background" Value="{ThemeResource ASurfacePressed}"/>
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Target="ContentPresenter.Opacity" Value="0.5"/>
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+                <VisualStateGroup x:Name="FocusStates">
+                    <VisualState x:Name="Unfocused"/>
+                    <VisualState x:Name="PointerFocused"/>
+                    <VisualState x:Name="Focused">
+                        <VisualState.Setters>
+                            <Setter Target="FocusRing.Visibility" Value="Visible"/>
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateManager.VisualStateGroups>
+        </Border>
+    </ControlTemplate>
+
     <!-- Header icon button (square 34x34) -->
     <Style x:Key="HeaderIconButtonStyle" TargetType="Button">
         <Setter Property="Width" Value="34"/>
         <Setter Property="Height" Value="34"/>
         <Setter Property="Padding" Value="0"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="CornerRadius" Value="{StaticResource ARadiusButton}"/>
         <Setter Property="BorderBrush" Value="Transparent"/>
         <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="Foreground" Value="{ThemeResource AText}"/>
+        <Setter Property="Template" Value="{StaticResource NeutralControlTemplate}"/>
     </Style>
 
     <!-- Header pill button (text + bold) -->
     <Style x:Key="HeaderPillButtonStyle" TargetType="Button">
         <Setter Property="MinHeight" Value="34"/>
         <Setter Property="Padding" Value="12,6"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="CornerRadius" Value="{StaticResource ARadiusButton}"/>
         <Setter Property="BorderBrush" Value="Transparent"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="Foreground" Value="{ThemeResource ATextDim}"/>
         <Setter Property="FontWeight" Value="ExtraBold"/>
+        <Setter Property="Template" Value="{StaticResource NeutralControlTemplate}"/>
     </Style>
 
     <!-- Primary call-to-action -->
     <Style x:Key="PrimaryButtonStyle" TargetType="Button">
         <Setter Property="MinHeight" Value="36"/>
         <Setter Property="Padding" Value="14,8"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="CornerRadius" Value="{StaticResource ARadiusMd}"/>
         <Setter Property="Background" Value="{ThemeResource APrimary}"/>
         <Setter Property="BorderBrush" Value="{ThemeResource APrimary}"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Foreground" Value="White"/>
-        <Setter Property="FontWeight" Value="SemiBold"/>
+        <!-- A-4: 白文字の可読性確保のため Bold -->
+        <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="Template" Value="{StaticResource PrimaryControlTemplate}"/>
     </Style>
 
     <!-- Ghost / secondary button -->
     <Style x:Key="GhostButtonStyle" TargetType="Button">
         <Setter Property="MinHeight" Value="34"/>
         <Setter Property="Padding" Value="12,7"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="CornerRadius" Value="{StaticResource ARadiusMd}"/>
         <Setter Property="Background" Value="{ThemeResource ASurfaceSoft}"/>
         <Setter Property="BorderBrush" Value="Transparent"/>
         <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="Foreground" Value="{ThemeResource ATextDim}"/>
+        <Setter Property="Template" Value="{StaticResource NeutralControlTemplate}"/>
     </Style>
 
     <!-- Destructive primary -->
     <Style x:Key="DangerButtonStyle" TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
         <Setter Property="Background" Value="{ThemeResource ADangerSolid}"/>
         <Setter Property="BorderBrush" Value="{ThemeResource ADangerSolid}"/>
+        <Setter Property="Template" Value="{StaticResource DangerControlTemplate}"/>
+    </Style>
+
+    <!--
+        小型の破壊的アクション(削除)用ボタン。赤アウトラインではなく
+        赤背景 + 白文字の solid ボタンに統一する。タグチップ/テンプレートカード内など
+        コンパクトな箇所で使う想定。
+    -->
+    <Style x:Key="DangerChipButtonStyle" TargetType="Button">
+        <Setter Property="Padding" Value="10,4"/>
+        <Setter Property="MinWidth" Value="0"/>
+        <Setter Property="MinHeight" Value="0"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="CornerRadius" Value="{StaticResource ARadiusMd}"/>
+        <Setter Property="Background" Value="{ThemeResource ADangerSolid}"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="FontSize" Value="{StaticResource AFontSizeSm}"/>
+        <!-- A-4: 白文字の可読性確保のため Bold -->
+        <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="Template" Value="{StaticResource DangerControlTemplate}"/>
     </Style>
 
     <!-- Left rail nav button (default / inactive) -->
     <Style x:Key="RailButtonStyle" TargetType="Button">
         <Setter Property="HorizontalAlignment" Value="Stretch"/>
         <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="MinHeight" Value="44"/>
         <Setter Property="Padding" Value="12,10"/>
         <Setter Property="CornerRadius" Value="{StaticResource ARadiusMd}"/>
@@ -67,12 +297,14 @@
         <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="Foreground" Value="{ThemeResource ATextDim}"/>
         <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="Template" Value="{StaticResource NeutralControlTemplate}"/>
     </Style>
 
     <!-- Left rail nav button (active / selected) — applied from code-behind -->
     <Style x:Key="RailButtonActiveStyle" TargetType="Button">
         <Setter Property="HorizontalAlignment" Value="Stretch"/>
         <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="MinHeight" Value="44"/>
         <Setter Property="Padding" Value="12,10"/>
         <Setter Property="CornerRadius" Value="{StaticResource ARadiusMd}"/>
@@ -81,12 +313,14 @@
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Foreground" Value="{ThemeResource APrimary}"/>
         <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="Template" Value="{StaticResource NeutralControlTemplate}"/>
     </Style>
 
     <!-- Left rail nav button (disabled) — applied from code-behind -->
     <Style x:Key="RailButtonDisabledStyle" TargetType="Button">
         <Setter Property="HorizontalAlignment" Value="Stretch"/>
         <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="MinHeight" Value="44"/>
         <Setter Property="Padding" Value="12,10"/>
         <Setter Property="CornerRadius" Value="{StaticResource ARadiusMd}"/>
@@ -96,16 +330,46 @@
         <Setter Property="Foreground" Value="{ThemeResource ATextDisabled}"/>
         <Setter Property="FontWeight" Value="Bold"/>
         <Setter Property="IsEnabled" Value="False"/>
+        <Setter Property="Template" Value="{StaticResource NeutralControlTemplate}"/>
     </Style>
 
-    <!-- Pill chip button (filter chip with × icon) -->
+    <!--
+        Chip (タグチップ等)。半透明っぽく見えるソフトティントをやめ、
+        solid サーフェス + 実線ボーダーのぱっきりしたタグに統一する。
+        テキストは APrimary でタグであることを示す。
+    -->
     <Style x:Key="ChipButtonStyle" TargetType="Button">
-        <Setter Property="Padding" Value="8,3"/>
-        <Setter Property="CornerRadius" Value="{StaticResource ARadiusPill}"/>
-        <Setter Property="Background" Value="{ThemeResource APrimarySoft}"/>
-        <Setter Property="BorderBrush" Value="{ThemeResource ABorderStrong}"/>
+        <Setter Property="Padding" Value="10,4"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="CornerRadius" Value="{StaticResource ARadiusSm}"/>
+        <Setter Property="Background" Value="{ThemeResource ASurfaceSoft}"/>
+        <Setter Property="BorderBrush" Value="{ThemeResource ABorder}"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Foreground" Value="{ThemeResource APrimary}"/>
         <Setter Property="FontSize" Value="{StaticResource AFontSizeXs}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Template" Value="{StaticResource NeutralControlTemplate}"/>
+    </Style>
+
+    <!--
+        付与済みタグチップ専用。付与タグの箱 (ASurfaceSoft で一段沈めた面) の上に置くため、
+        背景を箱より明るい ASurface にして「灰色の箱の上に白いカード」のように浮かせる。
+        半透明は使わず solid サーフェス + 実線ボーダーで段差(3階層の最上段)を作る。
+    -->
+    <Style x:Key="AppliedChipButtonStyle" TargetType="Button">
+        <Setter Property="Padding" Value="10,4"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="CornerRadius" Value="{StaticResource ARadiusSm}"/>
+        <Setter Property="Background" Value="{ThemeResource ASurface}"/>
+        <Setter Property="BorderBrush" Value="{ThemeResource ABorder}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Foreground" Value="{ThemeResource APrimary}"/>
+        <Setter Property="FontSize" Value="{StaticResource AFontSizeXs}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Template" Value="{StaticResource NeutralControlTemplate}"/>
     </Style>
 </ResourceDictionary>
+</content>
+</invoke>

@@ -644,6 +644,46 @@ public sealed partial class GalleryMasonryView : UserControl
         var overlayVisual = ElementCompositionPreview.GetElementVisual(overlayPanel);
         overlayVisual.Opacity = 0f;
 
+        // --- 複数選択モードのチェックバッジ + 選択リング ---
+        // M-4: 半透明ティスト全面オーバーレイ(写真を覆い隠す)は方針違反のため撤去。
+        // PhotoGridItemsView と同じく「solid な APrimary の枠(3px リング)+ 右上 ✓ バッジ」で
+        // 選択を表現する。PhotoThumbnailItem.IsSelected の変化を PhotoSubscription で受けて、
+        // selectionRing と selectionBadge の Visibility を切り替える。
+        var selectionRing = new Border
+        {
+            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            BorderBrush = ThemeHelper.Brush(this, "APrimary"),
+            BorderThickness = new Thickness(3),
+            CornerRadius = new CornerRadius(12),
+            Visibility = item.Photo.IsSelected ? Visibility.Visible : Visibility.Collapsed,
+        };
+        cardGrid.Children.Add(selectionRing);
+
+        // 選択チェックバッジ。PhotoGridItemsView と統一: 26px 半透明白枠 1px。
+        var selectionBadge = new Border
+        {
+            Width = 26,
+            Height = 26,
+            CornerRadius = new CornerRadius(13),
+            Background = ThemeHelper.Brush(this, "APrimary"),
+            BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF)),
+            BorderThickness = new Thickness(1),
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, 9, 9, 0),
+            Visibility = item.Photo.IsSelected ? Visibility.Visible : Visibility.Collapsed,
+            Child = new TextBlock
+            {
+                Text = "✓",
+                Foreground = new SolidColorBrush(Microsoft.UI.Colors.White),
+                FontSize = 13,
+                FontWeight = Microsoft.UI.Text.FontWeights.Bold,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            },
+        };
+        cardGrid.Children.Add(selectionBadge);
+
         // --- Hover effects ---
         var borderVisual = ElementCompositionPreview.GetElementVisual(border);
         ElementCompositionPreview.SetIsTranslationEnabled(border, true);
@@ -702,9 +742,17 @@ public sealed partial class GalleryMasonryView : UserControl
             StopShimmer = StopShimmer,
         };
 
-        // サムネイル生成完了時に GridThumbPath が更新されるので、自動で画像を差し替える
+        // サムネイル生成完了時に GridThumbPath が更新されるので、自動で画像を差し替える。
+        // また IsSelected の変化に応じて選択バッジ/tint を切り替える。
         entry.PhotoSubscription = (s, e) =>
         {
+            if (e.PropertyName == nameof(PhotoThumbnailItem.IsSelected))
+            {
+                var v = entry.Photo.IsSelected ? Visibility.Visible : Visibility.Collapsed;
+                selectionRing.Visibility = v;
+                selectionBadge.Visibility = v;
+                return;
+            }
             if (e.PropertyName != nameof(PhotoThumbnailItem.EffectiveSourcePath)
                 && e.PropertyName != nameof(PhotoThumbnailItem.GridThumbPath)
                 && e.PropertyName != nameof(PhotoThumbnailItem.ResolvedPhotoPath))

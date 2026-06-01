@@ -4,6 +4,38 @@
 
     <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Light">
+            <!-- ===== WinUI 既定の半透明(acrylic)/レイヤー色を solid サーフェスに置換 =====
+                 フライアウト・ドロップダウン・ツールチップ・ダイアログ・カード等が参照する
+                 デフォルトの半透明ブラシを全て不透明サーフェスへ。これで「WinUI デフォルトの
+                 半透明 Fluent ルック」がアプリ全域から消える。 -->
+            <SolidColorBrush x:Key="AcrylicBackgroundFillColorDefaultBrush" Color="#FFFFFF"/>
+            <SolidColorBrush x:Key="AcrylicInAppFillColorDefaultBrush" Color="#FFFFFF"/>
+            <SolidColorBrush x:Key="AcrylicBackgroundFillColorBaseBrush" Color="#FFFFFF"/>
+            <SolidColorBrush x:Key="AcrylicInAppFillColorBaseBrush" Color="#FFFFFF"/>
+            <SolidColorBrush x:Key="FlyoutPresenterBackground" Color="#FFFFFF"/>
+            <SolidColorBrush x:Key="MenuFlyoutPresenterBackground" Color="#FFFFFF"/>
+            <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="#FFFFFF"/>
+            <SolidColorBrush x:Key="ToolTipBackground" Color="#FFFFFF"/>
+            <SolidColorBrush x:Key="ContentDialogBackground" Color="#FFFFFF"/>
+            <SolidColorBrush x:Key="AutoSuggestBoxSuggestionsListBackground" Color="#FFFFFF"/>
+            <SolidColorBrush x:Key="LayerFillColorDefaultBrush" Color="#F3F4F6"/>
+            <SolidColorBrush x:Key="LayerOnAcrylicFillColorDefaultBrush" Color="#F3F4F6"/>
+            <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#FFFFFF"/>
+            <SolidColorBrush x:Key="CardBackgroundFillColorSecondaryBrush" Color="#F9FAFB"/>
+            <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="#F9FAFB"/>
+            <SolidColorBrush x:Key="SolidBackgroundFillColorSecondaryBrush" Color="#F3F4F6"/>
+            <SolidColorBrush x:Key="SolidBackgroundFillColorTertiaryBrush" Color="#E5E7EB"/>
+            <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="#F3F4F6"/>
+            <!-- HyperlinkButton（クレジットのリンク等）。デフォルトの半透明ホバーをやめ、
+                 アクセント文字 + solid な薄いホバー背景のぱっきりしたリンクに。 -->
+            <SolidColorBrush x:Key="HyperlinkButtonForeground" Color="#1D9BF0"/>
+            <SolidColorBrush x:Key="HyperlinkButtonForegroundPointerOver" Color="#1A8CD8"/>
+            <SolidColorBrush x:Key="HyperlinkButtonForegroundPressed" Color="#1577B5"/>
+            <SolidColorBrush x:Key="HyperlinkButtonForegroundDisabled" Color="#D1D5DB"/>
+            <SolidColorBrush x:Key="HyperlinkButtonBackground" Color="Transparent"/>
+            <SolidColorBrush x:Key="HyperlinkButtonBackgroundPointerOver" Color="#F3F4F6"/>
+            <SolidColorBrush x:Key="HyperlinkButtonBackgroundPressed" Color="#E5E7EB"/>
+
             <!-- WinUI Button ControlTemplate overrides -->
             <SolidColorBrush x:Key="ButtonBackground" Color="#F3F4F6"/>
             <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#E5E7EB"/>
@@ -49,22 +81,33 @@
             <SolidColorBrush x:Key="ToggleSwitchKnobFillOffPointerOver" Color="#374151"/>
 
             <!-- Surfaces -->
+            <!-- A-3: ライトの面段差(奥行き)強化。従来は ABg #F9FAFB と ASurface #FFFFFF が近接し、
+                 ASurfaceSofter #F9FAFB が ABg と同値で段差が潰れていた。影を使わない方針のため
+                 面色差+1px 罫線だけで階層を出す必要があり、各層に約 3〜5% の明度差を付けた
+                 段差ランプへ整理する:
+                   ASurface #FFFFFF (最も手前=カード地) > ABg #F1F3F5 (ページ地) >
+                   ASurfaceSoft #F3F4F6 > ASurfaceSofter #ECEEF1 (最も沈めた面)。
+                 ダークの面ランプ(#0B0D10/#16181C/#1E2126/#23262C)は良好なので不変。 -->
             <SolidColorBrush x:Key="AAccent" Color="#1D9BF0"/>
-            <SolidColorBrush x:Key="ABg" Color="#F9FAFB"/>
+            <SolidColorBrush x:Key="ABg" Color="#F1F3F5"/>
             <SolidColorBrush x:Key="ASurface" Color="#FFFFFF"/>
             <SolidColorBrush x:Key="ASurfaceSoft" Color="#F3F4F6"/>
-            <SolidColorBrush x:Key="ASurfaceSofter" Color="#F9FAFB"/>
+            <SolidColorBrush x:Key="ASurfaceSofter" Color="#ECEEF1"/>
             <SolidColorBrush x:Key="ASurfaceHover" Color="#E5E7EB"/>
+            <!-- B-1: ニュートラルボタン(Ghost/Header/Chip)の押下用。ASurfaceHover よりさらに一段濃い solid 面段差。 -->
+            <SolidColorBrush x:Key="ASurfacePressed" Color="#D1D5DB"/>
             <SolidColorBrush x:Key="ASurfaceTop" Color="#FFFFFF"/>
-            <SolidColorBrush x:Key="ASurfaceSide" Color="#F9FAFB"/>
-            <SolidColorBrush x:Key="ASurfaceVeil" Color="#B3FFFFFF"/>
+            <SolidColorBrush x:Key="ASurfaceSide" Color="#F1F3F5"/>
+            <SolidColorBrush x:Key="ASurfaceVeil" Color="#FFFFFF"/>
             <SolidColorBrush x:Key="AMediaBg" Color="#111318"/>
 
             <!-- Borders -->
-            <SolidColorBrush x:Key="ABorder" Color="#E5E7EB"/>
-            <SolidColorBrush x:Key="ABorderMid" Color="#D1D5DB"/>
+            <!-- ライトは白系サーフェス上で薄すぎて縁が見えないため一段濃く。
+                 #D1D5DB(Tailwind gray-300)はホワイト上で「視認できるが控えめ」な標準ボーダー。半透明は使わない。 -->
+            <SolidColorBrush x:Key="ABorder" Color="#D1D5DB"/>
+            <SolidColorBrush x:Key="ABorderMid" Color="#B9BFC7"/>
             <SolidColorBrush x:Key="ABorderStrong" Color="#93C5FD"/>
-            <SolidColorBrush x:Key="ABorderSoft" Color="#F3F4F6"/>
+            <SolidColorBrush x:Key="ABorderSoft" Color="#E5E7EB"/>
 
             <!-- Text -->
             <SolidColorBrush x:Key="AText" Color="#111827"/>
@@ -85,6 +128,9 @@
             <SolidColorBrush x:Key="AWarn" Color="#D97706"/>
             <SolidColorBrush x:Key="ADanger" Color="#DC2626"/>
             <SolidColorBrush x:Key="ADangerSolid" Color="#EF4444"/>
+            <!-- B-1: Danger ボタンの hover/press。役割色(赤)を保ったまま明度ステップで反応させる。 -->
+            <SolidColorBrush x:Key="ADangerSolidHover" Color="#DC2626"/>
+            <SolidColorBrush x:Key="ADangerSolidPressed" Color="#B91C1C"/>
             <SolidColorBrush x:Key="ADangerSoft" Color="#FEF2F2"/>
             <SolidColorBrush x:Key="ADangerBorder" Color="#FECACA"/>
             <SolidColorBrush x:Key="AFavorite" Color="#D97706"/>
@@ -100,6 +146,36 @@
         </ResourceDictionary>
 
         <ResourceDictionary x:Key="Default">
+            <!-- ===== WinUI 既定の半透明(acrylic)/レイヤー色を solid サーフェスに置換 =====
+                 ダークでは base(#16181C) より一段明るい #1E2126 をポップアップ面に使い、
+                 背景から浮いて見えるようにする。 -->
+            <SolidColorBrush x:Key="AcrylicBackgroundFillColorDefaultBrush" Color="#1E2126"/>
+            <SolidColorBrush x:Key="AcrylicInAppFillColorDefaultBrush" Color="#1E2126"/>
+            <SolidColorBrush x:Key="AcrylicBackgroundFillColorBaseBrush" Color="#1E2126"/>
+            <SolidColorBrush x:Key="AcrylicInAppFillColorBaseBrush" Color="#1E2126"/>
+            <SolidColorBrush x:Key="FlyoutPresenterBackground" Color="#1E2126"/>
+            <SolidColorBrush x:Key="MenuFlyoutPresenterBackground" Color="#1E2126"/>
+            <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="#1E2126"/>
+            <SolidColorBrush x:Key="ToolTipBackground" Color="#1E2126"/>
+            <SolidColorBrush x:Key="ContentDialogBackground" Color="#16181C"/>
+            <SolidColorBrush x:Key="AutoSuggestBoxSuggestionsListBackground" Color="#1E2126"/>
+            <SolidColorBrush x:Key="LayerFillColorDefaultBrush" Color="#1E2126"/>
+            <SolidColorBrush x:Key="LayerOnAcrylicFillColorDefaultBrush" Color="#1E2126"/>
+            <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#1E2126"/>
+            <SolidColorBrush x:Key="CardBackgroundFillColorSecondaryBrush" Color="#23262C"/>
+            <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="#16181C"/>
+            <SolidColorBrush x:Key="SolidBackgroundFillColorSecondaryBrush" Color="#1E2126"/>
+            <SolidColorBrush x:Key="SolidBackgroundFillColorTertiaryBrush" Color="#23262C"/>
+            <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="#1E2126"/>
+            <!-- HyperlinkButton（クレジットのリンク等）。デフォルトの半透明ホバーをやめる。 -->
+            <SolidColorBrush x:Key="HyperlinkButtonForeground" Color="#1D9BF0"/>
+            <SolidColorBrush x:Key="HyperlinkButtonForegroundPointerOver" Color="#45ADF4"/>
+            <SolidColorBrush x:Key="HyperlinkButtonForegroundPressed" Color="#1577B5"/>
+            <SolidColorBrush x:Key="HyperlinkButtonForegroundDisabled" Color="#3A3D43"/>
+            <SolidColorBrush x:Key="HyperlinkButtonBackground" Color="Transparent"/>
+            <SolidColorBrush x:Key="HyperlinkButtonBackgroundPointerOver" Color="#1E2126"/>
+            <SolidColorBrush x:Key="HyperlinkButtonBackgroundPressed" Color="#262A30"/>
+
             <!-- WinUI Button ControlTemplate overrides -->
             <SolidColorBrush x:Key="ButtonBackground" Color="#1E2126"/>
             <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#262A30"/>
@@ -117,16 +193,16 @@
             <SolidColorBrush x:Key="TextControlBackground" Color="#1E2126"/>
             <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#262A30"/>
             <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#16181C"/>
-            <SolidColorBrush x:Key="TextControlBorderBrush" Color="#24FFFFFF"/>
-            <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#3DFFFFFF"/>
+            <SolidColorBrush x:Key="TextControlBorderBrush" Color="#2A2D33"/>
+            <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#3A3E45"/>
             <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="#1D9BF0"/>
             <SolidColorBrush x:Key="TextControlForeground" Color="#F0F2F3"/>
             <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#7E8690"/>
             <!-- WinUI ComboBox ControlTemplate overrides -->
             <SolidColorBrush x:Key="ComboBoxBackground" Color="#1E2126"/>
             <SolidColorBrush x:Key="ComboBoxBackgroundPointerOver" Color="#262A30"/>
-            <SolidColorBrush x:Key="ComboBoxBorderBrush" Color="#24FFFFFF"/>
-            <SolidColorBrush x:Key="ComboBoxBorderBrushPointerOver" Color="#3DFFFFFF"/>
+            <SolidColorBrush x:Key="ComboBoxBorderBrush" Color="#2A2D33"/>
+            <SolidColorBrush x:Key="ComboBoxBorderBrushPointerOver" Color="#3A3E45"/>
             <!-- WinUI ToggleSwitch overrides -->
             <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="#1D9BF0"/>
             <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="#1A8CD8"/>
@@ -139,8 +215,8 @@
             <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPressed" Color="#FFFFFF"/>
             <SolidColorBrush x:Key="ToggleSwitchFillOff" Color="#2F3336"/>
             <SolidColorBrush x:Key="ToggleSwitchFillOffPointerOver" Color="#3A3D40"/>
-            <SolidColorBrush x:Key="ToggleSwitchStrokeOff" Color="#1AFFFFFF"/>
-            <SolidColorBrush x:Key="ToggleSwitchStrokeOffPointerOver" Color="#1AFFFFFF"/>
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOff" Color="#2A2D33"/>
+            <SolidColorBrush x:Key="ToggleSwitchStrokeOffPointerOver" Color="#2A2D33"/>
             <SolidColorBrush x:Key="ToggleSwitchKnobFillOff" Color="#71767B"/>
             <SolidColorBrush x:Key="ToggleSwitchKnobFillOffPointerOver" Color="#E7E9EA"/>
 
@@ -151,16 +227,18 @@
             <SolidColorBrush x:Key="ASurfaceSoft" Color="#1E2126"/>
             <SolidColorBrush x:Key="ASurfaceSofter" Color="#23262C"/>
             <SolidColorBrush x:Key="ASurfaceHover" Color="#262A30"/>
+            <!-- B-1: ニュートラルボタン(Ghost/Header/Chip)の押下用。ASurfaceHover よりさらに一段明るい solid 面段差。 -->
+            <SolidColorBrush x:Key="ASurfacePressed" Color="#2F3338"/>
             <SolidColorBrush x:Key="ASurfaceTop" Color="#0F1115"/>
             <SolidColorBrush x:Key="ASurfaceSide" Color="#13161A"/>
-            <SolidColorBrush x:Key="ASurfaceVeil" Color="#B316181C"/>
+            <SolidColorBrush x:Key="ASurfaceVeil" Color="#16181C"/>
             <SolidColorBrush x:Key="AMediaBg" Color="#0B0D10"/>
 
             <!-- Borders -->
-            <SolidColorBrush x:Key="ABorder" Color="#24FFFFFF"/>
-            <SolidColorBrush x:Key="ABorderMid" Color="#3DFFFFFF"/>
-            <SolidColorBrush x:Key="ABorderStrong" Color="#661D9BF0"/>
-            <SolidColorBrush x:Key="ABorderSoft" Color="#18FFFFFF"/>
+            <SolidColorBrush x:Key="ABorder" Color="#2A2D33"/>
+            <SolidColorBrush x:Key="ABorderMid" Color="#3A3E45"/>
+            <SolidColorBrush x:Key="ABorderStrong" Color="#1D6FA8"/>
+            <SolidColorBrush x:Key="ABorderSoft" Color="#22252A"/>
 
             <!-- Text -->
             <SolidColorBrush x:Key="AText" Color="#F0F2F3"/>
@@ -181,18 +259,21 @@
             <SolidColorBrush x:Key="AWarn" Color="#FBBF24"/>
             <SolidColorBrush x:Key="ADanger" Color="#F87171"/>
             <SolidColorBrush x:Key="ADangerSolid" Color="#EF4444"/>
-            <SolidColorBrush x:Key="ADangerSoft" Color="#1FF87171"/>
-            <SolidColorBrush x:Key="ADangerBorder" Color="#47F87171"/>
+            <!-- B-1: Danger ボタンの hover/press。役割色(赤)を保ったまま明度ステップで反応させる。 -->
+            <SolidColorBrush x:Key="ADangerSolidHover" Color="#DC2626"/>
+            <SolidColorBrush x:Key="ADangerSolidPressed" Color="#B91C1C"/>
+            <SolidColorBrush x:Key="ADangerSoft" Color="#2D1F1F"/>
+            <SolidColorBrush x:Key="ADangerBorder" Color="#5C2E2E"/>
             <SolidColorBrush x:Key="AFavorite" Color="#FBBF24"/>
-            <SolidColorBrush x:Key="AFavoriteSoft" Color="#24FBBF24"/>
-            <SolidColorBrush x:Key="AFavoriteBorder" Color="#55FBBF24"/>
+            <SolidColorBrush x:Key="AFavoriteSoft" Color="#2D2A1A"/>
+            <SolidColorBrush x:Key="AFavoriteBorder" Color="#5C4E1F"/>
 
             <!-- Overlay -->
             <SolidColorBrush x:Key="AOverlay" Color="#80000000"/>
             <SolidColorBrush x:Key="ADarkOverlay" Color="#B3000000"/>
-            <SolidColorBrush x:Key="AScrollbarTrack" Color="#0FFFFFFF"/>
-            <SolidColorBrush x:Key="AScrollbarThumb" Color="#421D9BF0"/>
-            <SolidColorBrush x:Key="AScrollbarThumbHover" Color="#661D9BF0"/>
+            <SolidColorBrush x:Key="AScrollbarTrack" Color="#1A1C20"/>
+            <SolidColorBrush x:Key="AScrollbarThumb" Color="#1A3A5C"/>
+            <SolidColorBrush x:Key="AScrollbarThumbHover" Color="#1D6FA8"/>
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
 </ResourceDictionary>

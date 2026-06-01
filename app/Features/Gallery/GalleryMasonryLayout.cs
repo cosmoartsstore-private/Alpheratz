@@ -22,9 +22,25 @@ public sealed record MasonryLayoutResult(
 public static class GalleryMasonryLayout
 {
     public const double Gap = 14;
-    public const double MinColumnWidth = 220;
-    public const double MinCardHeight = 170;
-    public const double MaxCardHeight = 520;
+
+    /// <summary>
+    /// 1カラムの最小幅。自動列数の算出基準も兼ねる。
+    /// 320px にすることで標準的な最大化ウィンドウ（約1920px）で5列前後になり、
+    /// ウィンドウ幅に応じて列数が増減する（狭ければ減り、広ければ増える）。
+    /// </summary>
+    public const double MinColumnWidth = 320;
+
+    /// <summary>
+    /// 仮想化の二分探索が遡る「想定される最大カード高」の上限（探索マージン専用）。
+    /// 実際のカード高はアスペクト比から決まるので、ここは取りこぼし防止の安全側の上限。
+    /// </summary>
+    public const double MaxCardHeight = 900;
+
+    // カードは写真の実アスペクト比そのままで描画する（マソンリーの本質）。
+    // 破損データや極端なパノラマ対策として比率だけを安全範囲にクランプする。
+    // ピクセル単位の高さクランプは比率を歪めてサムネイルがクロップされる原因になるため使わない。
+    private const double MinAspect = 0.5;   // これ以上は縦長にしない (1:2)
+    private const double MaxAspect = 2.0;   // これ以上は横長にしない (2:1)
 
     /// <summary>写真リストとパネル幅からレイアウト座標を一括計算する。</summary>
     public static MasonryLayoutResult Build(
@@ -76,11 +92,14 @@ public static class GalleryMasonryLayout
         return 1;
     }
 
-    /// <summary>アスペクト比とカラム幅からカード高を算出し、Min/Max でクランプする。</summary>
+    /// <summary>
+    /// カラム幅と写真のアスペクト比からカード高を算出する。
+    /// カード比率＝写真比率になるため UniformToFill でもクロップが発生せず、
+    /// ギャラリーのサムネイルとモーダルの表示が一致する。
+    /// </summary>
     private static double GetCardHeight(PhotoThumbnailItem photo, double columnWidth)
     {
-        var ratio = Math.Max(0.2, GetAspectRatio(photo));
-        var raw = columnWidth / ratio;
-        return Math.Max(MinCardHeight, Math.Min(MaxCardHeight, Math.Round(raw)));
+        var ratio = Math.Clamp(GetAspectRatio(photo), MinAspect, MaxAspect);
+        return Math.Round(columnWidth / ratio);
     }
 }

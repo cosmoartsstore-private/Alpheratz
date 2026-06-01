@@ -27,15 +27,42 @@
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
 
+    <!--
+        Self-contained 配布 (Release のみ):
+        Debug ビルドは dotnet build しかしないため SDK の DLL が AppLocal に
+        バンドルされず、reg-free WinRT 活性化に必要なファイルが揃わない。結果として
+        Microsoft.UI.Xaml.dll が WinRT メタデータを見つけられず XAML parse で
+        クラッシュする。Debug 中は従来通り Bootstrap.Initialize 経由でシステム
+        インストール済みの WindowsAppRuntime を使う運用に戻し、self-contained 関連
+        スイッチは Release 限定で有効化する。
+    -->
+    <DefineConstants Condition="'$(Configuration)' == 'Release'">$(DefineConstants);RELEASE_SELF_CONTAINED</DefineConstants>
+
     <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
 
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
-    <!-- Disable auto-bootstrap so we can call DeploymentManager.Initialize() ourselves
-         and show a user-friendly error with download URL instead of the generic
-         "This application could not be started" Windows dialog. -->
-    <WindowsAppSdkBootstrapInitialize>false</WindowsAppSdkBootstrapInitialize>
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+  </PropertyGroup>
+
+  <!--
+      Release 専用設定: self-contained 配布。
+      - SelfContained=true: .NET 本体を publish 出力に同梱 (apphost ダイアログ排除)
+      - WindowsAppSDKSelfContained=true: WinAppSDK Framework 中身を AppLocal にコピー
+      - WindowsAppSdkUndockedRegFreeWinRTInitialize=true: reg-free WinRT で活性化
+      - WindowsAppSdkBootstrapInitialize=false: 自動 Bootstrap を抑制 (システム MSIX
+        の二重ロードを防止。手動 Bootstrap.Initialize 呼び出しも #if で外す)
+      - InvariantGlobalization=true: ICU データ削減 (~30 MB)
+      Debug ビルドではこれらは無効。dotnet build しかしないとバンドル DLL が
+      AppLocal に置かれず XAML parse でクラッシュするため、開発時は従来通り
+      Bootstrap.Initialize でシステム MSIX を使う。
+  -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <SelfContained>true</SelfContained>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <WindowsAppSdkUndockedRegFreeWinRTInitialize>true</WindowsAppSdkUndockedRegFreeWinRTInitialize>
+    <WindowsAppSdkBootstrapInitialize>false</WindowsAppSdkBootstrapInitialize>
+    <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 
   <ItemGroup>

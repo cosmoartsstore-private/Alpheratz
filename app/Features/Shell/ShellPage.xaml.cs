@@ -20,6 +20,10 @@ public sealed partial class ShellPage : Page
     private readonly ShellViewModel viewModel;
     private GalleryPage? galleryPage;
     private SettingsPage? settingsPage;
+    // 現在開いている写真モーダル Page。tunneling PreviewKeyDown (ShellPage_PreviewKeyDown) から
+    // OnGoPrev/OnGoNext/OnClose を ShowPhotoModal で結線したのと同じ経路で呼ぶために保持する。
+    // CloseModal で必ず null クリアする (モーダルが閉じているのにキーで誤動作しないように)。
+    private PhotoModalPage? activePhotoModalPage;
     private bool isModalOpen;
     private long lastModalOpenTick;
     private bool isFilterOpen;
@@ -62,6 +66,9 @@ public sealed partial class ShellPage : Page
                 var mode = modeStr == "gallery" ? ViewMode.gallery : ViewMode.standard;
                 await viewModel.handleSetViewMode(mode).ConfigureAwait(false);
             };
+            // W4: 検索ボックスで Enter が押されたときの即時検索。SearchQuery は HeaderBar 側で
+            // UpdateSource 済みなので、ここでは applySearchNow() を呼ぶだけ (リアルタイム検索は廃止)。
+            HeaderBar.OnSearchSubmit = () => viewModel.galleryViewModel.applySearchNow();
 
             viewModel.galleryViewModel.selectionState.PropertyChanged += OnSelectionStateChanged;
             viewModel.PropertyChanged += OnShellViewModelChanged;
@@ -121,27 +128,47 @@ public sealed partial class ShellPage : Page
         AppLogger.Trace("ShellPage.OnShellViewModelChanged: exit");
     }
 
-    private async Task<bool?> ShowConfirmDialogAsync(string title, string message, string yesText, string noText, string? cancelText = null)
+    private TaskCompletionSource<bool?>? confirmTcs;
+
+    /// <summary>
+    /// アプリ独自デザインの確認モーダルを表示し、ユーザの選択を待つ。
+    /// WinUI 標準 ContentDialog はデフォルト Fluent のままアプリと馴染まないため、
+    /// ASurface カード + AOverlay 背景の自前オーバーレイで統一する。
+    /// 戻り値: true=はい / false=いいえ / null=キャンセル（背景タップ・ESC）。
+    /// </summary>
+    private Task<bool?> ShowConfirmDialogAsync(string title, string message, string yesText, string noText, string? cancelText = null)
     {
         try
         {
-            var dialog = new Microsoft.UI.Xaml.Controls.ContentDialog
-            {
-                Title = title, Content = message,
-                PrimaryButtonText = yesText, SecondaryButtonText = noText,
-                CloseButtonText = cancelText ?? string.Empty, XamlRoot = this.XamlRoot,
-                DefaultButton = Microsoft.UI.Xaml.Controls.ContentDialogButton.Primary,
-            };
-            var result = await dialog.ShowAsync();
-            return result switch
-            {
-                Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary => true,
-                Microsoft.UI.Xaml.Controls.ContentDialogResult.Secondary => false,
-                _ => null,
-            };
+            ConfirmTitle.Text = title;
+            ConfirmMessage.Text = message;
+            ConfirmYesButton.Content = yesText;
+            ConfirmNoButton.Content = noText;
+            // 前回が残っていればキャンセル扱いで解決してから新規に差し替える。
+            confirmTcs?.TrySetResult(null);
+            confirmTcs = new TaskCompletionSource<bool?>();
+            ConfirmOverlay.Visibility = Visibility.Visible;
+            return confirmTcs.Task;
         }
-        catch (Exception ex) { AppLogger.Error($"ShellPage.ShowConfirmDialogAsync: threw: {ex}"); return null; }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"ShellPage.ShowConfirmDialogAsync: threw: {ex}");
+            return Task.FromResult<bool?>(null);
+        }
     }
+
+    private void CloseConfirmDialog(bool? result)
+    {
+        ConfirmOverlay.Visibility = Visibility.Collapsed;
+        var tcs = confirmTcs;
+        confirmTcs = null;
+        tcs?.TrySetResult(result);
+    }
+
+    private void ConfirmYes_Click(object sender, RoutedEventArgs e) => CloseConfirmDialog(true);
+    private void ConfirmNo_Click(object sender, RoutedEventArgs e) => CloseConfirmDialog(false);
+    private void ConfirmBackdrop_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e) => CloseConfirmDialog(null);
+    private void ConfirmContent_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e) => e.Handled = true;
 
     private async Task ShowFolderChangeConfirmAsync()
     {
@@ -187,6 +214,8 @@ public sealed partial class ShellPage : Page
                     OnSelectPhoto = photo => { if (viewModel.createPhotoModalViewModel(photo) is { } vm) ShowPhotoModal(vm); },
                     OnDrillIntoGroup = item => _ = ShowGroupDrillDown(item),
                     OnChooseFolder = () => viewModel.settingsViewModel.handleChooseFolderPathOnly(),
+                    // 空状態 (ライブラリ未設定) の CTA から設定モーダルを開く。
+                    OnOpenSettings = ShowSettings,
                 };
                 galleryPage.SetMasterTags(viewModel.tagMasterViewModel.masterTags);
             }
@@ -205,6 +234,32 @@ public sealed partial class ShellPage : Page
     /// PhotoModal は最上位レイヤを使うため別管理 (isModalOpen)。
     /// </summary>
     private bool isMiddleModalOpen;
+
+    /// <summary>
+    /// 各オーバーレイ (最上位モーダル / 中位モーダル / 検索条件ドロワー) の開閉状態に合わせて、
+    /// ヘッダーの操作可否 (SetControlsInteractive) と dim (Opacity) を一元的に同期する。
+    /// 有名サービス準拠: 何らかのオーバーレイ表示中はヘッダーの操作ボタン類を不活性にし、
+    /// 裏で別オーバーレイが開かないようにする (1 の不活性化と 2 のガードで二重の安全策)。
+    /// 注意: ヘッダーの操作要素 (ContentRoot) だけを不活性にし、UserControl 自身は hit-test 可能なまま
+    /// 残すので、ShellPage.xaml で HeaderBar に付けた Tapped=ModalDismissArea_Tapped は発火し続ける
+    /// (= モーダル中もヘッダー余白タップで閉じられる)。
+    /// dim の濃さ:
+    ///   - モーダル (最上位 / 中位) 表示中: 0.4 (従来どおりはっきり inactive)
+    ///   - 検索条件のみ表示中: 0.6 (ドロワーなので軽め)
+    ///   - 全クローズ: IsHitTestVisible=true + Opacity=1.0
+    /// 既存の HeaderBar.Opacity 直接代入はこのヘルパ経由に集約する。
+    /// </summary>
+    private void syncHeaderInteractivity()
+    {
+        try
+        {
+            var anyModalOpen = isModalOpen || isMiddleModalOpen;
+            var anyOverlayOpen = anyModalOpen || isFilterOpen;
+            HeaderBar.SetControlsInteractive(!anyOverlayOpen);
+            HeaderBar.Opacity = anyModalOpen ? 0.4 : (isFilterOpen ? 0.6 : 1.0);
+        }
+        catch (Exception ex) { AppLogger.Error($"ShellPage.syncHeaderInteractivity: threw: {ex}"); }
+    }
 
     /// <summary>
     /// グループカードをクリックしたときの遷移。
@@ -240,13 +295,19 @@ public sealed partial class ShellPage : Page
                     viewModel.galleryViewModel.photosState.kickThumbnailsForExternal(items),
             };
 
-            var displayName = groupItem.Photo?.WorldName ?? groupKey;
+            // groupKey は GalleryPhotosState.buildWorldGroupKey が組み立てた合成キー
+            // ("id:xxx" / "name:xxx" / "unknown") なので、そのままタイトルに出すと
+            // ユーザ向けには汚い。代表写真の WorldName を優先表示し、無ければ
+            // 「ワールド不明」フォールバック。
+            var displayName = string.IsNullOrWhiteSpace(groupItem.Photo?.WorldName)
+                ? "ワールド不明"
+                : groupItem.Photo!.WorldName!;
             drillDownPage.SetGroupInfo(displayName, photos);
             Stage.ModalContent = drillDownPage;
             Stage.ModalVisibility = Visibility.Visible;
             isMiddleModalOpen = true;
             lastModalOpenTick = Environment.TickCount64;
-            HeaderBar.Opacity = 0.4;
+            syncHeaderInteractivity();
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowGroupDrillDown: threw: {ex}"); }
         AppLogger.Trace("ShellPage.ShowGroupDrillDown: exit");
@@ -264,11 +325,9 @@ public sealed partial class ShellPage : Page
             isMiddleModalOpen = false;
             drillDownPhotos = null;
             Stage.ModalVisibility = Visibility.Collapsed;
-            // 最上位 (PhotoModal) も開いていなければ HeaderBar の dim を解除
-            if (!isModalOpen)
-            {
-                HeaderBar.Opacity = 1.0;
-            }
+            // ヘッダーの dim / 操作可否は残りのオーバーレイ状態に合わせて再同期する
+            // (最上位 PhotoModal や検索条件が残っていれば不活性のまま維持)。
+            syncHeaderInteractivity();
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.CloseMiddleModal: threw: {ex}"); }
         AppLogger.Trace("ShellPage.CloseMiddleModal: exit");
@@ -282,6 +341,9 @@ public sealed partial class ShellPage : Page
     public void ShowSettings()
     {
         AppLogger.Trace("ShellPage.ShowSettings: enter");
+        // モーダル多重化防止: 何らかのオーバーレイ (最上位/中位モーダル/検索条件) が開いている間は
+        // ヘッダー起動の設定オープンを no-op にする (1 の不活性化と二重の安全策)。
+        if (isModalOpen || isMiddleModalOpen || isFilterOpen) return;
         try
         {
             if (settingsPage is null)
@@ -340,7 +402,7 @@ public sealed partial class ShellPage : Page
             Stage.ModalVisibility = Visibility.Visible;
             isMiddleModalOpen = true;
             lastModalOpenTick = Environment.TickCount64;
-            HeaderBar.Opacity = 0.4;
+            syncHeaderInteractivity();
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowSettings: threw: {ex}"); }
         AppLogger.Trace("ShellPage.ShowSettings: exit");
@@ -398,9 +460,11 @@ public sealed partial class ShellPage : Page
             page.SetMasterTags(viewModel.tagMasterViewModel.masterTags);
             Stage.TopModalContent = page;
             Stage.TopModalVisibility = Visibility.Visible;
+            // tunneling キー遷移 (ShellPage_PreviewKeyDown) から同じ結線を呼べるよう参照を保持する。
+            activePhotoModalPage = page;
             isModalOpen = true;
             lastModalOpenTick = Environment.TickCount64;
-            HeaderBar.Opacity = 0.4;
+            syncHeaderInteractivity();
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowPhotoModal: threw: {ex}"); }
         AppLogger.Trace("ShellPage.ShowPhotoModal: exit");
@@ -428,12 +492,13 @@ public sealed partial class ShellPage : Page
             Stage.ModalVisibility = Visibility.Visible;
             isMiddleModalOpen = true;
             lastModalOpenTick = Environment.TickCount64;
-            HeaderBar.Opacity = 0.4;
+            syncHeaderInteractivity();
             await vm.InitializeAsync().ConfigureAwait(false);
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowWorldResolveModalAsync: threw: {ex}"); }
         AppLogger.Trace("ShellPage.ShowWorldResolveModalAsync: exit");
     }
+
 
     /// <summary>
     /// 最上位モーダル (PhotoModal) を閉じる。中位モーダル (Settings / GroupDrillDown /
@@ -446,13 +511,12 @@ public sealed partial class ShellPage : Page
         try
         {
             isModalOpen = false;
+            // tunneling キー遷移用の参照を必ず外す (閉じた後にキーで誤動作しないように)。
+            activePhotoModalPage = null;
             Stage.TopModalVisibility = Visibility.Collapsed;
-            // 中位モーダル (Settings / GroupDrillDown / WorldResolve) も開いていなければ
-            // HeaderBar の dim を解除する。中位が残っていれば dim 維持。
-            if (!isMiddleModalOpen)
-            {
-                HeaderBar.Opacity = 1.0;
-            }
+            // ヘッダーの dim / 操作可否は残りのオーバーレイ状態に合わせて再同期する
+            // (中位モーダルや検索条件が残っていれば不活性のまま維持)。
+            syncHeaderInteractivity();
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.CloseModal: threw: {ex}"); }
         AppLogger.Trace("ShellPage.CloseModal: exit");
@@ -467,7 +531,16 @@ public sealed partial class ShellPage : Page
     private void ToggleFilter()
     {
         AppLogger.Trace($"ShellPage.ToggleFilter: enter isFilterOpen={isFilterOpen}");
-        try { isFilterOpen = !isFilterOpen; SetFilterOverlayOpen(isFilterOpen); }
+        try
+        {
+            // 開く側のみガード: モーダル (最上位/中位) 表示中は検索条件ドロワーを開かない
+            // (モーダルの上に検索条件を重ねない)。閉じる側は常に許可する。
+            if (!isFilterOpen && (isModalOpen || isMiddleModalOpen)) return;
+            isFilterOpen = !isFilterOpen;
+            SetFilterOverlayOpen(isFilterOpen);
+            // 検索条件の開閉に合わせてヘッダーの不活性化 / dim を同期する。
+            syncHeaderInteractivity();
+        }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ToggleFilter: threw: {ex}"); }
         AppLogger.Trace($"ShellPage.ToggleFilter: exit isFilterOpen={isFilterOpen}");
     }
@@ -476,13 +549,13 @@ public sealed partial class ShellPage : Page
     {
         if (isOpen)
         {
+            // 暗幕を撤去したので背景 (FilterBackdrop) の FadeIn は不要。
+            // パネルの SlideIn だけ残す。
             FilterOverlay.Visibility = Visibility.Visible;
-            AnimationHelper.FadeIn(FilterBackdrop, 250);
             AnimationHelper.SlideIn(FilterPanelContainer, fromX: -16f, durationMs: 180);
         }
         else
         {
-            AnimationHelper.FadeOut(FilterBackdrop, 180);
             AnimationHelper.SlideOut(FilterPanelContainer, toX: -16f, durationMs: 180, onCompleted: () =>
             {
                 DispatcherQueue?.TryEnqueue(() => FilterOverlay.Visibility = Visibility.Collapsed);
@@ -495,10 +568,55 @@ public sealed partial class ShellPage : Page
         if (isFilterOpen) ToggleFilter();
     }
 
+    // パネル本体上のタップは吸収し、背景タップによる閉じる動作 (FilterBackdrop_Tapped) へ
+    // 伝播させない。これでパネル内を操作しても overlay が閉じない。
+    private void FilterPanelContainer_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e) => e.Handled = true;
+
     /// <summary>
-    /// シェルレベルのキーボードショートカット。PhotoModal が開いている時のキー操作は
-    /// PhotoModalPage 側が先に処理して e.Handled=true にするので、ここまで来るのは
-    /// ギャラリー / 設定 / タグマスタ画面のいずれか。
+    /// 写真モーダルの ←/→/Esc をフォーカス位置に依存せず確実に効かせるための tunneling ハンドラ。
+    /// PreviewKeyDown はルート (ShellPage) から子へ向かって先に発火するので、背後のギャラリー
+    /// GridView が矢印キーを消費する前にここで捕捉できる。写真モーダルが開いている時だけ
+    /// (isModalOpen==true) 次を処理して e.Handled=true にする:
+    ///   - Left  → 前の写真へ (ShowPhotoModal で結線したのと同じ OnGoPrev = goPrevPhoto())
+    ///   - Right → 次の写真へ (同 OnGoNext = goNextPhoto())
+    ///   - Esc   → 写真モーダルを閉じる (同 OnClose = closePhotoModal()+CloseModal())
+    /// TextBox にフォーカスがあるときはタグ入力等の誤爆を避けてスキップする。
+    /// ここで Handled 済みにするので、PhotoModalPage.Page_PreviewKeyDown・ShellPage_KeyDown
+    /// (bubbling)・背後 GridView のいずれにも届かず二重発火しない。Enter (タグ一括追加) や
+    /// Backspace (戻る) はここでは扱わず、従来通り PhotoModalPage 側 (モーダル内フォーカス時) が処理する。
+    /// </summary>
+    private void ShellPage_PreviewKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        try
+        {
+            if (!isModalOpen || activePhotoModalPage is null) return;
+
+            // タグ入力 TextBox 等にフォーカスがある間は矢印/Esc を奪わない (誤爆防止)。
+            if (Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot) is TextBox) return;
+
+            switch (e.Key)
+            {
+                case Windows.System.VirtualKey.Left:
+                    e.Handled = true;
+                    activePhotoModalPage.OnGoPrev?.Invoke();
+                    break;
+                case Windows.System.VirtualKey.Right:
+                    e.Handled = true;
+                    activePhotoModalPage.OnGoNext?.Invoke();
+                    break;
+                case Windows.System.VirtualKey.Escape:
+                    e.Handled = true;
+                    activePhotoModalPage.OnClose?.Invoke();
+                    break;
+            }
+        }
+        catch (Exception ex) { AppLogger.Error($"ShellPage.ShellPage_PreviewKeyDown: threw: {ex}"); }
+    }
+
+    /// <summary>
+    /// シェルレベルのキーボードショートカット。PhotoModal が開いている時の ←/→/Esc は
+    /// ShellPage_PreviewKeyDown (tunneling) が先に処理して e.Handled=true にするので、
+    /// ここ (bubbling KeyDown) まで来るのはギャラリー / 設定 / タグマスタ画面のいずれか。
     ///   - Esc       → 検索条件 overlay を閉じる / マルチセレクトを解除
     ///   - Ctrl+F    → 検索条件 overlay を開く
     ///   - Ctrl+,    → 設定画面を開く（一般的な「設定」ショートカット）
@@ -512,6 +630,7 @@ public sealed partial class ShellPage : Page
 
             if (e.Key == Windows.System.VirtualKey.Escape)
             {
+                if (ConfirmOverlay.Visibility == Visibility.Visible) { CloseConfirmDialog(null); e.Handled = true; return; }
                 if (isFilterOpen) { ToggleFilter(); e.Handled = true; return; }
                 if (viewModel.galleryViewModel.selectionState.IsMultiSelectMode)
                 {

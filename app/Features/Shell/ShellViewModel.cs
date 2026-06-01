@@ -154,7 +154,9 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
             var photosInitTask = galleryViewModel.photosState.InitializeAsync();
             var tagsTask = tagMasterViewModel.loadTags();
             var worldsTask = galleryViewModel.loadWorldFilterOptions();
-            await Task.WhenAll(photosInitTask, tagsTask, worldsTask).ConfigureAwait(false);
+            // M-5c: タグ候補の件数バッジ用ソース。ワールド候補と同様に並行発行する。
+            var tagCountsTask = galleryViewModel.loadTagFilterCounts();
+            await Task.WhenAll(photosInitTask, tagsTask, worldsTask, tagCountsTask).ConfigureAwait(false);
 
             if (DETACH_RUNTIME_DATA)
             {
@@ -302,6 +304,8 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
                 {
                     dispatcherService.requestAnimationFrame(() => { isScanningRef = false; ScanStatus = "completed"; });
                     await galleryViewModel.loadWorldFilterOptions().ConfigureAwait(false);
+                    // M-5c: スキャンで写真が増減するためタグ件数も更新する。
+                    await galleryViewModel.loadTagFilterCounts().ConfigureAwait(false);
                     // archive → orientation → phash を直列実行する。
                     _ = Task.Run(runPostScanWorkflow);
                 }
@@ -355,16 +359,33 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
             phashUnlistenFns.Add(eventBus.Subscribe(EventNames.PhashComplete, () =>
             {
                 IsPdqRunning = false;
+                // 完了トーストは「実際に処理対象があったとき」だけ出す。total==0 (保留ゼロで即完了)
+                // のときは無音にして無駄な通知を避ける。PdqProgress を done=total へ更新する前に
+                // total を退避しておく (更新後でも値は同じだが、判定意図を明示するため先に読む)。
+                var hadWork = PdqProgress.total > 0;
                 PdqProgress = PdqProgress with { done = PdqProgress.total, current = null };
-                _ = Task.Run(async () =>
+                if (hadWork)
+                    toastService.addToast("類似画像の解析が完了しました", ToastType.success);
+                // PDQ ハッシュ計算完了の通知のみを行う。ワールドの自動確定 (緩い閾値での最近接
+                // 1 件の勝手採用) は誤割り当ての発生源になるため撤去した。PDQ 解決は手動の
+                // WorldResolve ランキング UI (phash_confirmed) を唯一の経路とする。
+                return Task.CompletedTask;
+            }));
+            // phash_error は従来購読者が無く silent だった。中断 (payload="中断されました") は info、
+            // それ以外の失敗は error でトースト化する。購読解除は phashUnlistenFns 経由で
+            // DisposeAsync が確実に行う。
+            phashUnlistenFns.Add(eventBus.Subscribe<string>(EventNames.PhashError, payload =>
+            {
+                try
                 {
-                    try
-                    {
-                        var resolved = await worldService.ResolveUnknownWorldsFromSimilarPhotosAsync("all").ConfigureAwait(false);
-                        if (resolved > 0) await galleryViewModel.photosState.loadPhotos().ConfigureAwait(false);
-                    }
-                    catch (Exception ex) { AppLogger.Error($"ShellViewModel.phash_complete resolver: threw: {ex}"); }
-                });
+                    IsPdqRunning = false;
+                    var isCancelled = payload == "中断されました";
+                    var message = isCancelled
+                        ? "類似画像の解析を中断しました"
+                        : (string.IsNullOrWhiteSpace(payload) ? "類似画像の解析に失敗しました。" : $"類似画像の解析に失敗しました: {payload}");
+                    toastService.addToast(message, isCancelled ? ToastType.info : ToastType.error);
+                }
+                catch (Exception ex) { AppLogger.Error($"ShellViewModel.phash_error: threw: {ex}"); }
                 return Task.CompletedTask;
             }));
         }

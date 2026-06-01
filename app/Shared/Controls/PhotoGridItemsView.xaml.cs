@@ -4,6 +4,7 @@ using System.Numerics;
 using Alpheratz.Core;
 using Alpheratz.Features.Gallery;
 using Alpheratz.Shared.Services;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
@@ -14,12 +15,20 @@ namespace Alpheratz.Shared.Controls;
 
 public sealed partial class PhotoGridItemsView : UserControl
 {
-    private const int COLUMN_COUNT = 5;
-    private const double IMAGE_ASPECT_H = 9.0 / 16.0;
+    // 標準グリッドの列数はユーザ要望により 5 列固定。利用可能幅からの算出はやめ、
+    // cardW = floor(usable / 5 - CARD_MARGIN_H) で 5 列前提のカード幅を決める。
+    // ウィンドウが極端に狭いとカードが小さくなるが、5 列固定を優先する(cardW<100 の
+    // 最小ガードは維持)。
+    private const int FIXED_COLUMNS = 5;
+    // H-4b: 一律 9:16(縦長強制)をやめ 4:3 に緩和。UniformToFill のままでも横長写真の
+    // クロップ量が大きく減り、横写真の識別性が上がる。均一セル制約のため一律比率とする。
+    private const double IMAGE_ASPECT_H = 3.0 / 4.0;
     private const double INFO_HEIGHT = 56;
     private const double CARD_MARGIN_H = 8;
     private const double CARD_MARGIN_V = 12;
     private const double GRID_PADDING = 24;
+    // ReportFirstVisibleIndex のフォールバック列数。実際は wrapGrid.MaximumRowsOrColumns を優先。
+    private const int FALLBACK_COLUMN_COUNT = 5;
 
     public Action<PhotoGridItem>? OnPhotoActivated { get; set; }
     public Action<PhotoGridItem>? OnFavoriteClicked { get; set; }
@@ -166,15 +175,27 @@ public sealed partial class PhotoGridItemsView : UserControl
         }
     }
 
+    /// <summary>
+    /// H-4a: 直近に算出した画像領域の幅。shimmer ハイライトの幅(カード幅の 40%)を
+    /// カード幅可変に追従させるため StartShimmer / RefreshActiveShimmerSizes で参照する。
+    /// </summary>
+    private double currentImageWidth;
+
     private void RecalculateCardSize(double availableWidth)
     {
         if (availableWidth <= 0 || wrapGrid is null) return;
         var usable = availableWidth - GRID_PADDING;
-        var cardW = Math.Floor(usable / COLUMN_COUNT - CARD_MARGIN_H);
+        if (usable <= 0) return;
+        // 列数は 5 列固定。利用可能幅を 5 等分してカード幅を決める。
+        var columns = FIXED_COLUMNS;
+        var cardW = Math.Floor(usable / columns - CARD_MARGIN_H);
         if (cardW < 100) return;
+        currentImageWidth = cardW;
         wrapGrid.ItemWidth = cardW + CARD_MARGIN_H;
         wrapGrid.ItemHeight = Math.Floor(cardW * IMAGE_ASPECT_H + INFO_HEIGHT) + CARD_MARGIN_V;
-        wrapGrid.MaximumRowsOrColumns = COLUMN_COUNT;
+        wrapGrid.MaximumRowsOrColumns = columns;
+        // 既に実体化済みのカードの shimmer ハイライト幅も新カード幅に合わせて更新する。
+        RefreshActiveShimmerSizes(PhotoItems);
     }
 
     private void PhotoItemsWrapGrid_Loaded(object sender, RoutedEventArgs e)
@@ -266,7 +287,7 @@ public sealed partial class PhotoGridItemsView : UserControl
         if (wrapGrid is null) return;
         var itemH = wrapGrid.ItemHeight;
         if (itemH <= 0) return;
-        var cols = Math.Max(1, wrapGrid.MaximumRowsOrColumns > 0 ? wrapGrid.MaximumRowsOrColumns : COLUMN_COUNT);
+        var cols = Math.Max(1, wrapGrid.MaximumRowsOrColumns > 0 ? wrapGrid.MaximumRowsOrColumns : FALLBACK_COLUMN_COUNT);
         var row = (int)(scrollTop / itemH);
         var firstIdx = row * cols;
         if (firstIdx == lastReportedFirstVisible) return;
@@ -373,6 +394,9 @@ public sealed partial class PhotoGridItemsView : UserControl
                 return;
             }
 
+            // H-4c: recycle で別の写真が入るたびにロード演出を初期状態へ戻す。
+            // (画像 Opacity を 0 に、shimmer を再開、エラーアイコンを隠す)
+            ResetCardLoadVisuals(img);
             SetImageSource(img, item.Photo);
 
             System.ComponentModel.PropertyChangedEventHandler handler = (s, e) =>
@@ -380,7 +404,13 @@ public sealed partial class PhotoGridItemsView : UserControl
                 if (e.PropertyName is nameof(PhotoThumbnailItem.GridThumbPath)
                     or nameof(PhotoThumbnailItem.EffectiveSourcePath))
                 {
-                    DispatcherQueue?.TryEnqueue(() => SetImageSource(img, item.Photo));
+                    DispatcherQueue?.TryEnqueue(() =>
+                    {
+                        // サムネイル生成完了でパスが差し替わった場合も再ロード扱いにし、
+                        // shimmer→フェードインの演出を改めて適用する。
+                        ResetCardLoadVisuals(img);
+                        SetImageSource(img, item.Photo);
+                    });
                 }
             };
             item.Photo.PropertyChanged += handler;
@@ -406,8 +436,131 @@ public sealed partial class PhotoGridItemsView : UserControl
         };
     }
 
+    /// <summary>
+    /// H-4c: 画像ロード完了。マソンリーと同じく 200ms でフェードインし shimmer を止める。
+    /// </summary>
+    private void ThumbImage_Opened(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (sender is not Image img) return;
+            var imageVisual = ElementCompositionPreview.GetElementVisual(img);
+            var compositor = imageVisual.Compositor;
+            var fadeIn = compositor.CreateScalarKeyFrameAnimation();
+            var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.25f, 0.1f), new Vector2(0.25f, 1f));
+            fadeIn.InsertKeyFrame(1f, 1f, easing);
+            fadeIn.Duration = TimeSpan.FromMilliseconds(200);
+            imageVisual.StartAnimation("Opacity", fadeIn);
+
+            StopShimmer(img);
+        }
+        catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.ThumbImage_Opened: {ex}"); }
+    }
+
     private void ThumbImage_Failed(object sender, ExceptionRoutedEventArgs e)
     {
         AppLogger.Error($"PhotoGridItemsView.ThumbImage_Failed: {e.ErrorMessage}");
+        try
+        {
+            if (sender is not Image img) return;
+            StopShimmer(img);
+            // 単色フォールバック面を残しつつエラーアイコンを表示する。
+            if (FindSibling(img, "ShimmerBase") is Border shimmerBase)
+                shimmerBase.Opacity = 1;
+            if (FindSibling(img, "ErrorIcon") is TextBlock errorIcon)
+                errorIcon.Visibility = Visibility.Visible;
+        }
+        catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.ThumbImage_Failed.fallback: {ex}"); }
+    }
+
+    /// <summary>
+    /// H-4c: ロード演出を初期状態へ戻す。画像 Opacity=0、エラーアイコン非表示、shimmer 再開。
+    /// recycle / サムネイルパス差し替えの双方から呼ぶ。
+    /// </summary>
+    private void ResetCardLoadVisuals(Image img)
+    {
+        ElementCompositionPreview.GetElementVisual(img).Opacity = 0f;
+        if (FindSibling(img, "ErrorIcon") is TextBlock errorIcon)
+            errorIcon.Visibility = Visibility.Collapsed;
+        StartShimmer(img);
+    }
+
+    /// <summary>
+    /// shimmer プレースホルダを表示・アニメ開始する。ハイライト(ASurfaceHover の solid 面)を
+    /// カード幅の 40% 幅で左から右へ 1500ms ループでスライドさせる。半透明ティントは使わない。
+    /// </summary>
+    private void StartShimmer(Image img)
+    {
+        var shimmerBase = FindSibling(img, "ShimmerBase") as Border;
+        var shimmerHighlight = FindSibling(img, "ShimmerHighlight") as Border;
+        if (shimmerBase is null || shimmerHighlight is null) return;
+
+        var cardW = currentImageWidth > 0 ? currentImageWidth : img.ActualWidth;
+        if (cardW <= 0) cardW = 300;
+
+        shimmerBase.Opacity = 1;
+        shimmerHighlight.Opacity = 1;
+        // 幅のみ明示指定し、高さは縦ストレッチ(均一セル高に追従)に任せる。
+        shimmerHighlight.Width = cardW * 0.4;
+
+        var shimmerVisual = ElementCompositionPreview.GetElementVisual(shimmerHighlight);
+        var compositor = shimmerVisual.Compositor;
+        var shimmerAnim = compositor.CreateScalarKeyFrameAnimation();
+        shimmerAnim.InsertKeyFrame(0f, (float)(-cardW * 0.4));
+        shimmerAnim.InsertKeyFrame(1f, (float)cardW);
+        shimmerAnim.Duration = TimeSpan.FromMilliseconds(1500);
+        shimmerAnim.IterationBehavior = AnimationIterationBehavior.Forever;
+        shimmerVisual.StartAnimation("Offset.X", shimmerAnim);
+    }
+
+    /// <summary>shimmer アニメを止め、ベース・ハイライトを消す。</summary>
+    private void StopShimmer(Image img)
+    {
+        if (FindSibling(img, "ShimmerHighlight") is Border shimmerHighlight)
+        {
+            try { ElementCompositionPreview.GetElementVisual(shimmerHighlight).StopAnimation("Offset.X"); }
+            catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.StopShimmer: {ex}"); }
+            shimmerHighlight.Opacity = 0;
+        }
+        if (FindSibling(img, "ShimmerBase") is Border shimmerBase)
+            shimmerBase.Opacity = 0;
+    }
+
+    /// <summary>
+    /// H-4a: カード幅変更時に、表示中カードの shimmer ハイライトの寸法を再計算する。
+    /// アニメ実行中(ロード前)のカードのみ対象。ロード済みカードは Opacity=0 で見えないので影響なし。
+    /// </summary>
+    private void RefreshActiveShimmerSizes(DependencyObject root)
+    {
+        var stack = new Stack<DependencyObject>();
+        stack.Push(root);
+        while (stack.Count > 0)
+        {
+            var node = stack.Pop();
+            if (node is Border b && b.Name == "ShimmerHighlight" && b.Opacity > 0)
+            {
+                var cardW = currentImageWidth > 0 ? currentImageWidth : b.ActualWidth;
+                if (cardW > 0) b.Width = cardW * 0.4;
+            }
+            var count = VisualTreeHelper.GetChildrenCount(node);
+            for (int i = 0; i < count; i++) stack.Push(VisualTreeHelper.GetChild(node, i));
+        }
+    }
+
+    /// <summary>
+    /// 同一カード内(ThumbHost Grid 配下)の名前付き兄弟要素を返す。
+    /// DataTemplate 内の x:Name は code-behind から直接触れないため、Image の親 Grid を辿り
+    /// 子を Name で探索する。
+    /// </summary>
+    private static FrameworkElement? FindSibling(Image img, string name)
+    {
+        if (VisualTreeHelper.GetParent(img) is not DependencyObject parent) return null;
+        var count = VisualTreeHelper.GetChildrenCount(parent);
+        for (int i = 0; i < count; i++)
+        {
+            if (VisualTreeHelper.GetChild(parent, i) is FrameworkElement fe && fe.Name == name)
+                return fe;
+        }
+        return null;
     }
 }

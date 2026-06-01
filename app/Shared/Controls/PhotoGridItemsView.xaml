@@ -2,7 +2,11 @@
     x:Class="Alpheratz.Shared.Controls.PhotoGridItemsView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:controls="using:Alpheratz.Shared.Controls">
+    xmlns:controls="using:Alpheratz.Shared.Controls"
+    xmlns:converters="using:Alpheratz.Shared.Converters">
+    <UserControl.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+    </UserControl.Resources>
     <GridView x:Name="PhotoItems"
               IsItemClickEnabled="True"
               ItemClick="PhotoItems_ItemClick"
@@ -32,20 +36,91 @@
                                 <RowDefinition Height="56"/>
                             </Grid.RowDefinitions>
 
-                            <Grid Grid.Row="0" Background="{ThemeResource ASurfaceSoft}">
-                                <Image Stretch="UniformToFill"
+                            <Grid Grid.Row="0" x:Name="ThumbHost" Background="{ThemeResource ASurfaceSoft}">
+                                <!--
+                                    H-4c: マソンリーと同等のロード演出。
+                                    画像ロード前は shimmer プレースホルダ(ASurfaceSoft の面 +
+                                    ASurfaceHover ハイライトの横スライド)を表示し、ImageOpened で
+                                    フェードインする。半透明ティントは使わず solid 面色 + Opacity/
+                                    Composition アニメで表現する。Highlight の幅はカード幅可変のため
+                                    code-behind で都度設定する。
+                                -->
+                                <Border x:Name="ShimmerBase"
+                                        Background="{ThemeResource ASurfaceSoft}"/>
+                                <Border x:Name="ShimmerHighlight"
+                                        HorizontalAlignment="Left"
+                                        Background="{ThemeResource ASurfaceHover}"/>
+                                <!--
+                                    ロード前は Composition の Visual.Opacity を 0 にして隠し、
+                                    ImageOpened で 1 へフェードインする (ResetCardLoadVisuals 参照)。
+                                    XAML の Opacity は既定(1)のまま: framework Opacity を 0 にすると
+                                    Composition の Opacity と乗算されフェードインが効かなくなるため。
+                                -->
+                                <Image x:Name="ThumbImage"
+                                       Stretch="UniformToFill"
                                        DataContextChanged="ThumbImage_DataContextChanged"
+                                       ImageOpened="ThumbImage_Opened"
                                        ImageFailed="ThumbImage_Failed"/>
 
+                                <!--
+                                    ImageFailed 時のフォールバック。通常は非表示で、
+                                    code-behind が読み込み失敗時に Visible にする。
+                                -->
+                                <TextBlock x:Name="ErrorIcon"
+                                           Text="&#xE783;"
+                                           FontFamily="Segoe MDL2 Assets"
+                                           FontSize="24"
+                                           Foreground="{ThemeResource ATextDisabled}"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Visibility="Collapsed"/>
+
+                                <!--
+                                    複数選択モードで選択された写真には solid なアクセント枠 + チェックバッジを表示。
+                                    半透明ティントは写真を覆い隠すため使わず、3px の APrimary リングで示す。
+                                    PhotoThumbnailItem.IsSelected は GalleryViewModel.onSelectedPathsChanged が
+                                    selectedPhotoPaths の追加/削除に同期して更新する。
+                                -->
+                                <Border Background="Transparent"
+                                        BorderBrush="{ThemeResource APrimary}"
+                                        BorderThickness="3"
+                                        CornerRadius="{StaticResource ARadius}"
+                                        Visibility="{Binding Photo.IsSelected, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
+                                <!--
+                                    GroupCount バッジ。soft-tint (ADarkOverlay) で
+                                    画像の上に乗っても可読性を確保しつつ控えめな印象に。
+                                    旧 ASurface 単色 + ピル形状はカードの主役を奪う重さがあった。
+                                -->
                                 <Border HorizontalAlignment="Left" VerticalAlignment="Top"
-                                        Margin="9,9,0,0"
-                                        MinWidth="44" Padding="7,3"
-                                        CornerRadius="{StaticResource ARadiusPill}"
-                                        Background="{ThemeResource ASurface}"
+                                        Margin="8,8,0,0"
+                                        MinWidth="40" Padding="8,3"
+                                        CornerRadius="{StaticResource ARadiusSm}"
+                                        Background="{ThemeResource ADarkOverlay}"
                                         Visibility="{Binding GroupCountVisibility}">
                                     <TextBlock Text="{Binding GroupCountLabel}"
-                                               FontSize="{StaticResource AFontSizeXs}" FontWeight="ExtraBold"
+                                               FontSize="{StaticResource AFontSizeXs}" FontWeight="SemiBold"
+                                               Foreground="White"
                                                HorizontalAlignment="Center"/>
+                                </Border>
+
+                                <!--
+                                    選択チェック (notification dot 風)。26px サイズ、白枠でくっきり。
+                                -->
+                                <Border HorizontalAlignment="Right" VerticalAlignment="Top"
+                                        Margin="0,9,9,0"
+                                        Width="26" Height="26"
+                                        CornerRadius="13"
+                                        Background="{ThemeResource APrimary}"
+                                        BorderBrush="White"
+                                        BorderThickness="1"
+                                        Visibility="{Binding Photo.IsSelected, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <TextBlock Text="✓"
+                                               Foreground="White"
+                                               FontSize="13"
+                                               FontWeight="Bold"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"/>
                                 </Border>
 
                                 <controls:AnimatedFavoriteStar HorizontalAlignment="Right"
