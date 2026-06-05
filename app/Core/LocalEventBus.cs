@@ -20,7 +20,7 @@ public sealed class LocalEventBus
 
     /// <summary>
     /// 指定イベント名の購読者全員に payload を配信する。
-    /// 配信中の購読者変更で例外が出ないよう、_handlers をいったん snapshot にコピーしてから配信する。
+    /// 配信中の購読者変更で例外が出ないよう、_handlers を先に snapshot へコピーしてから配信する。
     /// 個別 handler の例外は警告ログのみで握りつぶし、残りの handler の配信を止めない。
     ///
     /// 配信は**意図的に直列**にしている。並列化 (Task.WhenAll) は一見高速化に見えるが、
@@ -61,8 +61,7 @@ public sealed class LocalEventBus
             try { await handler(json).ConfigureAwait(false); }
             catch (Exception ex)
             {
-                // Continue: legacy alpheratz logs but never lets a single bad
-                // subscriber stop the rest from receiving the event.
+                // 1つの購読者の失敗で、同じイベントを待つ別機能まで止めない。
                 AppLogger.Warn($"イベントハンドラーでエラーが発生しました [{eventName}]: {ex.Message}");
             }
         }
@@ -108,9 +107,7 @@ public sealed class LocalEventBus
                 }
                 catch (Exception ex)
                 {
-                    // payload スキーマが publisher 側で変更されたなどで逆シリアライズ失敗。
-                    // 旧実装は silent に default を返して handler を発火させなかったので、
-                    // 「イベントが配信されたが発火されない」という診断困難な状態になっていた。
+                    // payload スキーマが publisher 側で変わった場合などは、購読側で診断できるよう警告を残す。
                     AppLogger.Warn($"LocalEventBus.Subscribe<{typeof(TPayload).Name}>: deserialize failed for event={eventName}: {ex.Message}");
                     return Task.CompletedTask;
                 }
@@ -130,6 +127,7 @@ public sealed class LocalEventBus
         return sub;
     }
 
+    /// <summary>指定イベントから、Subscribe 時に登録した同じ handler 参照を解除する。</summary>
     private void Unsubscribe(string eventName, Func<JsonElement, Task> handler)
     {
         AppLogger.Trace($"LocalEventBus.Unsubscribe: enter event={eventName}");
@@ -148,6 +146,7 @@ public sealed class LocalEventBus
     /// </summary>
     private sealed class Subscription(LocalEventBus bus, string eventName, Func<JsonElement, Task> handler) : IAsyncDisposable
     {
+        /// <summary>購読時に登録した handler をイベントバスから解除する。</summary>
         public ValueTask DisposeAsync()
         {
             AppLogger.Trace($"LocalEventBus.Subscription.DisposeAsync: enter event={eventName}");

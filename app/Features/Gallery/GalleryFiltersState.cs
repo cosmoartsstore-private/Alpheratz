@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using Alpheratz.Core;
 using Alpheratz.Models;
@@ -23,6 +24,7 @@ public partial class GalleryFiltersState : UiThreadSafeObservableObject
     private bool favoritesOnly;
     public UiObservableCollection<string> tagFilters { get; } = [];
     public UiObservableCollection<WorldFilterOptionDto> worldFilterOptions { get; } = [];
+    private IReadOnlyDictionary<string, long> tagFilterCounts = new Dictionary<string, long>();
     private GroupingMode groupingMode = GroupingMode.none;
     private DisplayFolderMode displayFolderMode = DisplayFolderMode.all;
     private SortMode sortMode = SortMode.dateDesc;
@@ -135,7 +137,9 @@ public partial class GalleryFiltersState : UiThreadSafeObservableObject
         set => SetProperty(ref sortMode, value);
     }
 
-    // Hot path during binding refresh; tracing omitted.
+    public IReadOnlyDictionary<string, long> TagFilterCounts => tagFilterCounts;
+
+    // バインディング更新で高頻度に読まれるため、通常ログは出さない。
     public int ActiveFilterCount
     {
         get
@@ -186,6 +190,7 @@ public partial class GalleryFiltersState : UiThreadSafeObservableObject
         }
     }
 
+    /// <summary>検索語、日付、ワールド、タグなど全フィルタを既定値へ戻す。</summary>
     public void resetFilters()
     {
         AppLogger.Trace("GalleryFiltersState.resetFilters: enter");
@@ -216,6 +221,7 @@ public partial class GalleryFiltersState : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryFiltersState.resetFilters: exit");
     }
 
+    /// <summary>文字列で受け取った日付プリセットを解析し、対応する日付範囲へ反映する。</summary>
     public void handleDatePresetSelect(string preset)
     {
         AppLogger.Trace($"GalleryFiltersState.handleDatePresetSelect(string): enter preset={preset}");
@@ -229,6 +235,7 @@ public partial class GalleryFiltersState : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryFiltersState.handleDatePresetSelect(string): exit");
     }
 
+    /// <summary>日付プリセットを選択し、DateFrom / DateTo を同時に更新する。</summary>
     public void handleDatePresetSelect(DatePreset preset)
     {
         AppLogger.Trace($"GalleryFiltersState.handleDatePresetSelect: enter preset={preset}");
@@ -253,5 +260,76 @@ public partial class GalleryFiltersState : UiThreadSafeObservableObject
             AppLogger.Error($"GalleryFiltersState.handleDatePresetSelect: threw: {ex}");
         }
         AppLogger.Trace("GalleryFiltersState.handleDatePresetSelect: exit");
+    }
+
+    /// <summary>タグ候補ごとの件数を差し替え、バインディングへ通知する。</summary>
+    public void setTagFilterCounts(IReadOnlyDictionary<string, long> counts)
+    {
+        tagFilterCounts = counts ?? new Dictionary<string, long>();
+        OnPropertyChanged(nameof(TagFilterCounts));
+    }
+
+    /// <summary>検索ボックス内のコマンド解析結果をフィルタ状態へ一括反映する。</summary>
+    public void applySearchCommands(SearchCommandResult commands, bool raiseBatchCompleted = true)
+    {
+        if (!commands.HasCommands) return;
+
+        try
+        {
+            isBatchUpdating = true;
+
+            if (commands.DateFrom is not null)
+            {
+                DateFrom = commands.DateFrom;
+                DatePreset = DatePreset.custom;
+            }
+
+            if (commands.DateTo is not null)
+            {
+                DateTo = commands.DateTo;
+                DatePreset = DatePreset.custom;
+            }
+
+            if (commands.OrientationFilter is not null)
+            {
+                OrientationFilter = commands.OrientationFilter;
+            }
+
+            if (commands.FavoritesOnly.HasValue)
+            {
+                FavoritesOnly = commands.FavoritesOnly.Value;
+            }
+
+            foreach (var tag in commands.Tags)
+            {
+                if (!tagFilters.Contains(tag))
+                    tagFilters.Add(tag);
+            }
+
+            if (commands.FolderMode is not null)
+            {
+                DisplayFolderMode = commands.FolderMode switch
+                {
+                    "primary" => DisplayFolderMode.primary,
+                    "secondary" => DisplayFolderMode.secondary,
+                    _ => DisplayFolderMode.all,
+                };
+            }
+
+            if (commands.SortMode is not null)
+            {
+                SortMode = commands.SortMode == "world" ? SortMode.worldAsc : SortMode.dateDesc;
+            }
+
+            isBatchUpdating = false;
+            OnPropertyChanged(nameof(ActiveFilterCount));
+            if (raiseBatchCompleted)
+                OnPropertyChanged("BatchCompleted");
+        }
+        catch (Exception ex)
+        {
+            isBatchUpdating = false;
+            AppLogger.Error($"GalleryFiltersState.applySearchCommands: threw: {ex}");
+        }
     }
 }

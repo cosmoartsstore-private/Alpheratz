@@ -53,10 +53,10 @@ public partial class GalleryScrollState : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryScrollState.Recalculate: exit");
     }
 
-    /// <summary>ScrollViewer の現在位置を受け取って ScrollTop を更新する。スクロール中の hot path。</summary>
+    /// <summary>ScrollViewer の現在位置を受け取って ScrollTop を更新する。</summary>
     public void handleGridScroll(double currentScrollTop)
     {
-        // Hot path during scroll; only trace meaningful state changes.
+        // スクロール中は高頻度に呼ばれるため、通常ログは出さずエラーだけ記録する。
         try
         {
             pendingScrollTop = currentScrollTop;
@@ -71,7 +71,7 @@ public partial class GalleryScrollState : UiThreadSafeObservableObject
     /// <summary>マウスホイールデルタで ScrollTop を 0 ～ maxScrollTop にクランプして増減する。</summary>
     public void handleGridWheel(double deltaY, bool disableProgrammaticBounds = false)
     {
-        // Hot path during wheel input; only error log on throw.
+        // ホイール中は高頻度に呼ばれるため、通常ログは出さずエラーだけ記録する。
         try
         {
             if (disableProgrammaticBounds || maxScrollTop <= 0)

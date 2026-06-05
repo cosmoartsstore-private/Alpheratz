@@ -4,7 +4,7 @@ namespace Alpheratz.Features.Shell;
 
 public partial class ShellViewModel
 {
-    // Kept as a lower-case property to match the existing WinUI binding style in this migration.
-    // This exposes the legacy App.tsx/useToasts responsibility to ToastHost without moving toast ownership into the view.
+    // WinUI バインディング名に合わせて小文字のまま公開する。
+    // Toast の所有は ViewModel に置き、ToastHost はこのサービスを表示だけに使う。
     public ToastService toastState => toastService;
 }

@@ -139,6 +139,22 @@ public sealed class PhotoService
         }
     }
 
+    public async Task<IReadOnlyDictionary<string, long>> GetTagFilterCountsAsync(CancellationToken ct = default)
+    {
+        AppLogger.Trace("PhotoService.GetTagFilterCountsAsync: enter");
+        try
+        {
+            var result = await _db.GetTagFilterCountsAsync(ct).ConfigureAwait(false);
+            AppLogger.Trace($"PhotoService.GetTagFilterCountsAsync: exit count={result.Count}");
+            return result;
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"PhotoService.GetTagFilterCountsAsync: threw: {ex}");
+            throw;
+        }
+    }
+
     /// <summary>
     /// 選択写真パスの配列から (photo_path, source_slot) ペアを引く。
     /// マルチセレクト中に「どのスロットの写真か」を保持する必要があり、UI 側では

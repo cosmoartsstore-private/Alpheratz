@@ -60,7 +60,7 @@ public partial class SettingsViewModel : UiThreadSafeObservableObject
 
     /// <summary>
     /// 永続化されている設定 JSON を読み込み、VM の全プロパティを上書きする。
-    /// 失敗時は例外を rethrow して呼出側 (ShellViewModel.refreshSettings) が
+    /// 失敗時は例外を呼出側 (ShellViewModel.refreshSettings) へ返し、
     /// 起動失敗として扱えるようにする（設定読込が失敗した状態でデータ層を初期化すると壊れる）。
     /// </summary>
     public async Task refreshSettings()
@@ -75,17 +75,11 @@ public partial class SettingsViewModel : UiThreadSafeObservableObject
             ThemeMode = setting.themeMode ?? ThemeMode.light;
             ViewMode = setting.viewMode ?? ViewMode.standard;
             ActiveTweetTemplate = setting.activeTweetTemplate ?? string.Empty;
-
-            tweetTemplates.Clear();
-            foreach (var template in setting.tweetTemplates ?? [])
-            {
-                tweetTemplates.Add(template);
-            }
+            tweetTemplates.ReplaceAll(setting.tweetTemplates ?? Array.Empty<string>());
         }
         catch (Exception ex)
         {
-            // Rethrow: ShellViewModel.refreshSettings awaits and treats this
-            // as fatal during startup hydration so dataReady never flips.
+            // 起動時の設定読込失敗は ShellViewModel 側で初期化失敗として扱う。
             AppLogger.Error($"SettingsViewModel.refreshSettings: threw: {ex}");
             throw;
         }
@@ -108,8 +102,7 @@ public partial class SettingsViewModel : UiThreadSafeObservableObject
         }
         catch (Exception ex)
         {
-            // Continue: dialog cancellation or platform failure should not
-            // crash the workflow; legacy alpheratz returns null here.
+            // キャンセルやダイアログ起動失敗は、呼出側で「未選択」と同じ null として扱う。
             AppLogger.Error($"SettingsViewModel.handleChooseFolderPathOnly: threw: {ex}");
             return null;
         }

@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Alpheratz.Core;
 using Microsoft.UI.Xaml;
@@ -11,10 +12,9 @@ namespace Alpheratz.Features.Bootstrap;
 /// 起動時のスプラッシュ画面。DB 初期化や Window 構築の進捗を 4 段階の論理フェーズで受け取り、
 /// ProgressFill のバー幅と sparkle アイコンの位置を補間して滑らかにアニメーション表示する。
 /// </summary>
+[ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public sealed partial class BootstrapPage : Page
 {
-    /// <summary>プログレストラックの XAML 上の幅 (BootstrapPage.xaml と一致させること)。</summary>
-    private const double TrackWidth = 420.0;
     /// <summary>現在描画中のパーセント値 (0-100)。フレームごとに _target に近付ける。</summary>
     private double _current;
     /// <summary>目標パーセント値。SetPhase で 5/30/60/100 のいずれかが設定される。</summary>
@@ -22,13 +22,17 @@ public sealed partial class BootstrapPage : Page
     /// <summary>60fps 想定のアニメーション駆動タイマ (16ms 間隔)。</summary>
     private readonly DispatcherTimer _anim;
 
+    // スプラッシュ表示を初期化し、進捗補間用タイマーを用意する。
     public BootstrapPage()
     {
         AppLogger.Trace("BootstrapPage.ctor: enter");
         try
         {
             InitializeComponent();
-            _anim = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+            _anim = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(BootstrapPageLogic.AnimationFrameIntervalMilliseconds),
+            };
             _anim.Tick += OnAnimTick;
         }
         catch (Exception ex)
@@ -40,8 +44,7 @@ public sealed partial class BootstrapPage : Page
     }
 
     /// <summary>
-    /// R2-A-14: ページが Unloaded でも DispatcherTimer と Tick ハンドラ参照が生き残り、
-    /// ページ本体が GC されずリークしていた。Unloaded で Stop + Tick -= で参照を切る。
+    /// ページ破棄後に DispatcherTimer と Tick ハンドラが参照を持ち続けないよう解除する。
     /// </summary>
     private void Page_Unloaded(object sender, RoutedEventArgs e)
     {
@@ -70,15 +73,7 @@ public sealed partial class BootstrapPage : Page
     {
         try
         {
-            _target = phase switch
-            {
-                AppLifecyclePhase.booting => 5,
-                AppLifecyclePhase.sdkReady => 30,
-                AppLifecyclePhase.servicesReady => 60,
-                AppLifecyclePhase.dataReady => 100,
-                AppLifecyclePhase.uiReady => 100,
-                _ => 0,
-            };
+            _target = BootstrapPageLogic.TargetPercent(phase);
 
             if (!_anim.IsEnabled)
                 _anim.Start();
@@ -98,22 +93,16 @@ public sealed partial class BootstrapPage : Page
     /// </summary>
     private void OnAnimTick(object? sender, object e)
     {
-        var diff = _target - _current;
-        if (Math.Abs(diff) < 0.3)
-        {
-            _current = _target;
-            _anim.Stop();
-        }
-        else
-        {
-            _current += diff * 0.12;
-        }
+        var step = BootstrapPageLogic.NextProgress(_current, _target);
+        _current = step.CurrentPercent;
+        if (step.ShouldStopTimer) _anim.Stop();
 
-        var px = TrackWidth * (_current / 100.0);
+        var px = BootstrapPageLogic.ProgressPixels(_current);
         ProgressFill.Width = px;
         StarTranslate.X = px;
     }
 
+    // スプラッシュ本体をフェードインし、完了を Task で返す。
     public Task FadeInAsync()
     {
         _current = 0;
@@ -128,7 +117,7 @@ public sealed partial class BootstrapPage : Page
             {
                 From = 0,
                 To = 1,
-                Duration = new Duration(TimeSpan.FromMilliseconds(500)),
+                Duration = new Duration(TimeSpan.FromMilliseconds(BootstrapPageLogic.FadeInDurationMilliseconds)),
                 EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
             };
             Storyboard.SetTarget(fade, SplashContent);
@@ -145,6 +134,7 @@ public sealed partial class BootstrapPage : Page
         return tcs.Task;
     }
 
+    // Shell 表示前にスプラッシュ本体をフェードアウトし、完了を Task で返す。
     public Task FadeOutAsync()
     {
         _anim.Stop();
@@ -157,7 +147,7 @@ public sealed partial class BootstrapPage : Page
             {
                 From = 1,
                 To = 0,
-                Duration = new Duration(TimeSpan.FromMilliseconds(350)),
+                Duration = new Duration(TimeSpan.FromMilliseconds(BootstrapPageLogic.FadeOutDurationMilliseconds)),
                 EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn },
             };
             Storyboard.SetTarget(fade, SplashContent);

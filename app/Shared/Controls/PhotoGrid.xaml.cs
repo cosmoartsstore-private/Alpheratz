@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Alpheratz.Core;
 using Alpheratz.Features.Gallery;
@@ -7,6 +8,8 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace Alpheratz.Shared.Controls;
 
+/// <summary>標準グリッド表示とカスタムスクロールバーを束ねる共有コントロール。</summary>
+[ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public sealed partial class PhotoGrid : UserControl
 {
     public Func<Task>? OnGoToPrevPage { get; set; }
@@ -22,11 +25,13 @@ public sealed partial class PhotoGrid : UserControl
     public Action<double>? OnScrollbarTrackClick { get; set; }
     public Action<double>? OnScrollbarDrag { get; set; }
 
+    // 写真一覧の ItemsSource を内部の GridView ラッパーへ渡す。
     public void SetItemsSource(object? source)
     {
         ItemsViewControl.SetItemsSource(source);
     }
 
+    // 標準グリッドを初期化し、内部コントロールのイベントを外部コールバックへ中継する。
     public PhotoGrid()
     {
         AppLogger.Trace("PhotoGrid.ctor: enter");
@@ -65,12 +70,14 @@ public sealed partial class PhotoGrid : UserControl
         AppLogger.Trace("PhotoGrid.ctor: exit");
     }
 
+    // 内部 ScrollViewer の位置を先頭へ戻す。
     public void ScrollToTop()
     {
         try { ItemsViewControl.GridScrollViewerRef?.ChangeView(null, 0, null); }
         catch (Exception ex) { AppLogger.Error($"PhotoGrid.ScrollToTop: threw: {ex}"); }
     }
 
+    // 指定インデックスの写真へ内部一覧をスクロールする。
     public void ScrollToPhotoIndex(int index)
     {
         try
@@ -80,6 +87,7 @@ public sealed partial class PhotoGrid : UserControl
         catch (Exception ex) { AppLogger.Error($"PhotoGrid.ScrollToPhotoIndex: threw: {ex}"); }
     }
 
+    // カスタムスクロールバー上の Y 位置を ScrollViewer の縦オフセットへ変換する。
     private void ScrollToTrackPosition(double trackY)
     {
         try
@@ -88,14 +96,14 @@ public sealed partial class PhotoGrid : UserControl
             if (sv is null) return;
             var extent = sv.ExtentHeight;
             var viewport = sv.ViewportHeight;
-            if (extent <= viewport) return;
-            var trackHeight = Math.Max(1, ActualHeight - 48);
-            var ratio = Math.Clamp(trackY / trackHeight, 0, 1);
-            sv.ChangeView(null, ratio * (extent - viewport), null, true);
+            var offset = PhotoGridLogic.TrackPositionToOffset(trackY, ActualHeight, extent, viewport);
+            if (offset is null) return;
+            sv.ChangeView(null, offset.Value, null, true);
         }
         catch (Exception ex) { AppLogger.Error($"PhotoGrid.ScrollToTrackPosition: threw: {ex}"); }
     }
 
+    // 内部 ScrollViewer の表示範囲からカスタム Thumb の位置と高さを更新する。
     private void UpdateScrollbar()
     {
         try
@@ -104,22 +112,14 @@ public sealed partial class PhotoGrid : UserControl
             if (sv is null) return;
             var extent = sv.ExtentHeight;
             var viewport = sv.ViewportHeight;
-
-            if (extent <= 0 || viewport <= 0 || extent <= viewport)
-            {
-                CustomScrollbarControl.ThumbTop = 0;
-                CustomScrollbarControl.ThumbHeight = viewport;
-                return;
-            }
-
-            var trackHeight = Math.Max(1, ActualHeight - 48);
-            var ratio = viewport / extent;
-            CustomScrollbarControl.ThumbHeight = Math.Max(18, trackHeight * ratio);
-            CustomScrollbarControl.ThumbTop = (sv.VerticalOffset / (extent - viewport)) * Math.Max(0, trackHeight - CustomScrollbarControl.ThumbHeight);
+            var thumb = PhotoGridLogic.ScrollbarThumb(ActualHeight, extent, viewport, sv.VerticalOffset);
+            CustomScrollbarControl.ThumbTop = thumb.Top;
+            CustomScrollbarControl.ThumbHeight = thumb.Height;
         }
         catch (Exception ex) { AppLogger.Error($"PhotoGrid.UpdateScrollbar: threw: {ex}"); }
     }
 
+    // グリッド寸法の変化を親へ通知し、スクロールバー表示も再計算する。
     private void PhotoGrid_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         AppLogger.Trace($"PhotoGrid.PhotoGrid_SizeChanged: enter w={e.NewSize.Width} h={e.NewSize.Height}");

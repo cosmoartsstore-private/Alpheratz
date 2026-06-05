@@ -11,9 +11,10 @@ namespace Alpheratz.Shared.Services;
 /// </summary>
 public sealed class DispatcherService
 {
-    private readonly DispatcherQueue dispatcherQueue;
+    private readonly DispatcherQueue? dispatcherQueue;
 
-    public DispatcherService(DispatcherQueue dispatcherQueue)
+    // テストでは DispatcherQueue を用意せず同期実行できるよう、null を許容する。
+    public DispatcherService(DispatcherQueue? dispatcherQueue = null)
     {
         AppLogger.Trace("DispatcherService.ctor: enter");
         this.dispatcherQueue = dispatcherQueue;
@@ -25,6 +26,12 @@ public sealed class DispatcherService
     {
         try
         {
+            if (dispatcherQueue is null)
+            {
+                action();
+                return;
+            }
+
             dispatcherQueue.TryEnqueue(() =>
             {
                 try { action(); }
@@ -44,6 +51,17 @@ public sealed class DispatcherService
     /// </summary>
     public Task RunOnUiThread(Action action)
     {
+        if (dispatcherQueue is null)
+        {
+            try { action(); }
+            catch (Exception ex)
+            {
+                AppLogger.Error($"DispatcherService.RunOnUiThread.noDispatcher: threw: {ex}");
+                return Task.FromException(ex);
+            }
+            return Task.CompletedTask;
+        }
+
         if (dispatcherQueue.HasThreadAccess)
         {
             try { action(); }
@@ -80,6 +98,12 @@ public sealed class DispatcherService
         try
         {
             await Task.Delay(milliseconds).ConfigureAwait(false);
+            if (dispatcherQueue is null)
+            {
+                action();
+                return;
+            }
+
             dispatcherQueue.TryEnqueue(() =>
             {
                 try { action(); }

@@ -6,7 +6,7 @@
     <Style TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{ThemeResource AFontSans}"/>
         <Setter Property="Foreground" Value="{ThemeResource AText}"/>
-        <Setter Property="IsTextSelectionEnabled" Value="True"/>
+        <Setter Property="IsTextSelectionEnabled" Value="False"/>
     </Style>
 
     <Style TargetType="TextBox">

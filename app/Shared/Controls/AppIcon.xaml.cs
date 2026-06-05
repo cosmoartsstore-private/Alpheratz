@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Alpheratz.Core;
 using Alpheratz.Shared.Icons;
 using Microsoft.UI;
@@ -12,6 +13,7 @@ namespace Alpheratz.Shared.Controls;
 /// SVG パスデータを使ったアイコンコントロール。
 /// IconName に AppIcons のキーを指定すると対応する Geometry が描画される。
 /// </summary>
+[ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public sealed partial class AppIcon : UserControl
 {
     public static readonly DependencyProperty IconNameProperty =

@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Collections.Generic;
 using Alpheratz.Core;
 using Alpheratz.Shared.Services;
@@ -8,6 +9,8 @@ using Microsoft.UI.Xaml.Media;
 
 namespace Alpheratz.Features.Gallery.Controls;
 
+/// <summary>ギャラリー右端に表示する年月ジャンプ用の縦ナビゲーション。</summary>
+[ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public sealed partial class MonthNav : UserControl
 {
     private IReadOnlyList<GalleryMonthGroup> groups = [];
@@ -15,6 +18,7 @@ public sealed partial class MonthNav : UserControl
 
     public Action<GalleryMonthGroup>? OnJumpToMonth { get; set; }
 
+    // 月ナビゲーションを初期化し、テーマ変更時に動的ボタンを再描画する。
     public MonthNav()
     {
         AppLogger.Trace("MonthNav.ctor: enter");
@@ -39,6 +43,7 @@ public sealed partial class MonthNav : UserControl
         catch (Exception ex) { AppLogger.Error($"MonthNav.OnActualThemeChanged: {ex}"); }
     }
 
+    // 表示対象の月グループを差し替え、月ボタンを再構築する。
     public void SetGroups(IReadOnlyList<GalleryMonthGroup> next)
     {
         AppLogger.Trace($"MonthNav.SetGroups: enter count={next.Count}");
@@ -47,6 +52,7 @@ public sealed partial class MonthNav : UserControl
         AppLogger.Trace("MonthNav.SetGroups: exit");
     }
 
+    // 現在表示中の月インデックスを反映し、アクティブ表示を更新する。
     public void SetActiveIndex(int index)
     {
         if (activeIndex == index) return;
@@ -54,23 +60,22 @@ public sealed partial class MonthNav : UserControl
         Rebuild();
     }
 
+    // 年見出しと月ボタンを現在のグループ一覧から作り直す。
     private void Rebuild()
     {
         try
         {
             MonthList.Children.Clear();
-            for (var i = 0; i < groups.Count; i++)
+            foreach (var item in MonthNavLogic.BuildRenderItems(groups, activeIndex))
             {
-                var g = groups[i];
-                var isYearStart = i == 0 || groups[i - 1].Year != g.Year;
-                var isActive = i == activeIndex;
-
-                if (isYearStart)
+                if (item.Kind == MonthNavRenderKind.YearHeader && item.Year is { } year)
                 {
-                    MonthList.Children.Add(BuildYearHeader(g.Year));
+                    MonthList.Children.Add(BuildYearHeader(year));
                 }
-
-                MonthList.Children.Add(BuildMonthButton(g, isActive));
+                else if (item.Group is { } group && item.Button is { } display)
+                {
+                    MonthList.Children.Add(BuildMonthButton(group, display));
+                }
             }
         }
         catch (Exception ex)
@@ -79,6 +84,7 @@ public sealed partial class MonthNav : UserControl
         }
     }
 
+    // 年の切れ目に表示する見出し要素を作る。
     private Border BuildYearHeader(int year)
     {
         return new Border
@@ -89,22 +95,23 @@ public sealed partial class MonthNav : UserControl
                 Text = year.ToString(),
                 FontSize = 11,
                 FontWeight = Microsoft.UI.Text.FontWeights.ExtraBold,
-                Foreground = ThemeHelper.Brush(this, "ATextFaint"),
+                Foreground = ThemeHelper.Brush(this, MonthNavLogic.YearHeaderForegroundKey),
                 HorizontalAlignment = HorizontalAlignment.Center,
             }
         };
     }
 
-    private Button BuildMonthButton(GalleryMonthGroup g, bool isActive)
+    // 月ジャンプ用ボタンを作り、アクティブ月には強調色を付ける。
+    private Button BuildMonthButton(GalleryMonthGroup g, MonthNavButtonDisplay display)
     {
         var label = new TextBlock
         {
-            Text = $"{g.Month}月",
+            Text = display.Label,
             FontSize = 12,
-            FontWeight = isActive
+            FontWeight = display.FontWeight == MonthNavFontWeight.ExtraBold
                 ? Microsoft.UI.Text.FontWeights.ExtraBold
                 : Microsoft.UI.Text.FontWeights.SemiBold,
-            Foreground = ThemeHelper.Brush(this, isActive ? "APrimary" : "ATextDim"),
+            Foreground = ThemeHelper.Brush(this, display.ForegroundKey),
             HorizontalAlignment = HorizontalAlignment.Center,
         };
 
@@ -114,8 +121,8 @@ public sealed partial class MonthNav : UserControl
             MinWidth = 48,
             Padding = new Thickness(4, 4, 4, 4),
             Margin = new Thickness(4, 1, 4, 1),
-            Background = isActive
-                ? ThemeHelper.Brush(this, "APrimarySoft")
+            Background = display.BackgroundKey is not null
+                ? ThemeHelper.Brush(this, display.BackgroundKey)
                 : new SolidColorBrush(Microsoft.UI.Colors.Transparent),
             BorderThickness = new Thickness(0),
             CornerRadius = new CornerRadius(8),
@@ -128,6 +135,7 @@ public sealed partial class MonthNav : UserControl
         return btn;
     }
 
+    // 月ボタンの Tag から対象グループを取り出し、ジャンプ要求を通知する。
     private void MonthButton_Click(object sender, RoutedEventArgs e)
     {
         try

@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Collections.Generic;
 using System.Numerics;
 using Alpheratz.Core;
@@ -13,23 +14,9 @@ using Microsoft.UI.Xaml.Media;
 
 namespace Alpheratz.Shared.Controls;
 
+[ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public sealed partial class PhotoGridItemsView : UserControl
 {
-    // 標準グリッドの列数はユーザ要望により 5 列固定。利用可能幅からの算出はやめ、
-    // cardW = floor(usable / 5 - CARD_MARGIN_H) で 5 列前提のカード幅を決める。
-    // ウィンドウが極端に狭いとカードが小さくなるが、5 列固定を優先する(cardW<100 の
-    // 最小ガードは維持)。
-    private const int FIXED_COLUMNS = 5;
-    // H-4b: 一律 9:16(縦長強制)をやめ 4:3 に緩和。UniformToFill のままでも横長写真の
-    // クロップ量が大きく減り、横写真の識別性が上がる。均一セル制約のため一律比率とする。
-    private const double IMAGE_ASPECT_H = 3.0 / 4.0;
-    private const double INFO_HEIGHT = 56;
-    private const double CARD_MARGIN_H = 8;
-    private const double CARD_MARGIN_V = 12;
-    private const double GRID_PADDING = 24;
-    // ReportFirstVisibleIndex のフォールバック列数。実際は wrapGrid.MaximumRowsOrColumns を優先。
-    private const int FALLBACK_COLUMN_COUNT = 5;
-
     public Action<PhotoGridItem>? OnPhotoActivated { get; set; }
     public Action<PhotoGridItem>? OnFavoriteClicked { get; set; }
     public Action<double>? OnGridScroll { get; set; }
@@ -42,6 +29,7 @@ public sealed partial class PhotoGridItemsView : UserControl
     private ScrollViewer? internalScrollViewer;
     private double lastKnownWidth;
 
+    // 外部から渡された写真一覧を内部の GridView に接続する。
     public void SetItemsSource(object? source)
     {
         PhotoItems.ItemsSource = source;
@@ -72,6 +60,7 @@ public sealed partial class PhotoGridItemsView : UserControl
         AppLogger.Trace("PhotoGridItemsView.ctor: exit");
     }
 
+    // テーマ切替で残ったカードの local value を現在テーマの色に戻す。
     private void OnActualThemeChanged(FrameworkElement sender, object args)
     {
         try { ResetAllCardBrushes(PhotoItems); }
@@ -101,6 +90,7 @@ public sealed partial class PhotoGridItemsView : UserControl
         }
     }
 
+    // 破棄時に画像購読とテーマ変更ハンドラを解除する。
     private void PhotoGridItemsView_Unloaded(object sender, RoutedEventArgs e)
     {
         try
@@ -134,6 +124,7 @@ public sealed partial class PhotoGridItemsView : UserControl
         }
     }
 
+    // GridView 内部の ScrollViewer を取得し、スクロール通知を接続する。
     private void PhotoItems_Loaded(object sender, RoutedEventArgs e)
     {
         try
@@ -147,6 +138,7 @@ public sealed partial class PhotoGridItemsView : UserControl
         catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.PhotoItems_Loaded: {ex}"); }
     }
 
+    // 指定ノード配下から最初に見つかる ScrollViewer を返す。
     private static ScrollViewer? FindChildScrollViewer(DependencyObject parent)
     {
         for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
@@ -161,9 +153,8 @@ public sealed partial class PhotoGridItemsView : UserControl
 
     /// <summary>
     /// 内部の ScrollViewer 参照。未取得なら一度だけ探索しキャッシュする。
-    /// 旧実装は毎呼び出しで `new ScrollViewer()` を fallback 生成しており、
-    /// それ自体は VisualTree に組み込まれない無意味なオブジェクトだったため除去。
-    /// 取得失敗時は null を返し、呼出側で no-op を選べるようにする。
+    /// 見つからない場合に新しい ScrollViewer を作っても VisualTree には組み込まれないため、
+    /// 取得失敗時は null を返して呼出側で何もしない。
     /// </summary>
     public ScrollViewer? GridScrollViewerRef
     {
@@ -176,35 +167,33 @@ public sealed partial class PhotoGridItemsView : UserControl
     }
 
     /// <summary>
-    /// H-4a: 直近に算出した画像領域の幅。shimmer ハイライトの幅(カード幅の 40%)を
-    /// カード幅可変に追従させるため StartShimmer / RefreshActiveShimmerSizes で参照する。
+    /// 直近に算出した画像領域の幅。shimmer ハイライト幅をカード幅へ追従させるために使う。
     /// </summary>
     private double currentImageWidth;
 
+    // 利用可能幅から 5 列固定のカード寸法を再計算する。
     private void RecalculateCardSize(double availableWidth)
     {
         if (availableWidth <= 0 || wrapGrid is null) return;
-        var usable = availableWidth - GRID_PADDING;
-        if (usable <= 0) return;
-        // 列数は 5 列固定。利用可能幅を 5 等分してカード幅を決める。
-        var columns = FIXED_COLUMNS;
-        var cardW = Math.Floor(usable / columns - CARD_MARGIN_H);
-        if (cardW < 100) return;
-        currentImageWidth = cardW;
-        wrapGrid.ItemWidth = cardW + CARD_MARGIN_H;
-        wrapGrid.ItemHeight = Math.Floor(cardW * IMAGE_ASPECT_H + INFO_HEIGHT) + CARD_MARGIN_V;
-        wrapGrid.MaximumRowsOrColumns = columns;
+        var layout = PhotoGridItemsLayoutLogic.CalculateCardLayout(availableWidth);
+        if (layout is null) return;
+        currentImageWidth = layout.ImageWidth;
+        wrapGrid.ItemWidth = layout.ItemWidth;
+        wrapGrid.ItemHeight = layout.ItemHeight;
+        wrapGrid.MaximumRowsOrColumns = layout.Columns;
         // 既に実体化済みのカードの shimmer ハイライト幅も新カード幅に合わせて更新する。
         RefreshActiveShimmerSizes(PhotoItems);
     }
 
+    // ItemsWrapGrid の実体化後に参照を保持し、初期カード寸法を反映する。
     private void PhotoItemsWrapGrid_Loaded(object sender, RoutedEventArgs e)
     {
         wrapGrid = sender as ItemsWrapGrid;
-        var width = PhotoItems.ActualWidth > 0 ? PhotoItems.ActualWidth : lastKnownWidth;
+        var width = PhotoGridItemsLayoutLogic.ResolveInitialGridWidth(PhotoItems.ActualWidth, lastKnownWidth);
         RecalculateCardSize(width);
     }
 
+    // GridView 幅の変更に合わせてカード寸法を更新する。
     private void GridView_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         lastKnownWidth = e.NewSize.Width;
@@ -215,6 +204,7 @@ public sealed partial class PhotoGridItemsView : UserControl
         RecalculateCardSize(e.NewSize.Width);
     }
 
+    // 指定ノード配下から ItemsWrapGrid を探索する。
     private static ItemsWrapGrid? FindItemsWrapGrid(DependencyObject parent)
     {
         for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
@@ -227,11 +217,12 @@ public sealed partial class PhotoGridItemsView : UserControl
         return null;
     }
 
+    // 指定インデックスのカードが先頭付近に来るようにスクロールする。
     public void ScrollToItemIndex(int index)
     {
         try
         {
-            if (index < 0 || index >= PhotoItems.Items.Count) return;
+            if (!PhotoGridItemsLayoutLogic.IsValidItemIndex(index, PhotoItems.Items.Count)) return;
             var item = PhotoItems.Items[index];
             PhotoItems.ScrollIntoView(item, ScrollIntoViewAlignment.Leading);
         }
@@ -241,6 +232,7 @@ public sealed partial class PhotoGridItemsView : UserControl
         }
     }
 
+    // カードクリックを外部の写真アクティベート通知へ変換する。
     private void PhotoItems_ItemClick(object sender, ItemClickEventArgs e)
     {
         try
@@ -253,18 +245,37 @@ public sealed partial class PhotoGridItemsView : UserControl
         catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.PhotoItems_ItemClick: threw: {ex}"); }
     }
 
+    // DataTemplate 内のお気に入りボタンに、現在カード用のクリック処理を渡す。
     private void FavoriteStar_Loaded(object sender, RoutedEventArgs e)
     {
         try
         {
-            if (sender is AnimatedFavoriteStar star && star.DataContext is PhotoGridItem item)
-            {
-                star.OnClick = () => OnFavoriteClicked?.Invoke(item);
-            }
+            WireFavoriteStar(sender as AnimatedFavoriteStar);
         }
         catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.FavoriteStar_Loaded: threw: {ex}"); }
     }
 
+    /// <summary>カード再利用で DataContext が差し替わった時に、星クリックの対象写真を更新する。</summary>
+    private void FavoriteStar_DataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
+    {
+        try
+        {
+            WireFavoriteStar(sender as AnimatedFavoriteStar);
+        }
+        catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.FavoriteStar_DataContextChanged: threw: {ex}"); }
+    }
+
+    /// <summary>お気に入り星を現在の PhotoGridItem に結線する。対象が無ければクリックを無効化する。</summary>
+    private void WireFavoriteStar(AnimatedFavoriteStar? star)
+    {
+        if (star is null) return;
+        if (star.DataContext is PhotoGridItem item)
+            star.OnClick = () => OnFavoriteClicked?.Invoke(item);
+        else
+            star.OnClick = null;
+    }
+
+    // スクロール位置、終端接近、先頭表示インデックスを親側へ通知する。
     private void InternalScrollViewer_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
     {
         try
@@ -272,7 +283,7 @@ public sealed partial class PhotoGridItemsView : UserControl
             if (sender is ScrollViewer scrollViewer)
             {
                 OnGridScroll?.Invoke(scrollViewer.VerticalOffset);
-                if (scrollViewer.ScrollableHeight - scrollViewer.VerticalOffset < 600)
+                if (PhotoGridItemsLayoutLogic.IsNearBottom(scrollViewer.ScrollableHeight, scrollViewer.VerticalOffset))
                 {
                     OnNearBottomReached?.Invoke();
                 }
@@ -282,19 +293,21 @@ public sealed partial class PhotoGridItemsView : UserControl
         catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.InternalScrollViewer_ViewChanged: {ex}"); }
     }
 
+    // 現在のスクロール位置から最初に見えている写真インデックスを概算する。
     private void ReportFirstVisibleIndex(double scrollTop)
     {
         if (wrapGrid is null) return;
-        var itemH = wrapGrid.ItemHeight;
-        if (itemH <= 0) return;
-        var cols = Math.Max(1, wrapGrid.MaximumRowsOrColumns > 0 ? wrapGrid.MaximumRowsOrColumns : FALLBACK_COLUMN_COUNT);
-        var row = (int)(scrollTop / itemH);
-        var firstIdx = row * cols;
-        if (firstIdx == lastReportedFirstVisible) return;
-        lastReportedFirstVisible = firstIdx;
-        OnFirstVisibleIndexChanged?.Invoke(firstIdx);
+        var firstIdx = PhotoGridItemsLayoutLogic.EstimateFirstVisibleIndex(
+            scrollTop,
+            wrapGrid.ItemHeight,
+            wrapGrid.MaximumRowsOrColumns);
+        if (!PhotoGridItemsLayoutLogic.ShouldNotifyFirstVisibleIndex(firstIdx, lastReportedFirstVisible)) return;
+        var nextFirstVisible = firstIdx.GetValueOrDefault();
+        lastReportedFirstVisible = nextFirstVisible;
+        OnFirstVisibleIndexChanged?.Invoke(nextFirstVisible);
     }
 
+    // マウスホイール量を親側へ渡し、月ナビゲーション等と同期させる。
     private void InternalScrollViewer_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
     {
         try
@@ -315,65 +328,65 @@ public sealed partial class PhotoGridItemsView : UserControl
         {
             if (sender is not Border border) return;
             ElementCompositionPreview.GetElementVisual(border).Offset = Vector3.Zero;
-            if (ThemeHelper.Brush(border, "ABorder") is { } restBorder)
-                border.BorderBrush = restBorder;
-            if (ThemeHelper.Brush(border, "ASurface") is { } restFill)
-                border.Background = restFill;
+            ApplyCardBrushes(border, GridCardVisualState.Rest);
         }
         catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.CardBorder_DataContextChanged: {ex}"); }
     }
 
+    // ポインタが乗ったカードに小さな浮き上がりと色のフィードバックを与える。
     private void CardBorder_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
         try
         {
             if (sender is not Border border) return;
-            var visual = ElementCompositionPreview.GetElementVisual(border);
-            var compositor = visual.Compositor;
-            var ease = compositor.CreateCubicBezierEasingFunction(new Vector2(0.25f, 0.1f), new Vector2(0.25f, 1f));
-            var offsetAnim = compositor.CreateVector3KeyFrameAnimation();
-            offsetAnim.InsertKeyFrame(1f, new Vector3(0, -2f, 0), ease);
-            offsetAnim.Duration = TimeSpan.FromMilliseconds(180);
-            visual.StartAnimation("Offset", offsetAnim);
-
-            // 色フィードバック: 枠線をアクセント寄りに、背景をわずかに持ち上げる。
-            // Y オフセットだけだと視覚的フィードバックが弱いため。
-            if (ThemeHelper.Brush(border, "ABorderStrong") is { } hoverBorder)
-                border.BorderBrush = hoverBorder;
-            if (ThemeHelper.Brush(border, "ASurfaceHover") is { } hoverFill)
-                border.Background = hoverFill;
+            ApplyCardMotion(border, GridCardVisualState.Hover);
+            ApplyCardBrushes(border, GridCardVisualState.Hover);
         }
         catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.CardBorder_PointerEntered: {ex}"); }
     }
 
+    // ポインタが離れたカードを通常位置と通常色に戻す。
     private void CardBorder_PointerExited(object sender, PointerRoutedEventArgs e)
     {
         try
         {
             if (sender is not Border border) return;
-            var visual = ElementCompositionPreview.GetElementVisual(border);
-            var compositor = visual.Compositor;
-            var ease = compositor.CreateCubicBezierEasingFunction(new Vector2(0.25f, 0.1f), new Vector2(0.25f, 1f));
-            var offsetAnim = compositor.CreateVector3KeyFrameAnimation();
-            offsetAnim.InsertKeyFrame(1f, Vector3.Zero, ease);
-            offsetAnim.Duration = TimeSpan.FromMilliseconds(180);
-            visual.StartAnimation("Offset", offsetAnim);
-
-            if (ThemeHelper.Brush(border, "ABorder") is { } restBorder)
-                border.BorderBrush = restBorder;
-            if (ThemeHelper.Brush(border, "ASurface") is { } restFill)
-                border.Background = restFill;
+            ApplyCardMotion(border, GridCardVisualState.Rest);
+            ApplyCardBrushes(border, GridCardVisualState.Rest);
         }
         catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.CardBorder_PointerExited: {ex}"); }
     }
 
+    /// <summary>カードの hover/rest 移動アニメーションを開始する。</summary>
+    private static void ApplyCardMotion(Border border, GridCardVisualState state)
+    {
+        var cardVisual = PhotoGridItemsLayoutLogic.CardVisual(state);
+        var visual = ElementCompositionPreview.GetElementVisual(border);
+        var compositor = visual.Compositor;
+        var ease = compositor.CreateCubicBezierEasingFunction(new Vector2(0.25f, 0.1f), new Vector2(0.25f, 1f));
+        var offsetAnim = compositor.CreateVector3KeyFrameAnimation();
+        offsetAnim.InsertKeyFrame(1f, new Vector3(0, (float)cardVisual.OffsetY, 0), ease);
+        offsetAnim.Duration = TimeSpan.FromMilliseconds(cardVisual.DurationMilliseconds);
+        visual.StartAnimation("Offset", offsetAnim);
+    }
+
+    /// <summary>カードの hover/rest 背景と枠線ブラシを現在テーマで適用する。</summary>
+    private static void ApplyCardBrushes(Border border, GridCardVisualState state)
+    {
+        var cardVisual = PhotoGridItemsLayoutLogic.CardVisual(state);
+        if (ThemeHelper.Brush(border, cardVisual.BorderKey) is { } borderBrush)
+            border.BorderBrush = borderBrush;
+        if (ThemeHelper.Brush(border, cardVisual.BackgroundKey) is { } fillBrush)
+            border.Background = fillBrush;
+    }
+
     /// <summary>
-    /// R2-A-5: Image.Tag に (Photo, handler) のタプルを保存することで、
-    /// DataContext が null や別オブジェクトに差し替わっても確実に元の Photo から
-    /// PropertyChanged を unsubscribe できるようにし、ハンドラリークを防止する。
+    /// Image.Tag に購読元と handler を保存し、DataContext 差し替え後も元の Photo から
+    /// 確実に PropertyChanged を解除できるようにする。
     /// </summary>
     private sealed record GridImageSubscription(PhotoThumbnailItem Photo, System.ComponentModel.PropertyChangedEventHandler Handler);
 
+    // リサイクルされた Image に新しい写真を接続し、旧写真の購読を解除する。
     private void ThumbImage_DataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
     {
         try
@@ -394,15 +407,14 @@ public sealed partial class PhotoGridItemsView : UserControl
                 return;
             }
 
-            // H-4c: recycle で別の写真が入るたびにロード演出を初期状態へ戻す。
+            // recycle で別の写真が入るたびにロード演出を初期状態へ戻す。
             // (画像 Opacity を 0 に、shimmer を再開、エラーアイコンを隠す)
             ResetCardLoadVisuals(img);
             SetImageSource(img, item.Photo);
 
             System.ComponentModel.PropertyChangedEventHandler handler = (s, e) =>
             {
-                if (e.PropertyName is nameof(PhotoThumbnailItem.GridThumbPath)
-                    or nameof(PhotoThumbnailItem.EffectiveSourcePath))
+                if (PhotoGridItemsLayoutLogic.IsImageSourceProperty(e.PropertyName))
                 {
                     DispatcherQueue?.TryEnqueue(() =>
                     {
@@ -419,10 +431,11 @@ public sealed partial class PhotoGridItemsView : UserControl
         catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.ThumbImage_DataContextChanged: {ex}"); }
     }
 
+    // 写真の有効な表示パスから BitmapImage を作り、Image.Source に反映する。
     private static void SetImageSource(Image img, PhotoThumbnailItem photo)
     {
-        var path = photo.EffectiveSourcePath;
-        if (string.IsNullOrEmpty(path))
+        var request = PhotoGridItemsLayoutLogic.ImageRequest(photo);
+        if (request is null)
         {
             img.Source = null;
             return;
@@ -430,14 +443,14 @@ public sealed partial class PhotoGridItemsView : UserControl
         img.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage
         {
             CreateOptions = Microsoft.UI.Xaml.Media.Imaging.BitmapCreateOptions.IgnoreImageCache,
-            DecodePixelWidth = 300,
+            DecodePixelWidth = request.DecodePixelWidth,
             DecodePixelType = Microsoft.UI.Xaml.Media.Imaging.DecodePixelType.Logical,
-            UriSource = new Uri(path, UriKind.Absolute),
+            UriSource = new Uri(request.SourcePath, UriKind.Absolute),
         };
     }
 
     /// <summary>
-    /// H-4c: 画像ロード完了。マソンリーと同じく 200ms でフェードインし shimmer を止める。
+    /// 画像ロード完了。マソンリーと同じく 200ms でフェードインし shimmer を止める。
     /// </summary>
     private void ThumbImage_Opened(object sender, RoutedEventArgs e)
     {
@@ -449,40 +462,49 @@ public sealed partial class PhotoGridItemsView : UserControl
             var fadeIn = compositor.CreateScalarKeyFrameAnimation();
             var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.25f, 0.1f), new Vector2(0.25f, 1f));
             fadeIn.InsertKeyFrame(1f, 1f, easing);
-            fadeIn.Duration = TimeSpan.FromMilliseconds(200);
+            fadeIn.Duration = TimeSpan.FromMilliseconds(PhotoGridItemsLayoutLogic.ImageFadeInDurationMilliseconds);
             imageVisual.StartAnimation("Opacity", fadeIn);
 
-            StopShimmer(img);
+            ApplyImageLoadVisual(img, GridImageLoadState.Opened, applyImageOpacity: false);
         }
         catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.ThumbImage_Opened: {ex}"); }
     }
 
+    // 画像ロード失敗時は shimmer を止め、フォールバック面とエラー表示を残す。
     private void ThumbImage_Failed(object sender, ExceptionRoutedEventArgs e)
     {
         AppLogger.Error($"PhotoGridItemsView.ThumbImage_Failed: {e.ErrorMessage}");
         try
         {
             if (sender is not Image img) return;
-            StopShimmer(img);
-            // 単色フォールバック面を残しつつエラーアイコンを表示する。
-            if (FindSibling(img, "ShimmerBase") is Border shimmerBase)
-                shimmerBase.Opacity = 1;
-            if (FindSibling(img, "ErrorIcon") is TextBlock errorIcon)
-                errorIcon.Visibility = Visibility.Visible;
+            ApplyImageLoadVisual(img, GridImageLoadState.Failed);
         }
         catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.ThumbImage_Failed.fallback: {ex}"); }
     }
 
     /// <summary>
-    /// H-4c: ロード演出を初期状態へ戻す。画像 Opacity=0、エラーアイコン非表示、shimmer 再開。
+    /// ロード演出を初期状態へ戻す。画像 Opacity=0、エラーアイコン非表示、shimmer 再開。
     /// recycle / サムネイルパス差し替えの双方から呼ぶ。
     /// </summary>
     private void ResetCardLoadVisuals(Image img)
     {
-        ElementCompositionPreview.GetElementVisual(img).Opacity = 0f;
+        ApplyImageLoadVisual(img, GridImageLoadState.Reset);
+    }
+
+    /// <summary>画像ロード状態に応じて shimmer とエラー表示を反映する。</summary>
+    private void ApplyImageLoadVisual(Image img, GridImageLoadState state, bool applyImageOpacity = true)
+    {
+        var visual = PhotoGridItemsLayoutLogic.ImageLoadVisual(state);
+        if (applyImageOpacity)
+            ElementCompositionPreview.GetElementVisual(img).Opacity = (float)visual.ImageOpacity;
+        if (visual.StopShimmer) StopShimmer(img);
+        if (visual.StartShimmer) StartShimmer(img);
+        if (FindSibling(img, "ShimmerBase") is Border shimmerBase)
+            shimmerBase.Opacity = visual.ShimmerBaseOpacity;
+        if (FindSibling(img, "ShimmerHighlight") is Border shimmerHighlight)
+            shimmerHighlight.Opacity = visual.ShimmerHighlightOpacity;
         if (FindSibling(img, "ErrorIcon") is TextBlock errorIcon)
-            errorIcon.Visibility = Visibility.Collapsed;
-        StartShimmer(img);
+            errorIcon.Visibility = visual.ErrorVisible ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>
@@ -495,20 +517,20 @@ public sealed partial class PhotoGridItemsView : UserControl
         var shimmerHighlight = FindSibling(img, "ShimmerHighlight") as Border;
         if (shimmerBase is null || shimmerHighlight is null) return;
 
-        var cardW = currentImageWidth > 0 ? currentImageWidth : img.ActualWidth;
-        if (cardW <= 0) cardW = 300;
+        var cardW = PhotoGridItemsLayoutLogic.ResolveShimmerCardWidth(currentImageWidth, img.ActualWidth);
 
         shimmerBase.Opacity = 1;
         shimmerHighlight.Opacity = 1;
         // 幅のみ明示指定し、高さは縦ストレッチ(均一セル高に追従)に任せる。
-        shimmerHighlight.Width = cardW * 0.4;
+        var metrics = PhotoGridItemsLayoutLogic.CalculateShimmerMetrics(cardW);
+        shimmerHighlight.Width = metrics.HighlightWidth;
 
         var shimmerVisual = ElementCompositionPreview.GetElementVisual(shimmerHighlight);
         var compositor = shimmerVisual.Compositor;
         var shimmerAnim = compositor.CreateScalarKeyFrameAnimation();
-        shimmerAnim.InsertKeyFrame(0f, (float)(-cardW * 0.4));
-        shimmerAnim.InsertKeyFrame(1f, (float)cardW);
-        shimmerAnim.Duration = TimeSpan.FromMilliseconds(1500);
+        shimmerAnim.InsertKeyFrame(0f, (float)metrics.StartOffset);
+        shimmerAnim.InsertKeyFrame(1f, (float)metrics.EndOffset);
+        shimmerAnim.Duration = TimeSpan.FromMilliseconds(PhotoGridItemsLayoutLogic.ShimmerDurationMilliseconds);
         shimmerAnim.IterationBehavior = AnimationIterationBehavior.Forever;
         shimmerVisual.StartAnimation("Offset.X", shimmerAnim);
     }
@@ -527,7 +549,7 @@ public sealed partial class PhotoGridItemsView : UserControl
     }
 
     /// <summary>
-    /// H-4a: カード幅変更時に、表示中カードの shimmer ハイライトの寸法を再計算する。
+    /// カード幅変更時に、表示中カードの shimmer ハイライトの寸法を再計算する。
     /// アニメ実行中(ロード前)のカードのみ対象。ロード済みカードは Opacity=0 で見えないので影響なし。
     /// </summary>
     private void RefreshActiveShimmerSizes(DependencyObject root)
@@ -537,10 +559,10 @@ public sealed partial class PhotoGridItemsView : UserControl
         while (stack.Count > 0)
         {
             var node = stack.Pop();
-            if (node is Border b && b.Name == "ShimmerHighlight" && b.Opacity > 0)
+            if (node is Border b && PhotoGridItemsLayoutLogic.ShouldRefreshShimmerWidth(b.Name, b.Opacity))
             {
-                var cardW = currentImageWidth > 0 ? currentImageWidth : b.ActualWidth;
-                if (cardW > 0) b.Width = cardW * 0.4;
+                var cardW = PhotoGridItemsLayoutLogic.ResolveShimmerCardWidth(currentImageWidth, b.ActualWidth);
+                b.Width = PhotoGridItemsLayoutLogic.CalculateShimmerHighlightWidth(cardW);
             }
             var count = VisualTreeHelper.GetChildrenCount(node);
             for (int i = 0; i < count; i++) stack.Push(VisualTreeHelper.GetChild(node, i));

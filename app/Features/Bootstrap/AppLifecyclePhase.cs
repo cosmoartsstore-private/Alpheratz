@@ -1,7 +1,9 @@
 namespace Alpheratz.Features.Bootstrap;
 
-// Ordered phases of the app's startup pipeline. Each value is strictly
-// greater than the previous so >= comparisons reflect progress order.
+/// <summary>
+/// アプリ起動パイプラインの段階。
+/// 数値の大小が進行順を表すため、>= 比較で到達判定できる。
+/// </summary>
 public enum AppLifecyclePhase
 {
     booting = 0,

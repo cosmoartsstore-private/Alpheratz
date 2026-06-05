@@ -38,7 +38,7 @@
 
                             <Grid Grid.Row="0" x:Name="ThumbHost" Background="{ThemeResource ASurfaceSoft}">
                                 <!--
-                                    H-4c: マソンリーと同等のロード演出。
+                                    マソンリーと同等のロード演出。
                                     画像ロード前は shimmer プレースホルダ(ASurfaceSoft の面 +
                                     ASurfaceHover ハイライトの横スライド)を表示し、ImageOpened で
                                     フェードインする。半透明ティントは使わず solid 面色 + Opacity/
@@ -88,9 +88,9 @@
                                         Visibility="{Binding Photo.IsSelected, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
                                 <!--
-                                    GroupCount バッジ。soft-tint (ADarkOverlay) で
+                                    GroupCount バッジ。ADarkOverlay の濃い面色で
                                     画像の上に乗っても可読性を確保しつつ控えめな印象に。
-                                    旧 ASurface 単色 + ピル形状はカードの主役を奪う重さがあった。
+                                    明るい単色面を避け、写真の視認性を優先する。
                                 -->
                                 <Border HorizontalAlignment="Left" VerticalAlignment="Top"
                                         Margin="8,8,0,0"
@@ -129,7 +129,8 @@
                                                                Width="30" Height="30"
                                                                Liked="{Binding Photo.IsFavorite}"
                                                                Interactive="True"
-                                                               Loaded="FavoriteStar_Loaded"/>
+                                                               Loaded="FavoriteStar_Loaded"
+                                                               DataContextChanged="FavoriteStar_DataContextChanged"/>
                             </Grid>
 
                             <StackPanel Grid.Row="1" Margin="11,8,11,8" Spacing="2"

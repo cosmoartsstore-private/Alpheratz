@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Threading.Tasks;
@@ -13,6 +14,7 @@ namespace Alpheratz.Features.Gallery;
 /// <summary>
 /// ギャラリー画面の Page。ViewModel と各子コントロールのコールバックを結線する。
 /// </summary>
+[ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public sealed partial class GalleryPage : Page
 {
     private readonly GalleryViewModel viewModel;
@@ -29,7 +31,9 @@ public sealed partial class GalleryPage : Page
     public Action<PhotoThumbnailItem>? OnSelectPhoto { get; set; }
     public Action<PhotoGridItem>? OnDrillIntoGroup { get; set; }
     public Func<Task<string?>>? OnChooseFolder { get; set; }
+    public Action? OnOpenSettings { get; set; }
 
+    // ギャラリー ViewModel と ShellPage 所有のフィルタパネルを受け取り、子コントロールを結線する。
     public GalleryPage(GalleryViewModel viewModel, GalleryFilterPanel filterPanel)
     {
         AppLogger.Trace("GalleryPage.ctor: enter");
@@ -185,6 +189,7 @@ public sealed partial class GalleryPage : Page
         AppLogger.Trace("GalleryPage.SetMasterTags: exit");
     }
 
+    // 選択写真の増減に合わせてバルク操作バーの表示を更新する。
     private void OnSelectedPathsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
         => updateBulkOpBar();
 
@@ -277,14 +282,16 @@ public sealed partial class GalleryPage : Page
         AppLogger.Trace("GalleryPage.updateBulkOpBar: enter");
         try
         {
-            var isActive = viewModel.selectionState.IsMultiSelectMode;
-            if (isActive && !bulkOpBarWasVisible)
+            var state = GalleryPageLogic.ComputeBulkOperationBarState(
+                viewModel.selectionState.IsMultiSelectMode,
+                bulkOpBarWasVisible,
+                viewModel.selectionState.selectedPhotoPaths.Count);
+            if (state.Transition == BulkOperationBarTransition.Show)
             {
                 BulkOpBar.Visibility = Visibility.Visible;
                 AnimationHelper.SlideIn(BulkOpBar, fromY: 20f, durationMs: 200);
-                bulkOpBarWasVisible = true;
             }
-            else if (!isActive && bulkOpBarWasVisible)
+            else if (state.Transition == BulkOperationBarTransition.Hide)
             {
                 AnimationHelper.SlideOut(BulkOpBar, toY: 20f, durationMs: 150, onCompleted: () =>
                 {
@@ -294,10 +301,9 @@ public sealed partial class GalleryPage : Page
                         AnimationHelper.ResetVisual(BulkOpBar);
                     });
                 });
-                bulkOpBarWasVisible = false;
             }
-            var count = viewModel.selectionState.selectedPhotoPaths.Count;
-            SelectionCountLabel.Text = $"{count} 枚選択";
+            bulkOpBarWasVisible = state.NextWasVisible;
+            SelectionCountLabel.Text = state.SelectionLabel;
         }
         catch (Exception ex)
         {
@@ -370,6 +376,7 @@ public sealed partial class GalleryPage : Page
         AppLogger.Trace("GalleryPage.BulkTagCombo_SelectionChanged: exit");
     }
 
+    // 表示中の先頭写真インデックスから、月ナビのアクティブ月を決める。
     private void SyncMonthNavToIndex(int firstVisibleIndex)
     {
         try
@@ -377,16 +384,8 @@ public sealed partial class GalleryPage : Page
             var groups = viewModel.photosState.monthGroups;
             if (groups.Count == 0 || GridStage.MonthNavControlRef is not { } nav) return;
 
-            var matchedGroupIdx = 0;
-            for (var i = groups.Count - 1; i >= 0; i--)
-            {
-                if (firstVisibleIndex >= groups[i].FirstIndex)
-                {
-                    matchedGroupIdx = i;
-                    break;
-                }
-            }
-            nav.SetActiveIndex(matchedGroupIdx);
+            if (GalleryPageLogic.FindActiveMonthGroupIndex(groups, firstVisibleIndex) is { } matchedGroupIdx)
+                nav.SetActiveIndex(matchedGroupIdx);
         }
         catch (Exception ex)
         {
@@ -394,6 +393,7 @@ public sealed partial class GalleryPage : Page
         }
     }
 
+    // 再表示時に現在の表示モードと読み込み状態を子コントロールへ同期する。
     private void Page_Loaded(object sender, RoutedEventArgs e)
     {
         // ctor で購読、Unloaded で解除する片付け済みパスを通すので、ここでは
@@ -404,6 +404,7 @@ public sealed partial class GalleryPage : Page
         GridStage.UpdateLoadingState(viewModel.photosState.IsLoading, viewModel.photosState.TotalCount);
     }
 
+    // ページ破棄時に ViewModel と子コントロールへの購読・コールバックを解除する。
     private void Page_Unloaded(object sender, RoutedEventArgs e)
     {
         viewModel.selectionState.PropertyChanged -= OnSelectionStateChanged;

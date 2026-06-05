@@ -1,4 +1,6 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Collections.Generic;
 using System.Numerics;
 using Alpheratz.Core;
 using Alpheratz.Shared.Services;
@@ -11,6 +13,7 @@ using Microsoft.UI.Xaml.Media;
 
 namespace Alpheratz.Shared.Controls;
 
+[ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public sealed partial class AnimatedFavoriteStar : UserControl
 {
     private bool previousLiked;
@@ -34,6 +37,7 @@ public sealed partial class AnimatedFavoriteStar : UserControl
 
     public Action? OnClick { get; set; }
 
+    // 初期表示とテーマ変更時に、Liked 状態に合った色とアクセシブル名へ同期する。
     public AnimatedFavoriteStar()
     {
         InitializeComponent();
@@ -56,10 +60,11 @@ public sealed partial class AnimatedFavoriteStar : UserControl
     /// <summary>UI Automation 用に、現在の Liked 状態に応じたアクセシブル名をセット。</summary>
     private void UpdateAutomationName()
     {
-        var name = Liked ? "お気に入り解除" : "お気に入りに追加";
+        var name = AnimatedFavoriteStarLogic.AutomationName(Liked);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(this, name);
     }
 
+    // Liked 変更時に見た目とアクセシブル名を更新し、必要ならアニメーションする。
     private static void OnLikedChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         try
@@ -73,48 +78,45 @@ public sealed partial class AnimatedFavoriteStar : UserControl
         catch (Exception ex) { AppLogger.Error($"AnimatedFavoriteStar.OnLikedChanged: {ex}"); }
     }
 
+    // Interactive 変更時にクリック領域の hit-test 可否を切り替える。
     private static void OnInteractiveChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         try
         {
-            if (d is AnimatedFavoriteStar control) control.InteractiveButton.IsHitTestVisible = control.Interactive;
+            if (d is AnimatedFavoriteStar control)
+            {
+                control.InteractiveButton.IsHitTestVisible = AnimatedFavoriteStarLogic.HitTestVisible(control.Interactive);
+            }
         }
         catch (Exception ex) { AppLogger.Error($"AnimatedFavoriteStar.OnInteractiveChanged: {ex}"); }
     }
 
+    // 現在の Liked 状態を塗りと光彩に反映する。
     private void ApplyLiked(bool animate)
     {
         try
         {
             var liked = Liked;
+            var brushPlan = AnimatedFavoriteStarLogic.BrushPlan(liked);
 
-            if (liked)
+            StarFill = ResolveBrush(brushPlan.FillResourceKey, brushPlan.FillFallback);
+            StarStroke = ResolveBrush(brushPlan.StrokeResourceKey, brushPlan.StrokeFallback);
+
+            var animationKind = AnimatedFavoriteStarLogic.AnimationKind(animate, liked, previousLiked);
+            if (animationKind != FavoriteStarAnimationKind.None)
             {
-                StarFill = ThemeHelper.Brush(this, "AFavorite") ?? new SolidColorBrush(Colors.Transparent);
-                StarStroke = ThemeHelper.Brush(this, "AFavorite") ?? new SolidColorBrush(Colors.Gray);
+                PlayFavoriteAnimation(animationKind);
             }
             else
             {
-                StarFill = new SolidColorBrush(Colors.Transparent);
-                StarStroke = ThemeHelper.Brush(this, "ATextFaint") ?? new SolidColorBrush(Colors.Gray);
-            }
-
-            if (animate && liked != previousLiked)
-            {
-                if (liked)
-                    PlayFadeInAnimation();
-                else
-                    PlayFadeOutAnimation();
-            }
-            else
-            {
+                var immediate = AnimatedFavoriteStarLogic.ImmediateVisual(liked);
                 var glowVisual = ElementCompositionPreview.GetElementVisual(Glow);
-                glowVisual.Opacity = liked ? 0.95f : 0f;
-                glowVisual.Scale = liked ? new Vector3(1f, 1f, 1f) : new Vector3(0.78f, 0.78f, 1f);
+                glowVisual.Opacity = immediate.GlowOpacity;
+                glowVisual.Scale = immediate.GlowScale;
             }
 
             previousLiked = liked;
-            InteractiveButton.IsHitTestVisible = Interactive;
+            InteractiveButton.IsHitTestVisible = AnimatedFavoriteStarLogic.HitTestVisible(Interactive);
         }
         catch (Exception ex)
         {
@@ -122,117 +124,131 @@ public sealed partial class AnimatedFavoriteStar : UserControl
         }
     }
 
-    private Vector3 GetCenter()
+    // テーマリソースキーとフォールバック種別から実際の Brush を解決する。
+    private Brush ResolveBrush(string? resourceKey, FavoriteStarBrushFallback fallback)
     {
-        var w = (float)ActualWidth;
-        var h = (float)ActualHeight;
-        if (w <= 0) w = 30f;
-        if (h <= 0) h = 30f;
-        return new Vector3(w / 2f, h / 2f, 0f);
-    }
-
-    private void PlayFadeInAnimation()
-    {
-        var starVisual = ElementCompositionPreview.GetElementVisual(InteractiveButton);
-        var glowVisual = ElementCompositionPreview.GetElementVisual(Glow);
-        var compositor = starVisual.Compositor;
-        var ease = compositor.CreateCubicBezierEasingFunction(new Vector2(0.16f, 1f), new Vector2(0.3f, 1f));
-        var center = GetCenter();
-
-        // Star bounce scale
-        var scaleAnim = compositor.CreateVector3KeyFrameAnimation();
-        scaleAnim.InsertKeyFrame(0f, new Vector3(0.9f, 0.9f, 1f));
-        scaleAnim.InsertKeyFrame(0.6f, new Vector3(1.08f, 1.08f, 1f), ease);
-        scaleAnim.InsertKeyFrame(1f, new Vector3(1f, 1f, 1f), ease);
-        scaleAnim.Duration = TimeSpan.FromMilliseconds(240);
-
-        // Star opacity
-        var starOpacity = compositor.CreateScalarKeyFrameAnimation();
-        starOpacity.InsertKeyFrame(0f, 0.55f);
-        starOpacity.InsertKeyFrame(1f, 1f, ease);
-        starOpacity.Duration = TimeSpan.FromMilliseconds(240);
-
-        // Glow opacity
-        var glowOpacity = compositor.CreateScalarKeyFrameAnimation();
-        glowOpacity.InsertKeyFrame(0f, 0f);
-        glowOpacity.InsertKeyFrame(1f, 0.95f, ease);
-        glowOpacity.Duration = TimeSpan.FromMilliseconds(240);
-
-        // Glow scale (expand from small)
-        var glowScale = compositor.CreateVector3KeyFrameAnimation();
-        glowScale.InsertKeyFrame(0f, new Vector3(0.72f, 0.72f, 1f));
-        glowScale.InsertKeyFrame(1f, new Vector3(1f, 1f, 1f), ease);
-        glowScale.Duration = TimeSpan.FromMilliseconds(240);
-
-        starVisual.CenterPoint = center;
-        glowVisual.CenterPoint = center;
-
-        starVisual.StartAnimation("Scale", scaleAnim);
-        starVisual.StartAnimation("Opacity", starOpacity);
-        glowVisual.StartAnimation("Opacity", glowOpacity);
-        glowVisual.StartAnimation("Scale", glowScale);
-    }
-
-    private void PlayFadeOutAnimation()
-    {
-        var starVisual = ElementCompositionPreview.GetElementVisual(InteractiveButton);
-        var glowVisual = ElementCompositionPreview.GetElementVisual(Glow);
-        var compositor = starVisual.Compositor;
-        var ease = compositor.CreateCubicBezierEasingFunction(new Vector2(0.16f, 1f), new Vector2(0.3f, 1f));
-        var center = GetCenter();
-
-        // Star fade out
-        var starOpacity = compositor.CreateScalarKeyFrameAnimation();
-        starOpacity.InsertKeyFrame(0f, 1f);
-        starOpacity.InsertKeyFrame(1f, 0.75f, ease);
-        starOpacity.Duration = TimeSpan.FromMilliseconds(200);
-
-        // Star shrink
-        var scaleAnim = compositor.CreateVector3KeyFrameAnimation();
-        scaleAnim.InsertKeyFrame(0f, new Vector3(1f, 1f, 1f));
-        scaleAnim.InsertKeyFrame(1f, new Vector3(0.92f, 0.92f, 1f), ease);
-        scaleAnim.Duration = TimeSpan.FromMilliseconds(200);
-
-        // Glow fade out
-        var glowOpacity = compositor.CreateScalarKeyFrameAnimation();
-        glowOpacity.InsertKeyFrame(0f, 0.95f);
-        glowOpacity.InsertKeyFrame(1f, 0f, ease);
-        glowOpacity.Duration = TimeSpan.FromMilliseconds(200);
-
-        // Glow shrink
-        var glowScale = compositor.CreateVector3KeyFrameAnimation();
-        glowScale.InsertKeyFrame(0f, new Vector3(1f, 1f, 1f));
-        glowScale.InsertKeyFrame(1f, new Vector3(0.82f, 0.82f, 1f), ease);
-        glowScale.Duration = TimeSpan.FromMilliseconds(200);
-
-        starVisual.CenterPoint = center;
-        glowVisual.CenterPoint = center;
-
-        var batch = compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
-
-        starVisual.StartAnimation("Scale", scaleAnim);
-        starVisual.StartAnimation("Opacity", starOpacity);
-        glowVisual.StartAnimation("Opacity", glowOpacity);
-        glowVisual.StartAnimation("Scale", glowScale);
-
-        batch.End();
-        batch.Completed += (_, _) =>
+        if (resourceKey is not null)
         {
-            DispatcherQueue?.TryEnqueue(() =>
-            {
-                starVisual.Opacity = 1f;
-                starVisual.Scale = new Vector3(1f, 1f, 1f);
-                glowVisual.Opacity = 0f;
-                glowVisual.Scale = new Vector3(0.78f, 0.78f, 1f);
-            });
-        };
+            var themeBrush = ThemeHelper.Brush(this, resourceKey);
+            if (themeBrush is not null) return themeBrush;
+        }
+        return FallbackBrush(fallback);
     }
 
+    // テーマリソースが取れないときの既定 Brush を返す。
+    private static Brush FallbackBrush(FavoriteStarBrushFallback fallback)
+        => fallback == FavoriteStarBrushFallback.Gray
+            ? new SolidColorBrush(Colors.Gray)
+            : new SolidColorBrush(Colors.Transparent);
+
+    // Composition の拡大縮小中心として使うコントロール中央座標を返す。
+    private Vector3 GetCenter()
+        => AnimatedFavoriteStarLogic.Center(ActualWidth, ActualHeight);
+
+    // お気に入り状態変更時の星と光彩のアニメーションを再生する。
+    private void PlayFavoriteAnimation(FavoriteStarAnimationKind kind)
+    {
+        var plan = AnimatedFavoriteStarLogic.AnimationPlan(kind);
+        if (plan is null) return;
+
+        var starVisual = ElementCompositionPreview.GetElementVisual(InteractiveButton);
+        var glowVisual = ElementCompositionPreview.GetElementVisual(Glow);
+        var compositor = starVisual.Compositor;
+        var ease = compositor.CreateCubicBezierEasingFunction(plan.EaseControlPoint1, plan.EaseControlPoint2);
+        var center = GetCenter();
+
+        starVisual.CenterPoint = center;
+        glowVisual.CenterPoint = center;
+
+        var starScale = CreateVectorAnimation(compositor, plan.DurationMilliseconds, plan.StarScaleFrames, ease);
+        var starOpacity = CreateScalarAnimation(compositor, plan.DurationMilliseconds, plan.StarOpacityFrames, ease);
+        var glowOpacity = CreateScalarAnimation(compositor, plan.DurationMilliseconds, plan.GlowOpacityFrames, ease);
+        var glowScale = CreateVectorAnimation(compositor, plan.DurationMilliseconds, plan.GlowScaleFrames, ease);
+
+        if (kind == FavoriteStarAnimationKind.FadeOut)
+        {
+            var batch = compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
+            StartFavoriteAnimations(starVisual, glowVisual, starScale, starOpacity, glowOpacity, glowScale);
+            batch.End();
+            batch.Completed += (_, _) => ResetAfterFadeOut(starVisual, glowVisual);
+            return;
+        }
+
+        StartFavoriteAnimations(starVisual, glowVisual, starScale, starOpacity, glowOpacity, glowScale);
+    }
+
+    // plan の scalar keyframe から Composition アニメーションを作る。
+    private static ScalarKeyFrameAnimation CreateScalarAnimation(
+        Compositor compositor,
+        int durationMilliseconds,
+        IReadOnlyList<FavoriteStarScalarFrame> frames,
+        CompositionEasingFunction ease)
+    {
+        var animation = compositor.CreateScalarKeyFrameAnimation();
+        foreach (var frame in frames)
+        {
+            if (frame.Ease == FavoriteStarEaseKind.Main)
+                animation.InsertKeyFrame(frame.Progress, frame.Value, ease);
+            else
+                animation.InsertKeyFrame(frame.Progress, frame.Value);
+        }
+        animation.Duration = TimeSpan.FromMilliseconds(durationMilliseconds);
+        return animation;
+    }
+
+    // plan の Vector3 keyframe から Composition アニメーションを作る。
+    private static Vector3KeyFrameAnimation CreateVectorAnimation(
+        Compositor compositor,
+        int durationMilliseconds,
+        IReadOnlyList<FavoriteStarVectorFrame> frames,
+        CompositionEasingFunction ease)
+    {
+        var animation = compositor.CreateVector3KeyFrameAnimation();
+        foreach (var frame in frames)
+        {
+            if (frame.Ease == FavoriteStarEaseKind.Main)
+                animation.InsertKeyFrame(frame.Progress, frame.Value, ease);
+            else
+                animation.InsertKeyFrame(frame.Progress, frame.Value);
+        }
+        animation.Duration = TimeSpan.FromMilliseconds(durationMilliseconds);
+        return animation;
+    }
+
+    // 作成済みの星と光彩アニメーションを対象 Visual に開始する。
+    private static void StartFavoriteAnimations(
+        Visual starVisual,
+        Visual glowVisual,
+        Vector3KeyFrameAnimation starScale,
+        ScalarKeyFrameAnimation starOpacity,
+        ScalarKeyFrameAnimation glowOpacity,
+        Vector3KeyFrameAnimation glowScale)
+    {
+        starVisual.StartAnimation("Scale", starScale);
+        starVisual.StartAnimation("Opacity", starOpacity);
+        glowVisual.StartAnimation("Opacity", glowOpacity);
+        glowVisual.StartAnimation("Scale", glowScale);
+    }
+
+    // FadeOut の終了後に一時的な縮小・透明度を通常状態へ戻す。
+    private void ResetAfterFadeOut(Visual starVisual, Visual glowVisual)
+    {
+        var completion = AnimatedFavoriteStarLogic.FadeOutCompletionVisual();
+        DispatcherQueue?.TryEnqueue(() =>
+        {
+            starVisual.Opacity = completion.StarOpacity;
+            starVisual.Scale = completion.StarScale;
+            glowVisual.Opacity = completion.GlowOpacity;
+            glowVisual.Scale = completion.GlowScale;
+        });
+    }
+
+    // クリック可能な状態のときだけ外部コールバックを実行する。
     private void InteractiveButton_Click(object sender, RoutedEventArgs e)
     {
         try
         {
-            if (Interactive) OnClick?.Invoke();
+            if (AnimatedFavoriteStarLogic.ShouldInvokeClick(Interactive)) OnClick?.Invoke();
         }
         catch (Exception ex) { AppLogger.Error($"AnimatedFavoriteStar.InteractiveButton_Click: {ex}"); }
     }

@@ -57,6 +57,7 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
     /// <summary>写真一覧が全置換されたときに発火する（scroll-to-top 用）。</summary>
     public Action? OnPhotosReplaced { get; set; }
 
+    // 写真取得、イベント購読、通知、UI スレッド実行、サムネイル生成の依存を受け取る。
     public GalleryPhotosState(PhotoService photoService, LocalEventBus eventBus, ToastService toastService, DispatcherService dispatcherService, ThumbnailWorker thumbnailWorker)
     {
         AppLogger.Trace("GalleryPhotosState.ctor: enter");
@@ -82,28 +83,7 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
         AppLogger.Trace("GalleryPhotosState.loadMonthSummary: enter");
         try
         {
-            var payload = new PhotoQueryPayload(
-                startDate: string.IsNullOrWhiteSpace(filters.dateFrom) ? null : filters.dateFrom,
-                endDate: string.IsNullOrWhiteSpace(filters.dateTo) ? null : filters.dateTo,
-                worldQuery: string.IsNullOrWhiteSpace(filters.searchQuery) ? null : filters.searchQuery.Trim(),
-                worldExacts: filters.worldFilters.Count > 0 ? filters.worldFilters : null,
-                orientation: filters.orientationFilter == "all" ? null : filters.orientationFilter,
-                favoritesOnly: filters.favoritesOnly ? true : null,
-                tagFilters: filters.tagFilters.Count > 0 ? filters.tagFilters : null,
-                sourceSlot: filters.sourceSlot,
-                limit: null,
-                offset: null);
-            var summaries = await photoService.GetMonthSummaryAsync(payload).ConfigureAwait(false);
-
-            var groups = new List<GalleryMonthGroup>(summaries.Count);
-            var runningIndex = 0;
-            foreach (var s in summaries)
-            {
-                var key = $"{s.Year:D4}-{s.Month:D2}";
-                groups.Add(new GalleryMonthGroup(key, s.Year, s.Month, $"{s.Month}月", runningIndex, s.Count));
-                runningIndex += s.Count;
-            }
-
+            var groups = await fetchMonthSummary(filters).ConfigureAwait(false);
             monthGroups = groups;
             OnMonthGroupsChanged?.Invoke(groups);
             AppLogger.Trace($"GalleryPhotosState.loadMonthSummary: exit groups={groups.Count}");
@@ -112,6 +92,34 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
         {
             AppLogger.Error($"GalleryPhotosState.loadMonthSummary: threw: {ex}");
         }
+    }
+
+    // 現在フィルタを月別件数クエリへ変換し、月ナビ用の連続インデックスを作る。
+    private async Task<IReadOnlyList<GalleryMonthGroup>> fetchMonthSummary(PhotoQueryFilters currentFilters)
+    {
+        var payload = new PhotoQueryPayload(
+            startDate: string.IsNullOrWhiteSpace(currentFilters.dateFrom) ? null : currentFilters.dateFrom,
+            endDate: string.IsNullOrWhiteSpace(currentFilters.dateTo) ? null : currentFilters.dateTo,
+            worldQuery: string.IsNullOrWhiteSpace(currentFilters.searchQuery) ? null : currentFilters.searchQuery.Trim(),
+            worldExacts: currentFilters.worldFilters.Count > 0 ? currentFilters.worldFilters : null,
+            orientation: currentFilters.orientationFilter == "all" ? null : currentFilters.orientationFilter,
+            favoritesOnly: currentFilters.favoritesOnly ? true : null,
+            tagFilters: currentFilters.tagFilters.Count > 0 ? currentFilters.tagFilters : null,
+            sourceSlot: currentFilters.sourceSlot,
+            limit: null,
+            offset: null);
+        var summaries = await photoService.GetMonthSummaryAsync(payload).ConfigureAwait(false);
+
+        var groups = new List<GalleryMonthGroup>(summaries.Count);
+        var runningIndex = 0;
+        foreach (var s in summaries)
+        {
+            var key = $"{s.Year:D4}-{s.Month:D2}";
+            groups.Add(new GalleryMonthGroup(key, s.Year, s.Month, $"{s.Month}月", runningIndex, s.Count));
+            runningIndex += s.Count;
+        }
+
+        return groups;
     }
 
     /// <summary>
@@ -167,29 +175,11 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
             photosRef.Clear();
             photosRef.AddRange(photos);
 
-            var nextPhotoMap = photosRef.ToDictionary(photo => photo.PhotoPath, photo => photo);
-
-            // displayItems 内の Photo 参照を新しいインスタンスに差し替える
-            static PhotoGridItem SyncItem(PhotoGridItem item, IReadOnlyDictionary<string, PhotoThumbnailItem> map)
-            {
-                if (map.TryGetValue(item.Photo.PhotoPath, out var nextPhoto))
-                {
-                    item.Photo = nextPhoto;
-                }
-
-                if (item.GroupPhotos is not null)
-                {
-                    item.GroupPhotos = item.GroupPhotos
-                        .Select(photo => map.TryGetValue(photo.PhotoPath, out var replacement) ? replacement : photo)
-                        .ToArray();
-                }
-
-                return item;
-            }
+            var nextPhotoMap = GalleryPhotosStateLogic.BuildReplacementMap(photosRef);
 
             for (var i = 0; i < displayItems.Count; i++)
             {
-                displayItems[i] = SyncItem(displayItems[i], nextPhotoMap);
+                displayItems[i] = GalleryPhotosStateLogic.SyncDisplayItem(displayItems[i], nextPhotoMap);
             }
 
             if (autoGenerateThumbnails)
@@ -209,12 +199,7 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
     public void kickThumbnailsForExternal(IReadOnlyList<PhotoThumbnailItem> items)
     {
         if (items.Count == 0) return;
-        var photoMap = new Dictionary<string, PhotoThumbnailItem>(items.Count);
-        foreach (var p in items)
-        {
-            if (!string.IsNullOrEmpty(p.PhotoPath))
-                photoMap.TryAdd(p.PhotoPath, p);
-        }
+        var photoMap = GalleryPhotosStateLogic.BuildThumbnailRequestMap(items, requireMissingGridThumb: false);
         if (photoMap.Count == 0) return;
         kickThumbnailGeneration(photoMap, cancelPrevious: false);
     }
@@ -226,12 +211,7 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
     public void requestVisibleThumbnails(IReadOnlyList<PhotoThumbnailItem> items)
     {
         if (items.Count == 0) return;
-        var photoMap = new Dictionary<string, PhotoThumbnailItem>(items.Count);
-        foreach (var p in items)
-        {
-            if (!string.IsNullOrEmpty(p.PhotoPath) && string.IsNullOrEmpty(p.GridThumbPath))
-                photoMap.TryAdd(p.PhotoPath, p);
-        }
+        var photoMap = GalleryPhotosStateLogic.BuildThumbnailRequestMap(items, requireMissingGridThumb: true);
         if (photoMap.Count == 0) return;
         kickThumbnailGeneration(photoMap, cancelPrevious: false);
     }
@@ -248,8 +228,8 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
     ///   スクロール中に何度も呼ばれる経路で CTS を作り直すと、走り始めの生成が
     ///   即キャンセルされて UI が真っ白なまま、という症状になるため。
     ///
-    /// CTS の交換にあたっての race 対策が肝で、Volatile.Read + CompareExchange を
-    /// 使うことで「null チェック → null なら自分の CTS を代入」を原子化している。
+    /// CTS の交換では、Volatile.Read + CompareExchange で
+    /// 「null チェック → null なら自分の CTS を代入」を一体の処理にしている。
     /// 単純な ??= だと読み込みと代入の間に別スレッドが介入する余地がある。
     /// </summary>
     private void kickThumbnailGeneration(IReadOnlyDictionary<string, PhotoThumbnailItem> photoMap, bool cancelPrevious = true)
@@ -270,9 +250,8 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
         }
         else
         {
-            // `??=` は読み込み→比較→代入が直列でないため、Visible thumbnails 要求が
-            // 連続して飛んでくると複数の CTS が同時生成され、片方が即 GC される race がある。
-            // CompareExchange で「null のときだけ自分の作った CTS を代入」を原子化する。
+            // `??=` は読み込み→比較→代入が一体ではないため、連続要求で複数の CTS が作られる。
+            // CompareExchange で「null のときだけ自分の CTS を代入」を一体化する。
             var existing = Volatile.Read(ref thumbnailCts);
             if (existing is null)
             {
@@ -305,15 +284,12 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
             return;
         }
 
-        var targets = photoMap.Values
-            .Where(p => string.IsNullOrEmpty(p.GridThumbPath) && !string.IsNullOrEmpty(p.PhotoPath))
-            .Select(p => (path: p.PhotoPath, slot: p.SourceSlot))
-            .ToList();
+        var targets = GalleryPhotosStateLogic.BuildThumbnailTargets(photoMap.Values);
         if (targets.Count == 0) return;
 
         AppLogger.Trace($"GalleryPhotosState.kickThumbnailGeneration: dispatching count={targets.Count} cancel={cancelPrevious}");
         // Task.Run の第二引数に ct を渡すと、Task.Run 起動前に CTS が Dispose された場合
-        // ObjectDisposedException が発生する race がある。token は内部で参照するだけにする。
+        // ObjectDisposedException を避けるため、token は Task 内で参照するだけにする。
         _ = Task.Run(async () =>
         {
             try
@@ -333,27 +309,29 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
         });
     }
 
-    private PhotoQueryPayload buildQueryParams()
+    // PhotoQueryFilters を PhotoService が受け取る DTO へ変換する。
+    private PhotoQueryPayload buildQueryParams(PhotoQueryFilters currentFilters)
     {
         return new PhotoQueryPayload(
-            startDate: string.IsNullOrWhiteSpace(filters.dateFrom) ? null : filters.dateFrom,
-            endDate: string.IsNullOrWhiteSpace(filters.dateTo) ? null : filters.dateTo,
-            worldQuery: string.IsNullOrWhiteSpace(filters.searchQuery) ? null : filters.searchQuery.Trim(),
-            worldExacts: filters.worldFilters.Count > 0 ? filters.worldFilters : null,
-            orientation: filters.orientationFilter == "all" ? null : filters.orientationFilter,
-            favoritesOnly: filters.favoritesOnly ? true : null,
-            tagFilters: filters.tagFilters.Count > 0 ? filters.tagFilters : null,
-            sourceSlot: filters.sourceSlot,
+            startDate: string.IsNullOrWhiteSpace(currentFilters.dateFrom) ? null : currentFilters.dateFrom,
+            endDate: string.IsNullOrWhiteSpace(currentFilters.dateTo) ? null : currentFilters.dateTo,
+            worldQuery: string.IsNullOrWhiteSpace(currentFilters.searchQuery) ? null : currentFilters.searchQuery.Trim(),
+            worldExacts: currentFilters.worldFilters.Count > 0 ? currentFilters.worldFilters : null,
+            orientation: currentFilters.orientationFilter == "all" ? null : currentFilters.orientationFilter,
+            favoritesOnly: currentFilters.favoritesOnly ? true : null,
+            tagFilters: currentFilters.tagFilters.Count > 0 ? currentFilters.tagFilters : null,
+            sourceSlot: currentFilters.sourceSlot,
             limit: null,
             offset: null,
             includePhash: null,
-            sortMode: filters.sortMode);
+            sortMode: currentFilters.sortMode);
     }
 
-    private async Task<IReadOnlyList<PhotoThumbnailItem>> fetchAllPhotos()
+    // 現在フィルタに一致する写真を全件取得し、表示用アイテムへ変換する。
+    private async Task<IReadOnlyList<PhotoThumbnailItem>> fetchAllPhotos(PhotoQueryFilters currentFilters)
     {
         AppLogger.Trace("GalleryPhotosState.fetchAllPhotos: enter");
-        var result = await photoService.GetPhotosAsync(buildQueryParams()).ConfigureAwait(false);
+        var result = await photoService.GetPhotosAsync(buildQueryParams(currentFilters)).ConfigureAwait(false);
         AppLogger.Trace($"GalleryPhotosState.fetchAllPhotos: exit total={result.total}");
         return result.items.Select(PhotoThumbnailItem.FromDto).ToArray();
     }
@@ -370,7 +348,7 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
         if (groupingMode == GroupingMode.world)
         {
             var groups = photosRef
-                .GroupBy(p => p.WorldName ?? "")
+                .GroupBy(p => GalleryPhotosStateLogic.BuildWorldGroupKey(p.WorldName))
                 .OrderByDescending(g => g.First().Timestamp)
                 .Select(g =>
                 {
@@ -379,7 +357,8 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
                     {
                         Photo = representative,
                         GroupCount = g.Count(),
-                        GroupKey = representative.WorldName ?? "",
+                        GroupKey = g.Key,
+                        GroupPhotos = g.ToArray(),
                     };
                 })
                 .ToArray();
@@ -432,12 +411,13 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
 
         try
         {
-            // 月集計と全件取得は独立した SQL なので Task.WhenAll で並行発行する。
-            // 旧実装は逐次 await により月集計が写真取得の後ろにシリアル化されていた。
-            var photosTask = fetchAllPhotos();
-            var monthTask = loadMonthSummary();
+            // 月集計と全件取得は独立した SQL なので、同じフィルタ snapshot で並行取得する。
+            var filterSnapshot = filters;
+            var photosTask = fetchAllPhotos(filterSnapshot);
+            var monthTask = fetchMonthSummary(filterSnapshot);
             await Task.WhenAll(photosTask, monthTask).ConfigureAwait(false);
             var allPhotos = await photosTask.ConfigureAwait(false);
+            var nextMonthGroups = await monthTask.ConfigureAwait(false);
             if (transitionToken != token)
             {
                 AppLogger.Trace("GalleryPhotosState.loadPhotos: superseded by newer load");
@@ -448,6 +428,9 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
 
             await dispatcherService.RunOnUiThread(() =>
             {
+                monthGroups = nextMonthGroups;
+                OnMonthGroupsChanged?.Invoke(nextMonthGroups);
+
                 photosRef.Clear();
                 photosRef.AddRange(allPhotos);
 
@@ -456,7 +439,7 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
                 rebuildDisplayItems(filters.groupingMode);
                 OnPhotosReplaced?.Invoke();
 
-                var photoMap = allPhotos.ToDictionary(p => p.PhotoPath, p => p);
+                var photoMap = GalleryPhotosStateLogic.BuildReplacementMap(allPhotos);
                 kickThumbnailGeneration(photoMap);
             }).ConfigureAwait(false);
         }

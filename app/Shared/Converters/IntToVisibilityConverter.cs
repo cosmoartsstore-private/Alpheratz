@@ -11,6 +11,7 @@ namespace Alpheratz.Shared.Converters;
 /// </summary>
 public sealed class IntToVisibilityConverter : IValueConverter
 {
+    /// <summary>正の int を Visible、それ以外を Collapsed に変換する。parameter が "invert" なら結果を反転する。</summary>
     public object Convert(object value, Type targetType, object parameter, string language)
     {
         var positive = value is int n && n > 0;
@@ -19,6 +20,7 @@ public sealed class IntToVisibilityConverter : IValueConverter
         return positive ? Visibility.Visible : Visibility.Collapsed;
     }
 
+    /// <summary>表示制御専用の変換なので逆変換は提供しない。</summary>
     public object ConvertBack(object value, Type targetType, object parameter, string language)
         => throw new NotSupportedException();
 }

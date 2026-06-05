@@ -42,6 +42,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
     /// </summary>
     public Func<IReadOnlyList<PhotoThumbnailItem>?>? drillDownPhotosProvider { get; set; }
 
+    // ギャラリーに必要なサービスとサブステートを受け取り、フィルタ変更の監視を開始する。
     public GalleryViewModel(
         PhotoService photoService,
         WorldService worldService,
@@ -70,6 +71,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryViewModel.ctor: exit");
     }
 
+    // ViewModel 破棄時にフィルタ監視を解除し、画面参照の保持を止める。
     public void Cleanup()
     {
         filtersState.PropertyChanged -= onFiltersChanged;
@@ -129,6 +131,12 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         AppLogger.Trace($"GalleryViewModel.onFiltersCollectionChanged: enter action={e.Action}");
         try
         {
+            if (filtersState.IsBatchUpdating)
+            {
+                AppLogger.Trace("GalleryViewModel.onFiltersCollectionChanged: batch updating, skip");
+                return;
+            }
+
             _ = applyFiltersAndReload();
         }
         catch (Exception ex)
@@ -170,7 +178,8 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         try
         {
             await Task.Delay(400, token).ConfigureAwait(false);
-            filtersState.DebouncedQuery = filtersState.SearchQuery;
+            var parsed = SearchCommandParser.Parse(filtersState.SearchQuery);
+            filtersState.DebouncedQuery = parsed.PlainText;
         }
         catch (OperationCanceledException)
         {
@@ -187,6 +196,20 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryViewModel.debounceAndApplySearch: exit");
     }
 
+    // 保留中の検索デバウンスを取り消し、CancellationTokenSource を破棄する。
+    private void cancelSearchDebounce()
+    {
+        var cts = Interlocked.Exchange(ref searchDebounceCts, null);
+        if (cts is null) return;
+
+        try { cts.Cancel(); }
+        catch (ObjectDisposedException) { }
+        catch (Exception ex) { AppLogger.Warn($"GalleryViewModel.cancelSearchDebounce: cancel threw: {ex}"); }
+
+        try { cts.Dispose(); }
+        catch (Exception ex) { AppLogger.Warn($"GalleryViewModel.cancelSearchDebounce: dispose threw: {ex}"); }
+    }
+
     /// <summary>現在のフィルタ条件を photosState に反映し、先頭からロードし直す。</summary>
     public Task applyFiltersAndReload()
     {
@@ -197,6 +220,36 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         return task;
     }
 
+    // 検索欄の現在値を即時解析し、コマンド反映と再ロードを同期して実行する。
+    public void applySearchNow()
+    {
+        AppLogger.Trace("GalleryViewModel.applySearchNow: enter");
+        try
+        {
+            cancelSearchDebounce();
+            var parsed = SearchCommandParser.Parse(filtersState.SearchQuery);
+            if (parsed.HasCommands)
+            {
+                filtersState.applySearchCommands(parsed, raiseBatchCompleted: false);
+            }
+
+            if (filtersState.DebouncedQuery == parsed.PlainText)
+            {
+                _ = applyFiltersAndReload();
+            }
+            else
+            {
+                filtersState.DebouncedQuery = parsed.PlainText;
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"GalleryViewModel.applySearchNow: threw: {ex}");
+        }
+        AppLogger.Trace("GalleryViewModel.applySearchNow: exit");
+    }
+
+    // UI ステートを PhotoService が受け取れるクエリ条件へ変換する。
     private PhotoQueryFilters buildCurrentFilters()
     {
         AppLogger.Trace("GalleryViewModel.buildCurrentFilters: enter");
@@ -224,15 +277,14 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         return filters;
     }
 
+    // DB からワールド候補を読み込み、フィルタ一覧へ反映する。
     public async Task loadWorldFilterOptions()
     {
         AppLogger.Trace("GalleryViewModel.loadWorldFilterOptions: enter");
         try
         {
             var options = await photoService.GetWorldFilterOptionsAsync().ConfigureAwait(false);
-            filtersState.worldFilterOptions.Clear();
-            foreach (var opt in options)
-                filtersState.worldFilterOptions.Add(opt);
+            filtersState.worldFilterOptions.ReplaceAll(options);
         }
         catch (Exception ex)
         {
@@ -241,14 +293,32 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryViewModel.loadWorldFilterOptions: exit");
     }
 
-    public async Task toggleFavorite(string photoPath, bool current)
+    // 現在のタグ別件数を読み込み、タグフィルタ表示を更新する。
+    public async Task loadTagFilterCounts()
     {
-        AppLogger.Trace($"GalleryViewModel.toggleFavorite: enter photoPath={photoPath} current={current}");
+        AppLogger.Trace("GalleryViewModel.loadTagFilterCounts: enter");
+        try
+        {
+            var counts = await photoService.GetTagFilterCountsAsync().ConfigureAwait(false);
+            filtersState.setTagFilterCounts(counts);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Warn($"GalleryViewModel.loadTagFilterCounts: threw: {ex}");
+        }
+        AppLogger.Trace("GalleryViewModel.loadTagFilterCounts: exit");
+    }
+
+    // 対象写真のお気に入り状態を反転し、表示中の同一写真にも反映する。
+    public async Task toggleFavorite(string photoPath, bool currentIsFavorite)
+    {
+        AppLogger.Trace($"GalleryViewModel.toggleFavorite: enter photoPath={photoPath} current={currentIsFavorite}");
         var currentPhoto = photosState.photos.FirstOrDefault(photo => photo.PhotoPath == photoPath);
         try
         {
-            await photoService.SetPhotoFavoriteAsync(photoPath, !current, currentPhoto?.SourceSlot ?? 1).ConfigureAwait(false);
-            updatePhoto(photoPath, photo => photo.IsFavorite = !current);
+            var nextIsFavorite = !currentIsFavorite;
+            await photoService.SetPhotoFavoriteAsync(photoPath, nextIsFavorite, currentPhoto?.SourceSlot ?? 1).ConfigureAwait(false);
+            updatePhoto(photoPath, photo => photo.IsFavorite = nextIsFavorite);
         }
         catch (Exception err)
         {
@@ -258,6 +328,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryViewModel.toggleFavorite: exit");
     }
 
+    // 対象写真にタグを追加し、重複・空文字・長すぎるタグは保存前に弾く。
     public async Task addTag(string photoPath, string tag)
     {
         AppLogger.Trace($"GalleryViewModel.addTag: enter photoPath={photoPath} tag={tag}");
@@ -289,6 +360,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
                 .Concat([normalized])
                 .OrderBy(item => item, StringComparer.Create(new CultureInfo("ja-JP"), false))
                 .ToArray());
+            await loadTagFilterCounts().ConfigureAwait(false);
             toastService.addToast("タグを追加しました。");
         }
         catch (Exception err)
@@ -299,6 +371,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryViewModel.addTag: exit");
     }
 
+    // 対象写真からタグを削除し、タグ件数と表示中データを更新する。
     public async Task removeTag(string photoPath, string tag)
     {
         AppLogger.Trace($"GalleryViewModel.removeTag: enter photoPath={photoPath} tag={tag}");
@@ -307,6 +380,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         {
             await photoService.RemovePhotoTagAsync(photoPath, tag, currentPhoto?.SourceSlot ?? 1).ConfigureAwait(false);
             updatePhoto(photoPath, photo => photo.Tags = photo.Tags.Where(item => item != tag).ToArray());
+            await loadTagFilterCounts().ConfigureAwait(false);
             toastService.addToast("タグを削除しました。");
         }
         catch (Exception err)
@@ -350,6 +424,12 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
                 updateSelectedPhoto(selectedPhotoView);
             }
 
+            if (filtersState.GroupingMode == GroupingMode.world)
+            {
+                photosState.rebuildDisplayItems(filtersState.GroupingMode);
+            }
+            await loadWorldFilterOptions().ConfigureAwait(false);
+
             toastService.addToast("ワールド情報を反映しました。");
         }
         catch (Exception err)
@@ -360,6 +440,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryViewModel.applySimilarWorldMatch: exit");
     }
 
+    // ワールド未判定写真の PDQ 解析を開始し、結果をトーストで通知する。
     public async Task handleStartUnknownWorldAnalysis()
     {
         AppLogger.Trace("GalleryViewModel.handleStartUnknownWorldAnalysis: enter");
@@ -376,6 +457,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryViewModel.handleStartUnknownWorldAnalysis: exit");
     }
 
+    // 写真カードの起動操作を、複数選択の切替または詳細表示へ振り分ける。
     public void handlePhotoActivate(PhotoGridItem item, bool shiftKey, Action<PhotoThumbnailItem> onSelectPhoto)
     {
         AppLogger.Trace($"GalleryViewModel.handlePhotoActivate: enter shiftKey={shiftKey}");
@@ -397,6 +479,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryViewModel.handlePhotoActivate: exit");
     }
 
+    // ギャラリーの絞り込み条件を初期状態へ戻す。
     public void resetFilters()
     {
         AppLogger.Trace("GalleryViewModel.resetFilters: enter");
@@ -404,6 +487,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryViewModel.resetFilters: exit");
     }
 
+    // 選択中写真のお気に入り状態を一括変更し、ローカル表示にも反映する。
     public async Task bulkSetFavorite(bool isFavorite)
     {
         AppLogger.Trace($"GalleryViewModel.bulkSetFavorite: enter isFavorite={isFavorite}");
@@ -424,15 +508,42 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryViewModel.bulkSetFavorite: exit");
     }
 
+    // 選択中写真へタグを一括追加し、各写真のタグ配列を重複なく更新する。
     public async Task bulkAddTag(string tag)
     {
         AppLogger.Trace($"GalleryViewModel.bulkAddTag: enter tag={tag}");
+        var normalized = tag.Trim();
+        if (string.IsNullOrEmpty(normalized))
+        {
+            AppLogger.Trace("GalleryViewModel.bulkAddTag: skip (empty)");
+            return;
+        }
+
+        if (normalized.Length > MAX_TAG_LENGTH)
+        {
+            AppLogger.Trace("GalleryViewModel.bulkAddTag: skip (too long)");
+            toastService.addToast($"タグは{MAX_TAG_LENGTH}文字以内で入力してください。", ToastType.error);
+            return;
+        }
+
         var refs = selectionState.selectedPhotoRefs.ToList();
-        if (refs.Count == 0 || string.IsNullOrWhiteSpace(tag)) return;
+        if (refs.Count == 0) return;
         try
         {
-            await photoService.BulkAddPhotoTagAsync(refs, tag).ConfigureAwait(false);
-            toastService.addToast($"タグ \"{tag}\" を {refs.Count} 枚に追加しました");
+            await photoService.BulkAddPhotoTagAsync(refs, normalized).ConfigureAwait(false);
+            foreach (var r in refs)
+            {
+                updatePhoto(r.photo_path, photo =>
+                {
+                    if (photo.Tags.Contains(normalized)) return;
+                    photo.Tags = photo.Tags
+                        .Concat([normalized])
+                        .OrderBy(item => item, StringComparer.Create(new CultureInfo("ja-JP"), false))
+                        .ToArray();
+                });
+            }
+            await loadTagFilterCounts().ConfigureAwait(false);
+            toastService.addToast($"タグ \"{normalized}\" を {refs.Count} 枚に追加しました");
         }
         catch (Exception err)
         {
@@ -442,6 +553,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryViewModel.bulkAddTag: exit");
     }
 
+    // 選択中写真を指定フォルダへコピーし、コピー件数とスキップ件数を通知する。
     public async Task bulkCopyPhotos(string destinationFolder)
     {
         AppLogger.Trace($"GalleryViewModel.bulkCopyPhotos: enter destinationFolder={destinationFolder}");
@@ -449,8 +561,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         if (refs.Count == 0 || string.IsNullOrWhiteSpace(destinationFolder)) return;
         try
         {
-            // R2-A-7: BulkCopyPhotosAsync が (copied, skipped) を返すようになったので、
-            // スキップが発生した場合はトースト文言にも反映する。
+            // 既存ファイル名でスキップされた件数も、コピー結果としてユーザーに伝える。
             var (copied, skipped) = await photoService.BulkCopyPhotosAsync(refs, destinationFolder).ConfigureAwait(false);
             if (skipped == 0)
                 toastService.addToast($"{copied} 枚のファイルをコピーしました");
@@ -468,7 +579,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
     /// <summary>
     /// 指定グループの写真一覧を取得する（ドリルダウン用）。
     /// 既存の photosState.photos 参照を再利用せず、毎回 SQL を発行して
-    /// 新規メモリの PhotoThumbnailItem を生成する。これにより
+    /// 新しい PhotoThumbnailItem インスタンスを生成する。これにより
     /// メインビューの状態変化（並べ替え・差し替え）の影響を受けず、
     /// ドリルダウンは独立したコレクションとして振る舞える。
     /// 表示はメインと同じパイプライン（FromDto → サムネイル遅延生成）。

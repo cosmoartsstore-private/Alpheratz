@@ -14,6 +14,7 @@ public sealed class MatchPercentConverter : IValueConverter
 {
     private const double PdqMaxDistance = 256.0;
 
+    /// <summary>PDQ 距離を 0-100% の一致率文字列へ変換する。</summary>
     public object Convert(object value, Type targetType, object parameter, string language)
     {
         // int? は boxing で int として届く。値が無い場合のみ "—" を返す。
@@ -27,6 +28,7 @@ public sealed class MatchPercentConverter : IValueConverter
         return "一致率: —";
     }
 
+    /// <summary>表示専用の変換なので逆変換は提供しない。</summary>
     public object ConvertBack(object value, Type targetType, object parameter, string language)
         => throw new NotSupportedException();
 }

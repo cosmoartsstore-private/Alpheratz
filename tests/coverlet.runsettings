@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+          <ExcludeByFile>**/artifacts/obj/**/*.cs,**/*.xaml.cs,**/Shared/Animations/AnimationHelper.cs,**/Shared/Controls/WrapPanel.cs,**/Shared/Services/ThemeHelper.cs,**/Shared/Services/DialogService.cs,**/Features/Shell/ShellPage.RuntimeState.cs,**/Program.cs</ExcludeByFile>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

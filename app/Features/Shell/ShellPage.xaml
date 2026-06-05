@@ -20,20 +20,52 @@
 
         <shellControls:ShellStage x:Name="Stage" Grid.Row="1"/>
 
+        <Grid x:Name="ConfirmOverlay" Grid.RowSpan="2" Visibility="Collapsed">
+            <Border Background="{ThemeResource AOverlay}" Tapped="ConfirmBackdrop_Tapped"/>
+            <Border MaxWidth="460"
+                    Padding="26"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    CornerRadius="{StaticResource ARadiusModal}"
+                    Background="{ThemeResource ASurface}"
+                    BorderBrush="{ThemeResource ABorder}"
+                    BorderThickness="1"
+                    Tapped="ConfirmContent_Tapped">
+                <StackPanel Spacing="18">
+                    <StackPanel Spacing="8">
+                        <TextBlock x:Name="ConfirmTitle"
+                                   Style="{StaticResource HeadingTextStyle}"
+                                   TextWrapping="Wrap"/>
+                        <TextBlock x:Name="ConfirmMessage"
+                                   Style="{StaticResource HintTextStyle}"
+                                   Foreground="{ThemeResource ATextDim}"
+                                   TextWrapping="WrapWholeWords"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="10"
+                                HorizontalAlignment="Right">
+                        <Button x:Name="ConfirmNoButton"
+                                Style="{StaticResource GhostButtonStyle}"
+                                Click="ConfirmNo_Click"/>
+                        <Button x:Name="ConfirmYesButton"
+                                Style="{StaticResource DangerButtonStyle}"
+                                Click="ConfirmYes_Click"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+
         <!--
-            検索条件 overlay。ヘッダーの「検索条件」ピルでトグルする。
-            重要: 旧実装は FilterPanel を GalleryPage 内に置き、開く時に
-            GetFilterPanel() で親付け替えしていたが、これが ActualTheme の
-            継承チェーンを切り、テーマ切替が反映されない原因だった。
-            ここでは FilterPanel を最初から FilterPanelContainer 配下に固定配置し、
-            開閉は FilterOverlay.Visibility のみで行う。親は一切変わらない。
+            検索条件パネルは初期化時から FilterPanelContainer 配下に固定配置する。
+            表示時に親要素を付け替えると ActualTheme の継承が切れ、
+            テーマ切替が反映されないため、開閉は Visibility の変更だけで行う。
         -->
         <Grid x:Name="FilterOverlay" Grid.Row="1" Visibility="Collapsed">
             <Border x:Name="FilterBackdrop"
                     Background="{ThemeResource AOverlay}"
                     Tapped="FilterBackdrop_Tapped"/>
             <Border x:Name="FilterPanelContainer" HorizontalAlignment="Left"
-                    MaxWidth="540" MinWidth="320"
+                    Width="360" MinWidth="360" MaxWidth="360"
                     Background="{ThemeResource ASurface}">
                 <galleryControls:GalleryFilterPanel x:Name="FilterPanel"/>
             </Border>

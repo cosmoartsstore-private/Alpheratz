@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Alpheratz.Core;
@@ -77,8 +79,10 @@ public sealed class ThumbnailService
         {
             var imgCacheDir = AppPaths.GetImgCacheDir(sourceSlot)
                 ?? throw new InvalidOperationException("imgCache フォルダを取得できません");
-            var filename = Path.GetFileName(photoPath);
-            var thumbPath = Path.Combine(imgCacheDir, $"{filename}.thumb.{version}.jpg");
+            var nativePhotoPath = photoPath.Replace('/', Path.DirectorySeparatorChar);
+            var filename = Path.GetFileName(nativePhotoPath);
+            var cacheKey = BuildCacheKey(photoPath);
+            var thumbPath = Path.Combine(imgCacheDir, $"{filename}.{cacheKey}.thumb.{version}.jpg");
 
             var pathLock = _pathLocks.GetOrAdd(thumbPath, _ => new SemaphoreSlim(1, 1));
             await pathLock.WaitAsync(ct).ConfigureAwait(false);
@@ -89,7 +93,7 @@ public sealed class ThumbnailService
                     // DB に保存されている photo_path は forward-slash 正規化されているが、
                     // .NET の File API は OS ネイティブセパレータを要求する場面があるため、
                     // ここで Path.DirectorySeparatorChar に正規化してから問い合わせる。
-                    var sourceModified = File.GetLastWriteTimeUtc(photoPath.Replace('/', Path.DirectorySeparatorChar));
+                    var sourceModified = File.GetLastWriteTimeUtc(nativePhotoPath);
                     var cacheModified = File.GetLastWriteTimeUtc(thumbPath);
                     if (sourceModified <= cacheModified)
                     {
@@ -117,6 +121,14 @@ public sealed class ThumbnailService
             AppLogger.Error($"ThumbnailService.EnsureThumbAsync: threw: {ex}");
             throw;
         }
+    }
+
+    /// <summary>写真パスからキャッシュファイル名用の短い安定ハッシュを作る。</summary>
+    private static string BuildCacheKey(string photoPath)
+    {
+        var normalized = photoPath.Replace('\\', '/').ToUpperInvariant();
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(normalized));
+        return Convert.ToHexString(hash, 0, 8).ToLowerInvariant();
     }
 
     /// <summary>

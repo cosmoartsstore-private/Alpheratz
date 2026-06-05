@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Threading;
@@ -12,7 +13,7 @@ namespace Alpheratz.Core.Database;
 
 // AlpheratzDb のトレース規約（プロジェクト方針）：
 // public メソッドは必ず enter/exit を AppLogger.Trace で出し、本体は
-// try { ... } catch { log + rethrow } で囲む。private static ヘルパは
+// try { ... } catch { log + throw } で囲む。private static ヘルパは
 // 個別計装しない（ヘルパ内例外は呼出側 public メソッドの "threw" トレースに
 // 完全スタックで現れるため十分。NullableString / BuildPhotoWhereClause 等の
 // 細粒度ヘルパを毎行計装すると、行マッピング・WHERE 構築で大量のログが出て
@@ -23,6 +24,14 @@ namespace Alpheratz.Core.Database;
 // ---------------------------------------------------------------------------
 public sealed class AlpheratzDb
 {
+    private readonly string? databasePath;
+
+    /// <summary>通常はアプリの既定DBを使い、テスト時だけDBファイルを明示できる。</summary>
+    public AlpheratzDb(string? databasePath = null)
+    {
+        this.databasePath = databasePath;
+    }
+
     /// <summary>
     /// 新規接続を開いて即座に WAL / NORMAL / FK ON を設定して返す。
     /// 接続戦略：
@@ -37,7 +46,7 @@ public sealed class AlpheratzDb
     /// </summary>
     private SqliteConnection OpenConnection()
     {
-        var path = AppPaths.GetDbPath()
+        var path = databasePath ?? AppPaths.GetDbPath()
             ?? throw new InvalidOperationException("Alpheratz DB の保存先を取得できません");
         var conn = new SqliteConnection($"Data Source={path}");
         conn.Open();
@@ -63,6 +72,7 @@ public sealed class AlpheratzDb
         AppLogger.Trace("AlpheratzDb.Initialize: exit");
     }
 
+    /// <summary>現行スキーマを作成し、既存 DB に不足している列を追加する。</summary>
     private void EnsureSchema()
     {
         using var conn = OpenConnection();
@@ -80,6 +90,7 @@ CREATE TABLE IF NOT EXISTS photos (
     world_id        TEXT,
     world_name      TEXT,
     timestamp       TEXT NOT NULL,
+    last_modified_utc TEXT,
     phash           TEXT,
     phash_version   INTEGER DEFAULT 0,
     orientation     TEXT,
@@ -96,7 +107,7 @@ CREATE TABLE IF NOT EXISTS tags (
     name  TEXT NOT NULL UNIQUE
 );
 
--- R2-A-4: 新規 DB では photo_tags の FK に ON DELETE CASCADE を付与する。
+-- 新規 DB では photo_tags の FK に ON DELETE CASCADE を付与する。
 -- 既存 DB の photo_tags は SQLite の ALTER TABLE 制約により再作成しないと
 -- CASCADE を後付けできないため、ResetPhotoCacheBySlotAsync 末尾で孤児削除する救済を併用する。
 CREATE TABLE IF NOT EXISTS photo_tags (
@@ -131,8 +142,9 @@ CREATE INDEX IF NOT EXISTS idx_archive_world_visits_source_log_name ON archive_w
         AddColumnIfMissing(conn, "photos",        "ALTER TABLE photos ADD COLUMN match_source   TEXT",                "match_source");
         AddColumnIfMissing(conn, "photos",        "ALTER TABLE photos ADD COLUMN is_missing     INTEGER DEFAULT 0",   "is_missing");
         AddColumnIfMissing(conn, "photos",        "ALTER TABLE photos ADD COLUMN phash_version  INTEGER DEFAULT 0",   "phash_version");
+        AddColumnIfMissing(conn, "photos",        "ALTER TABLE photos ADD COLUMN last_modified_utc TEXT",             "last_modified_utc");
 
-        // Drop legacy table if it somehow survived.
+        // 現行スキーマでは使わない埋め込みテーブルが残っていれば削除する。
         using var dropCmd = conn.CreateCommand();
         dropCmd.CommandText = "DROP TABLE IF EXISTS photo_embeddings;";
         dropCmd.ExecuteNonQuery();
@@ -156,6 +168,7 @@ CREATE INDEX IF NOT EXISTS idx_archive_world_visits_source_log_name ON archive_w
         return false;
     }
 
+    /// <summary>既存テーブルに指定列が無い場合だけ ALTER TABLE を実行する。</summary>
     private static void AddColumnIfMissing(SqliteConnection conn, string table, string sql, string column)
     {
         if (HasColumn(conn, table, column)) return;
@@ -177,11 +190,22 @@ CREATE INDEX IF NOT EXISTS idx_archive_world_visits_source_log_name ON archive_w
         return list;
     }
 
+    /// <summary>SQLite の NULL を C# の null として文字列列から読む。</summary>
     private static string? NullableString(SqliteDataReader r, int ordinal)
         => r.IsDBNull(ordinal) ? null : r.GetString(ordinal);
 
+    /// <summary>SQLite の NULL を C# の null として整数列から読む。</summary>
     private static long? NullableLong(SqliteDataReader r, int ordinal)
         => r.IsDBNull(ordinal) ? null : r.GetInt64(ordinal);
+
+    /// <summary>日付のみの終了条件を、その日の 23:59:59 まで含む timestamp 条件へ変換する。</summary>
+    private static string NormalizeEndDateForInclusiveTimestamp(string endDate)
+    {
+        if (DateTime.TryParseExact(endDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+            return date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + " 23:59:59";
+
+        return endDate;
+    }
 
     // -----------------------------------------------------------------------
     // Tag helpers (used by multiple operations)
@@ -298,7 +322,7 @@ WHERE pt.photo_path IN (");
         if (q.EndDate is not null)
         {
             sb.Append($" AND {tableAlias}.timestamp <= @endDate");
-            cmd.Parameters.AddWithValue("@endDate", q.EndDate);
+            cmd.Parameters.AddWithValue("@endDate", NormalizeEndDateForInclusiveTimestamp(q.EndDate));
         }
         if (q.WorldQuery is not null)
         {
@@ -310,7 +334,7 @@ WHERE pt.photo_path IN (");
         {
             if (exacts.Count == 1 && exacts[0] == "unknown")
             {
-                sb.Append($" AND {tableAlias}.world_name IS NULL");
+                sb.Append($" AND ({tableAlias}.world_name IS NULL OR TRIM({tableAlias}.world_name) = '')");
             }
             else
             {
@@ -331,7 +355,7 @@ WHERE pt.photo_path IN (");
                 if (hasUnknown)
                 {
                     if (!first) sb.Append(" OR ");
-                    sb.Append($"{tableAlias}.world_name IS NULL");
+                    sb.Append($"({tableAlias}.world_name IS NULL OR TRIM({tableAlias}.world_name) = '')");
                 }
                 sb.Append(")");
             }
@@ -409,8 +433,7 @@ WHERE pt.photo_path = {tableAlias}.photo_path
         var sqlSb = new StringBuilder();
         var orderClause = q.Sort switch
         {
-            // R2-A-26: world_name + timestamp が同値の場合に行順がブレるのを防ぐため
-            // photo_path を最終タイブレイクとして追加し、安定ソートを保証する。
+            // world_name と timestamp が同値でも行順が揺れないよう、photo_path を最後の比較キーにする。
             SortMode.worldAsc => "world_name COLLATE NOCASE ASC, timestamp DESC, photo_path ASC",
             _ => "timestamp DESC, photo_path ASC",
         };
@@ -749,8 +772,8 @@ WHERE photo_path = @p
 
     /// <summary>
     /// タグマスタからタグを削除し、紐づく photo_tags 中間行も同一トランザクションで消す。
-    /// FK CASCADE が効く環境 (R2-A-4 以降の新規 DB) なら photo_tags 側の DELETE は冗長だが、
-    /// 旧 DB はインプレース ALTER で CASCADE を後付けできないため明示削除を残してある。
+    /// FK CASCADE が効く新規 DB では photo_tags 側の DELETE は冗長だが、
+    /// 既存 DB はインプレース ALTER で CASCADE を後付けできないため明示削除を残してある。
     /// </summary>
     public Task DeleteTagMasterAsync(string tag, CancellationToken ct = default)
     {
@@ -791,7 +814,7 @@ WHERE photo_path = @p
 
     /// <summary>
     /// 指定 source_slot の photos と photo_tags、imgCache ディレクトリをすべてリセットする。
-    /// 順序：photo_tags → photos → 孤児 photo_tags の最終掃除 (R2-A-4 救済) → imgCache 物理削除。
+    /// 順序：photo_tags → photos → 孤児 photo_tags の最終掃除 → imgCache 物理削除。
     /// imgCache 削除失敗は警告のみで例外は出さない（DB はクリーンなのに UI で再スキャン可能なため）。
     /// </summary>
     public Task ResetPhotoCacheBySlotAsync(long slot, CancellationToken ct = default)
@@ -816,9 +839,8 @@ WHERE photo_path = @p
                 del2.Parameters.AddWithValue("@slot", slot);
                 del2.ExecuteNonQuery();
 
-                // R2-A-4: 既存 DB は photo_tags の FK に ON DELETE CASCADE が付いていない
-                // 可能性があり、過去のバグや手動 DELETE FROM photos で孤児行が残る場合が
-                // あるため、ここで孤児 photo_tags を最終的に掃除する。
+                // 既存 DB は photo_tags の FK に ON DELETE CASCADE がない場合がある。
+                // 手動削除などで残った孤児 photo_tags もここで掃除する。
                 using var orphan = conn.CreateCommand();
                 orphan.Transaction = tx;
                 orphan.CommandText = "DELETE FROM photo_tags WHERE photo_path NOT IN (SELECT photo_path FROM photos)";
@@ -866,10 +888,10 @@ WHERE photo_path = @p
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
 INSERT INTO photos (
-    photo_path, photo_filename, world_id, world_name, timestamp,
+    photo_path, photo_filename, world_id, world_name, timestamp, last_modified_utc,
     orientation, image_width, image_height, source_slot, match_source, is_missing
 ) VALUES (
-    @photo_path, @photo_filename, @world_id, @world_name, @timestamp,
+    @photo_path, @photo_filename, @world_id, @world_name, @timestamp, @last_modified_utc,
     @orientation, @image_width, @image_height, @source_slot, @match_source, 0
 )
 ON CONFLICT(photo_path) DO UPDATE SET
@@ -877,6 +899,7 @@ ON CONFLICT(photo_path) DO UPDATE SET
     world_id       = COALESCE(excluded.world_id,      photos.world_id),
     world_name     = COALESCE(excluded.world_name,    photos.world_name),
     timestamp      = excluded.timestamp,
+    last_modified_utc = excluded.last_modified_utc,
     orientation    = COALESCE(excluded.orientation,   photos.orientation),
     image_width    = COALESCE(excluded.image_width,   photos.image_width),
     image_height   = COALESCE(excluded.image_height,  photos.image_height),
@@ -889,6 +912,7 @@ ON CONFLICT(photo_path) DO UPDATE SET
             cmd.Parameters.AddWithValue("@world_id",        (object?)data.WorldId   ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@world_name",      (object?)data.WorldName ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@timestamp",       data.Timestamp);
+            cmd.Parameters.AddWithValue("@last_modified_utc", (object?)data.LastModifiedUtc ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@orientation",     (object?)data.Orientation ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@image_width",     (object?)data.ImageWidth  ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@image_height",    (object?)data.ImageHeight ?? DBNull.Value);
@@ -911,7 +935,9 @@ ON CONFLICT(photo_path) DO UPDATE SET
     /// IN (...) 削除する。SQLite のパラメータ上限 (999) を超えないようにチャンク化。
     /// </summary>
     public Task<int> DeleteMissingPhotosAsync(
-        IEnumerable<string> foundPaths, CancellationToken ct = default)
+        IEnumerable<string> foundPaths,
+        IReadOnlyCollection<long>? sourceSlots = null,
+        CancellationToken ct = default)
     {
         AppLogger.Trace("AlpheratzDb.DeleteMissingPhotosAsync: enter");
         try
@@ -919,20 +945,26 @@ ON CONFLICT(photo_path) DO UPDATE SET
             ct.ThrowIfCancellationRequested();
 
             var foundSet = new HashSet<string>(foundPaths, StringComparer.OrdinalIgnoreCase);
+            var slotSet = sourceSlots is { Count: > 0 }
+                ? new HashSet<long>(sourceSlots)
+                : null;
 
             using var conn = OpenConnection();
 
             var allPaths = new List<string>();
             using (var selCmd = conn.CreateCommand())
             {
-                selCmd.CommandText = "SELECT photo_path FROM photos";
+                selCmd.CommandText = "SELECT photo_path, COALESCE(source_slot, 1) FROM photos";
                 using var r = selCmd.ExecuteReader();
                 var rowIdx = 0;
                 while (r.Read())
                 {
                     if ((rowIdx++ & 0x3FF) == 0)
                         ct.ThrowIfCancellationRequested();
-                    allPaths.Add(r.GetString(0));
+
+                    var slot = r.GetInt64(1);
+                    if (slotSet is null || slotSet.Contains(slot))
+                        allPaths.Add(r.GetString(0));
                 }
             }
 
@@ -1008,7 +1040,8 @@ ON CONFLICT(photo_path) DO UPDATE SET
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
 SELECT photo_filename, photo_path, world_id, world_name, timestamp,
-       match_source, orientation, image_width, image_height, source_slot, is_missing
+       match_source, orientation, image_width, image_height, source_slot, is_missing,
+       last_modified_utc
 FROM photos";
 
             var map = new Dictionary<string, ExistingPhotoInfo>(StringComparer.Ordinal);
@@ -1028,6 +1061,7 @@ FROM photos";
                     ImageHeight   = NullableLong(r, 8),
                     SourceSlot    = r.IsDBNull(9) ? 1L : r.GetInt64(9),
                     IsMissing     = !r.IsDBNull(10) && r.GetInt64(10) != 0,
+                    LastModifiedUtc = NullableString(r, 11),
                 };
                 map[info.PhotoPath] = info;
             }
@@ -1085,9 +1119,8 @@ WHERE photo_path = @p";
         {
             ct.ThrowIfCancellationRequested();
 
-            // R2-A-27: 旧実装は target に応じて ORDER BY だけ切り替え、WHERE で source_slot を
-            //          絞っていなかったため "primary"/"secondary" でも全 source_slot の写真が
-            //          返っていた。期待動作に合わせて WHERE で対象 slot を絞り込む。
+            // primary / secondary 指定時は並び順だけでなく WHERE でも対象 slot を絞る。
+            // 片方のフォルダだけを自動解決するときに、もう片方の写真へ触れないため。
             var (slotFilter, orderBy) = target switch
             {
                 "primary"   => (" AND COALESCE(source_slot, 1) = 1", "timestamp"),
@@ -1227,7 +1260,7 @@ LIMIT 1";
     }
 
     /// <summary>
-    /// source 写真のワールド情報 (world_id / world_name / match_source) を target にコピーする。
+    /// source 写真のワールド情報 (world_id / world_name) を target にコピーし、match_source は phash にする。
     /// 「同じワールドで撮影されたっぽい写真」を手動で結びつける操作の DB 側実装。
     /// </summary>
     public Task ApplyWorldMatchFromPhotoAsync(
@@ -1244,7 +1277,7 @@ LIMIT 1";
 UPDATE photos
 SET world_id     = (SELECT world_id     FROM photos WHERE photo_path = @src),
     world_name   = (SELECT world_name   FROM photos WHERE photo_path = @src),
-    match_source = (SELECT match_source FROM photos WHERE photo_path = @src)
+    match_source = 'phash'
 WHERE photo_path = @tgt";
             cmd.Parameters.AddWithValue("@src", sourcePhotoPath);
             cmd.Parameters.AddWithValue("@tgt", targetPhotoPath);
@@ -1300,6 +1333,42 @@ ORDER BY cnt DESC, world_name COLLATE NOCASE ASC";
         }
     }
 
+    public Task<IReadOnlyDictionary<string, long>> GetTagFilterCountsAsync(CancellationToken ct = default)
+    {
+        AppLogger.Trace("AlpheratzDb.GetTagFilterCountsAsync: enter");
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+
+            using var conn = OpenConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+SELECT t.name, COUNT(*) AS cnt
+FROM photo_tags pt
+INNER JOIN tags t ON t.id = pt.tag_id
+INNER JOIN photos p ON p.photo_path = pt.photo_path
+WHERE p.is_missing = 0
+GROUP BY t.name";
+
+            var result = new Dictionary<string, long>(StringComparer.Ordinal);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var tag = NullableString(r, 0);
+                if (tag is not null)
+                    result[tag] = r.GetInt64(1);
+            }
+
+            AppLogger.Trace($"AlpheratzDb.GetTagFilterCountsAsync: exit count={result.Count}");
+            return Task.FromResult<IReadOnlyDictionary<string, long>>(result);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"AlpheratzDb.GetTagFilterCountsAsync: threw: {ex}");
+            throw;
+        }
+    }
+
     // -----------------------------------------------------------------------
     // PDQ 類似マッチ用クエリ。ワールド既知の参照集合と、ワールド不明な対象集合を分離して返す。
     // -----------------------------------------------------------------------
@@ -1327,7 +1396,7 @@ ORDER BY cnt DESC, world_name COLLATE NOCASE ASC";
                                  WHERE is_missing = 0
                                    AND source_slot = @source_slot
                                    AND world_name IS NOT NULL AND TRIM(world_name) <> ''
-                                   AND phash IS NOT NULL AND phash <> ''
+                                   AND phash IS NOT NULL AND phash <> '' AND phash <> 'unreadable'
                                    AND (@exclude IS NULL OR photo_path <> @exclude)";
             cmd.Parameters.AddWithValue("@source_slot", sourceSlot);
             cmd.Parameters.AddWithValue("@exclude", (object?)excludePhotoPath ?? DBNull.Value);
@@ -1370,7 +1439,7 @@ ORDER BY cnt DESC, world_name COLLATE NOCASE ASC";
                                  WHERE is_missing = 0
                                    AND world_name IS NULL
                                    AND world_id IS NULL
-                                   AND phash IS NOT NULL AND phash <> ''";
+                                   AND phash IS NOT NULL AND phash <> '' AND phash <> 'unreadable'";
             var rows = new List<UnknownPhashRow>();
             using var r = cmd.ExecuteReader();
             while (r.Read())
@@ -1522,6 +1591,7 @@ ORDER BY cnt DESC, world_name COLLATE NOCASE ASC";
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"SELECT COUNT(*) FROM photos
                                  WHERE is_missing = 0
+                                   AND COALESCE(orientation, '') <> 'unreadable'
                                    AND (orientation IS NULL OR orientation = '' OR orientation = 'unknown'
                                         OR image_width IS NULL OR image_height IS NULL)";
             var count = Convert.ToInt32(cmd.ExecuteScalar() ?? 0L);
@@ -1546,6 +1616,7 @@ ORDER BY cnt DESC, world_name COLLATE NOCASE ASC";
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"SELECT source_slot, photo_filename, photo_path FROM photos
                                  WHERE is_missing = 0
+                                   AND COALESCE(orientation, '') <> 'unreadable'
                                    AND (orientation IS NULL OR orientation = '' OR orientation = 'unknown'
                                         OR image_width IS NULL OR image_height IS NULL)
                                  ORDER BY timestamp DESC
@@ -1605,8 +1676,8 @@ ORDER BY cnt DESC, world_name COLLATE NOCASE ASC";
     // -----------------------------------------------------------------------
 
     /// <summary>
-    /// Deletes all files and subdirectories inside <paramref name="dir"/>
-    /// without removing the directory itself (mirrors Rust clear_directory_contents).
+    /// <paramref name="dir"/> 自体は残し、その中のファイルとサブディレクトリだけを削除する。
+    /// キャッシュの保存先ディレクトリを保持したまま中身を作り直すために使う。
     /// </summary>
     private static void ClearDirectoryContents(string dir)
     {

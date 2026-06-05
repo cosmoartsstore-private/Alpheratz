@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.ComponentModel;
 using System.Threading;
 using Alpheratz.Core;
@@ -10,6 +11,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 
 namespace Alpheratz.Features.WorldResolve;
 
+[ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public sealed partial class WorldResolvePage : Page
 {
     private readonly WorldResolveViewModel viewModel;
@@ -18,6 +20,7 @@ public sealed partial class WorldResolvePage : Page
     public Action? OnClose { get; set; }
     public Func<System.Threading.Tasks.Task>? OnApplied { get; set; }
 
+    // ViewModel と一覧を接続し、初期表示を現在ステートに同期する。
     public WorldResolvePage(WorldResolveViewModel viewModel)
     {
         InitializeComponent();
@@ -31,11 +34,13 @@ public sealed partial class WorldResolvePage : Page
         SyncUi();
     }
 
+    // ViewModel の状態変化を UI スレッドへ戻して画面表示に反映する。
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         DispatcherQueue?.TryEnqueue(SyncUi);
     }
 
+    // 読み込み状態、件数、候補ピッカー表示を ViewModel の現在値へ同期する。
     private void SyncUi()
     {
         LoadingOverlay.Visibility = viewModel.IsLoading ? Visibility.Visible : Visibility.Collapsed;
@@ -69,6 +74,7 @@ public sealed partial class WorldResolvePage : Page
         }
     }
 
+    // 候補ピッカーで比較対象として表示する写真のサムネイルを差し替える。
     private void SetPickerTargetImage(string? path)
     {
         if (string.IsNullOrEmpty(path))
@@ -87,14 +93,17 @@ public sealed partial class WorldResolvePage : Page
 
     // --- Event handlers ---
 
+    // 候補ピッカー以外の背景タップではワールド解析モーダルを閉じる。
     private void Backdrop_Tapped(object sender, TappedRoutedEventArgs e)
     {
         if (!viewModel.IsCandidatePickerOpen)
             OnClose?.Invoke();
     }
 
+    // モーダル本文のタップを背景へ伝播させない。
     private void ModalContent_Tapped(object sender, TappedRoutedEventArgs e) => e.Handled = true;
 
+    // Esc キーで候補ピッカーを閉じ、ピッカー外ではモーダル全体を閉じる。
     private void Page_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (e.Key == Windows.System.VirtualKey.Escape)
@@ -107,15 +116,19 @@ public sealed partial class WorldResolvePage : Page
         }
     }
 
+    // 一覧内の全候補を適用対象にする。
     private void ApplyAll_Click(object sender, RoutedEventArgs e) => viewModel.ApplyAll();
+    // 一覧内の全候補を適用対象から外す。
     private void SkipAll_Click(object sender, RoutedEventArgs e) => viewModel.SkipAll();
 
+    // 個別の未解決写真について適用予定のオン/オフを切り替える。
     private void ToggleApply_Click(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: WorldResolveItem item })
             viewModel.ToggleApply(item);
     }
 
+    // 未解決写真の候補一覧を読み込み、候補ピッカーを開く。
     private async void OpenCandidatePicker_Click(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: WorldResolveItem item })
@@ -128,14 +141,17 @@ public sealed partial class WorldResolvePage : Page
         }
     }
 
+    // 候補ピッカーで選ばれた候補を現在の未解決写真に割り当てる。
     private void CandidateItem_Tapped(object sender, TappedRoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: CandidateEntry entry })
             viewModel.SelectCandidate(entry);
     }
 
+    // 候補ピッカーを閉じ、未解決写真一覧へ戻る。
     private void BackFromPicker_Click(object sender, RoutedEventArgs e) => viewModel.CloseCandidatePicker();
 
+    // 確認済みのワールド割り当てを保存し、ギャラリー更新後に閉じる。
     private async void ApplyConfirmed_Click(object sender, RoutedEventArgs e)
     {
         try
@@ -152,5 +168,6 @@ public sealed partial class WorldResolvePage : Page
         }
     }
 
+    // 閉じるボタンからモーダルの終了通知を発火する。
     private void Close_Click(object sender, RoutedEventArgs e) => OnClose?.Invoke();
 }

@@ -15,17 +15,14 @@ namespace Alpheratz.Shared.Converters;
 /// </summary>
 public sealed class ToastAccentBrushConverter : IValueConverter
 {
+    /// <summary>ToastType に対応するアクセントブラシを現在テーマから取得する。</summary>
     public object? Convert(object value, Type targetType, object parameter, string language)
     {
-        var key = value is ToastType type ? type switch
-        {
-            ToastType.success => "APrimary",
-            ToastType.error => "ADangerSolid",
-            _ => "ATextDim",
-        } : "ATextDim";
+        var key = ToastStyleLogic.AccentBrushKey(value);
         return ThemeHelper.BrushForSelectedTheme(key);
     }
 
+    /// <summary>Toast 表示専用の変換なので逆変換は提供しない。</summary>
     public object ConvertBack(object value, Type targetType, object parameter, string language)
         => throw new NotSupportedException();
 }
@@ -36,16 +33,13 @@ public sealed class ToastAccentBrushConverter : IValueConverter
 /// </summary>
 public sealed class ToastIconConverter : IValueConverter
 {
+    /// <summary>ToastType に対応する短い記号文字を返す。</summary>
     public object Convert(object value, Type targetType, object parameter, string language)
     {
-        return value is ToastType type ? type switch
-        {
-            ToastType.success => "✔",  // ✔
-            ToastType.error => "⚠",    // ⚠
-            _ => "ℹ",                  // ℹ
-        } : "ℹ";
+        return ToastStyleLogic.IconText(value);
     }
 
+    /// <summary>Toast 表示専用の変換なので逆変換は提供しない。</summary>
     public object ConvertBack(object value, Type targetType, object parameter, string language)
         => throw new NotSupportedException();
 }

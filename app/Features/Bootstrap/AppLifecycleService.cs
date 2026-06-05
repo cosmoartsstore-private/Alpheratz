@@ -6,21 +6,16 @@ using Alpheratz.Core;
 
 namespace Alpheratz.Features.Bootstrap;
 
-// Tracks the app's startup pipeline phase. Subscribers can react to phase
-// transitions or await a particular phase before doing data-bound work.
-// Lower-case method names match the existing migration style (see
-// ShellViewModel.ToastState).
-//
-// Tracing convention used here (and to be applied to every new method going
-// forward): each non-trivial method emits an `enter` trace with its key
-// arguments, an `exit` trace, and one trace per meaningful branch. Pure hot
-// readers (CurrentPhase / isAtLeast) deliberately omit tracing because they
-// are polled from gating code and would drown out the log.
+/// <summary>
+/// 起動パイプラインの現在フェーズを管理するサービス。
+/// 画面や ViewModel は必要なフェーズまで待ってから、データバインドを開始できる。
+/// </summary>
 public sealed class AppLifecycleService : INotifyPropertyChanged
 {
     private readonly object gate = new();
     private AppLifecyclePhase currentPhase = AppLifecyclePhase.booting;
 
+    /// <summary>現在到達している起動フェーズ。</summary>
     public AppLifecyclePhase CurrentPhase
     {
         get { lock (gate) return currentPhase; }
@@ -29,6 +24,7 @@ public sealed class AppLifecycleService : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
     public event EventHandler<AppLifecyclePhase>? PhaseAdvanced;
 
+    /// <summary>起動フェーズを前進させ、購読者へ通知する。過去フェーズへの巻き戻しは無視する。</summary>
     public void advanceTo(AppLifecyclePhase next)
     {
         AppLogger.Trace($"AppLifecycleService.advanceTo: enter next={next}");
@@ -67,11 +63,13 @@ public sealed class AppLifecycleService : INotifyPropertyChanged
         AppLogger.Trace($"AppLifecycleService.advanceTo: exit next={next}");
     }
 
+    /// <summary>現在フェーズが指定フェーズ以上かを返す。</summary>
     public bool isAtLeast(AppLifecyclePhase phase)
     {
         lock (gate) return currentPhase >= phase;
     }
 
+    /// <summary>指定フェーズへ到達するまで待つ。すでに到達済みなら即完了する。</summary>
     public Task waitForAsync(AppLifecyclePhase phase, CancellationToken ct = default)
     {
         AppLogger.Trace($"AppLifecycleService.waitForAsync: enter phase={phase}");
@@ -103,8 +101,7 @@ public sealed class AppLifecycleService : INotifyPropertyChanged
             });
         }
 
-        // Re-check after subscribing to close the race with a transition that
-        // fired between the initial check and the event hookup.
+        // 初回判定とイベント購読の間にフェーズが進む可能性があるため、購読後に再確認する。
         if (isAtLeast(phase))
         {
             AppLogger.Trace($"AppLifecycleService.waitForAsync: race-resolved phase={phase}");

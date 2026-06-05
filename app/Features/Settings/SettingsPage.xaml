@@ -7,7 +7,7 @@
     IsTabStop="True"
     KeyDown="Page_KeyDown">
     <Grid Background="Transparent" Tapped="Backdrop_Tapped">
-        <Border MaxWidth="1400" MaxHeight="960" MinWidth="640" Margin="24"
+        <Border MaxWidth="1680" MaxHeight="1040" MinWidth="1040" Margin="24"
                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                 CornerRadius="{StaticResource ARadiusModal}"
                 Background="{ThemeResource ASurface}"
@@ -21,7 +21,7 @@
                 </Grid.RowDefinitions>
 
                 <!-- Header bar with title + close -->
-                <Grid Grid.Row="0" Padding="32,22,18,12">
+                <Grid Grid.Row="0" Padding="36,24,20,14">
                     <TextBlock Text="設定" Style="{StaticResource HeadingTextStyle}"/>
                     <Button x:Name="CloseButtonOverlay" HorizontalAlignment="Right" VerticalAlignment="Top"
                             Width="34" Height="34"
@@ -35,21 +35,21 @@
                     </Button>
                 </Grid>
 
-                <ScrollViewer Grid.Row="1" Padding="32,4,32,32"
+                <ScrollViewer Grid.Row="1" Padding="36,6,36,36"
                               VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel Spacing="36">
+                    <Grid ColumnSpacing="28">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="0.95*" MinWidth="420"/>
+                            <ColumnDefinition Width="1.35*" MinWidth="560"/>
+                        </Grid.ColumnDefinitions>
 
                         <!-- ============ 全般設定 ============ -->
-                        <StackPanel Spacing="22">
+                        <StackPanel Grid.Column="0" Spacing="22">
                             <TextBlock Text="全般" Style="{StaticResource SectionTitleStyle}"/>
 
-                            <Grid ColumnSpacing="18">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Spacing="10">
+                            <StackPanel Spacing="14">
+                                <StackPanel Spacing="10">
                                     <TextBlock Text="写真フォルダ 1st" FontWeight="SemiBold"/>
                                     <Grid ColumnSpacing="8">
                                         <Grid.ColumnDefinitions>
@@ -57,12 +57,21 @@
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBox Text="{Binding Settings.PhotoFolderPath}" IsReadOnly="True"/>
+                                        <Border MinHeight="36" Padding="10,7"
+                                                CornerRadius="{StaticResource ARadiusMd}"
+                                                Background="{ThemeResource ASurfaceSoft}"
+                                                BorderBrush="{ThemeResource ABorder}"
+                                                BorderThickness="1">
+                                            <TextBlock Text="{Binding Settings.PhotoFolderPath}"
+                                                       Foreground="{ThemeResource ATextDim}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center"/>
+                                        </Border>
                                         <Button Grid.Column="1" Content="変更" Style="{StaticResource PrimaryButtonStyle}" Click="ChoosePrimaryFolder_Click"/>
                                         <Button Grid.Column="2" Content="リセット" Style="{StaticResource GhostButtonStyle}" Click="ResetPrimaryFolder_Click"/>
                                     </Grid>
                                 </StackPanel>
-                                <StackPanel Grid.Column="1" Spacing="10">
+                                <StackPanel Spacing="10">
                                     <TextBlock Text="写真フォルダ 2nd" FontWeight="SemiBold"/>
                                     <Grid ColumnSpacing="8">
                                         <Grid.ColumnDefinitions>
@@ -70,20 +79,36 @@
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBox Text="{Binding Settings.SecondaryPhotoFolderPath}" IsReadOnly="True"/>
+                                        <Border MinHeight="36" Padding="10,7"
+                                                CornerRadius="{StaticResource ARadiusMd}"
+                                                Background="{ThemeResource ASurfaceSoft}"
+                                                BorderBrush="{ThemeResource ABorder}"
+                                                BorderThickness="1">
+                                            <TextBlock Text="{Binding Settings.SecondaryPhotoFolderPath}"
+                                                       Foreground="{ThemeResource ATextDim}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center"/>
+                                        </Border>
                                         <Button Grid.Column="1" Content="変更" Style="{StaticResource PrimaryButtonStyle}" Click="ChooseSecondaryFolder_Click"/>
                                         <Button Grid.Column="2" Content="リセット" Style="{StaticResource GhostButtonStyle}" Click="ResetSecondaryFolder_Click"/>
                                     </Grid>
                                 </StackPanel>
-                            </Grid>
+                            </StackPanel>
 
-                            <Grid>
+                            <Grid ColumnSpacing="16">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                <StackPanel>
+                                <StackPanel VerticalAlignment="Center">
                                     <TextBlock Text="ログイン時に起動" FontWeight="SemiBold"/>
                                     <TextBlock Text="Windows ログイン時に Alpheratz を自動起動します。" Style="{StaticResource HintTextStyle}"/>
                                 </StackPanel>
-                                <ToggleSwitch Grid.Column="1" IsOn="{Binding Settings.StartupEnabled, Mode=TwoWay}" Toggled="StartupToggle_Toggled"/>
+                                <ToggleSwitch Grid.Column="1"
+                                              MinWidth="72"
+                                              HorizontalAlignment="Right"
+                                              VerticalAlignment="Center"
+                                              OnContent=""
+                                              OffContent=""
+                                              IsOn="{Binding Settings.StartupEnabled, Mode=TwoWay}"
+                                              Toggled="StartupToggle_Toggled"/>
                             </Grid>
 
                             <Grid>
@@ -132,94 +157,94 @@
                             </Border>
                         </StackPanel>
 
-                        <!-- separator -->
-                        <Border Height="1" Background="{ThemeResource ABorderMid}" Opacity="0.6"/>
+                        <StackPanel Grid.Column="1" Spacing="24">
 
-                        <!-- ============ タグマスタ ============ -->
-                        <StackPanel Spacing="18">
-                            <TextBlock Text="タグマスタ" Style="{StaticResource SectionTitleStyle}"/>
+                            <!-- ============ タグマスタ ============ -->
+                            <StackPanel Spacing="18">
+                                <TextBlock Text="タグマスタ" Style="{StaticResource SectionTitleStyle}"/>
 
-                            <Border Style="{StaticResource SectionCardBorderStyle}">
-                                <StackPanel Spacing="12">
-                                    <TextBlock Text="タグを追加する" Style="{StaticResource SubHeadingTextStyle}"/>
-                                    <Grid ColumnSpacing="10">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBox x:Name="TagInputBox"
-                                                 Text="{Binding TagMaster.TagDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                 PlaceholderText="タグ名"
-                                                 KeyDown="TagInput_KeyDown"/>
-                                        <Button Grid.Column="1"
-                                                Content="追加"
-                                                Style="{StaticResource PrimaryButtonStyle}"
-                                                Click="AddTag_Click"/>
-                                    </Grid>
-                                </StackPanel>
-                            </Border>
+                                <Border Style="{StaticResource SectionCardBorderStyle}">
+                                    <StackPanel Spacing="12">
+                                        <TextBlock Text="タグを追加する" Style="{StaticResource SubHeadingTextStyle}"/>
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox x:Name="TagInputBox"
+                                                     Text="{Binding TagMaster.TagDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                     PlaceholderText="タグ名"
+                                                     KeyDown="TagInput_KeyDown"/>
+                                            <Button Grid.Column="1"
+                                                    Content="追加"
+                                                    Style="{StaticResource PrimaryButtonStyle}"
+                                                    Click="AddTag_Click"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
 
-                            <Border Style="{StaticResource SectionCardBorderStyle}">
-                                <StackPanel Spacing="12">
-                                    <TextBlock Text="追加済みタグ" Style="{StaticResource SubHeadingTextStyle}"/>
+                                <Border Style="{StaticResource SectionCardBorderStyle}">
+                                    <StackPanel Spacing="12">
+                                        <TextBlock Text="追加済みタグ" Style="{StaticResource SubHeadingTextStyle}"/>
 
-                                    <Border x:Name="TagEmptyState"
-                                            Padding="14,12"
-                                            CornerRadius="{StaticResource ARadiusLg}"
-                                            BorderBrush="{ThemeResource ABorderMid}"
-                                            BorderThickness="1"
-                                            Background="{ThemeResource ASurfaceSoft}"
-                                            Visibility="Collapsed">
-                                        <TextBlock Text="タグマスタはまだありません。"
-                                                   Foreground="{ThemeResource ATextFaint}"
-                                                   FontSize="{StaticResource AFontSizeMd}"/>
-                                    </Border>
+                                        <Border x:Name="TagEmptyState"
+                                                Padding="14,12"
+                                                CornerRadius="{StaticResource ARadiusLg}"
+                                                BorderBrush="{ThemeResource ABorderMid}"
+                                                BorderThickness="1"
+                                                Background="{ThemeResource ASurfaceSoft}"
+                                                Visibility="Collapsed">
+                                            <TextBlock Text="タグマスタはまだありません。"
+                                                       Foreground="{ThemeResource ATextFaint}"
+                                                       FontSize="{StaticResource AFontSizeMd}"/>
+                                        </Border>
 
-                                    <ItemsControl x:Name="TagRepeater" ItemsSource="{Binding TagMaster.masterTags}">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <shared:WrapPanel HorizontalSpacing="8" VerticalSpacing="8"/>
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Border Padding="12,8"
-                                                        CornerRadius="{StaticResource ARadiusLg}"
-                                                        BorderBrush="{ThemeResource ABorderMid}"
-                                                        BorderThickness="1"
-                                                        Background="{ThemeResource ASurfaceSoft}">
-                                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                                        <TextBlock Text="{Binding}"
-                                                                   VerticalAlignment="Center"
-                                                                   FontSize="{StaticResource AFontSizeMd}"
-                                                                   FontWeight="SemiBold"
-                                                                   Foreground="{ThemeResource AText}"/>
-                                                        <Button Content="削除"
-                                                                Padding="10,4"
-                                                                MinWidth="0" MinHeight="0"
-                                                                CornerRadius="{StaticResource ARadiusMd}"
-                                                                Background="{ThemeResource ADangerSoft}"
-                                                                BorderBrush="{ThemeResource ADangerBorder}"
-                                                                BorderThickness="1"
-                                                                Foreground="{ThemeResource ADanger}"
-                                                                FontSize="{StaticResource AFontSizeSm}"
-                                                                FontWeight="SemiBold"
-                                                                Click="DeleteTag_Click"/>
-                                                    </StackPanel>
-                                                </Border>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </StackPanel>
-                            </Border>
-                        </StackPanel>
+                                        <ItemsControl x:Name="TagRepeater" ItemsSource="{Binding TagMaster.masterTags}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <shared:WrapPanel HorizontalSpacing="8" VerticalSpacing="8"/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Padding="12,8"
+                                                            CornerRadius="{StaticResource ARadiusLg}"
+                                                            BorderBrush="{ThemeResource ABorderMid}"
+                                                            BorderThickness="1"
+                                                            Background="{ThemeResource ASurfaceSoft}">
+                                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                                            <TextBlock Text="{Binding}"
+                                                                       VerticalAlignment="Center"
+                                                                       FontSize="{StaticResource AFontSizeMd}"
+                                                                       FontWeight="SemiBold"
+                                                                       Foreground="{ThemeResource AText}"
+                                                                       MaxWidth="220"
+                                                                       TextTrimming="CharacterEllipsis"/>
+                                                            <Button Content="削除"
+                                                                    Padding="10,4"
+                                                                    MinWidth="0" MinHeight="0"
+                                                                    CornerRadius="{StaticResource ARadiusMd}"
+                                                                    Background="{ThemeResource ADangerSoft}"
+                                                                    BorderBrush="{ThemeResource ADangerBorder}"
+                                                                    BorderThickness="1"
+                                                                    Foreground="{ThemeResource ADanger}"
+                                                                    FontSize="{StaticResource AFontSizeSm}"
+                                                                    FontWeight="SemiBold"
+                                                                    Click="DeleteTag_Click"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
 
-                        <!-- separator -->
-                        <Border Height="1" Background="{ThemeResource ABorderMid}" Opacity="0.6"/>
+                            <Border Height="1" Background="{ThemeResource ABorderMid}" Opacity="0.6"/>
 
-                        <!-- ============ 投稿テンプレート ============ -->
-                        <StackPanel Spacing="18">
-                            <TextBlock Text="投稿テンプレート" Style="{StaticResource SectionTitleStyle}"/>
+                            <!-- ============ 投稿テンプレート ============ -->
+                            <StackPanel Spacing="18">
+                                <TextBlock Text="投稿テンプレート" Style="{StaticResource SectionTitleStyle}"/>
 
                             <Grid ColumnSpacing="18">
                                 <Grid.ColumnDefinitions>
@@ -323,6 +348,7 @@
                             </Grid>
                         </StackPanel>
                     </StackPanel>
+                    </Grid>
                 </ScrollViewer>
             </Grid>
         </Border>

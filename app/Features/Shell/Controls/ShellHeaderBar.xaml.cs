@@ -1,26 +1,30 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Alpheratz.Core;
 using Alpheratz.Shared.Models;
 using Alpheratz.Shared.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.System;
 
 namespace Alpheratz.Features.Shell.Controls;
 
 /// <summary>
 /// 画面上部のヘッダーバー。
 /// 構成：
-///   [検索条件 pill] [検索 TextBox] [ビューモード] [グループ化] [複数選択] [設定]
-/// LeftRail から移植した 3 つの binary トグル (ビューモード / グループ化 / 複数選択) は
+///   [検索条件] [検索 TextBox] [ビューモード] [グループ化] [複数選択] [設定]
+/// 3 つの切替ボタン (ビューモード / グループ化 / 複数選択) は
 /// アクティブ時にアクセント色 (APrimarySoft 背景 + ABorderStrong 枠 + APrimary 前景) に
 /// 切り替わる。masonry (ViewMode.gallery) 表示中はグループ化が無効化される。
 /// </summary>
+[ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public sealed partial class ShellHeaderBar : UserControl
 {
     // ===== コールバック =====
-    /// <summary>「検索条件」ピル押下時に発火。ShellPage 側で左レーン (RailColumn) を開閉する。</summary>
+    /// <summary>「検索条件」ボタン押下時に発火。ShellPage 側で検索条件オーバーレイを開閉する。</summary>
     public Action? OnToggleFilter { get; set; }
     /// <summary>設定ボタンが押されたとき発火。</summary>
     public Action? OnShowSettings { get; set; }
@@ -30,14 +34,17 @@ public sealed partial class ShellHeaderBar : UserControl
     public Action<GroupingMode>? OnGroupingChange { get; set; }
     /// <summary>ビューモード切替時に発火 ("gallery" / "standard")。</summary>
     public Func<string, Task>? OnViewModeChange { get; set; }
+    /// <summary>検索ボックスで Enter が押されたとき発火。</summary>
+    public Action? OnSearchSubmit { get; set; }
 
     // ===== 内部状態 =====
     // 状態同期は上位 (ShellPage) から SetMultiSelectActive / SetGroupingMode / SetViewMode で
-    // 反映される。HeaderBar 自身は VM を持たない purely-view。
+    // 反映される。HeaderBar 自身は VM を持たない表示専用コントロール。
     private bool isMultiSelectActive;
     private GroupingMode currentGroupingMode = GroupingMode.none;
     private ViewMode currentViewMode = ViewMode.standard;
 
+    // ヘッダー UI を初期化し、現在状態に合わせたトグル表示へ同期する。
     public ShellHeaderBar()
     {
         AppLogger.Trace("ShellHeaderBar.ctor: enter");
@@ -114,9 +121,9 @@ public sealed partial class ShellHeaderBar : UserControl
     }
 
     /// <summary>
-    /// PDQ ハッシュ計算の進捗を表示する pill chip を更新する。
-    /// running=false なら chip を非表示にする。旧 RightRail (削除済み) で表示していた
-    /// 進捗情報を HeaderBar に移植し、画面に常時見える形にした。
+    /// PDQ ハッシュ計算の進捗表示を更新する。
+    /// running=false なら非表示にする。進捗情報は HeaderBar に表示し、
+    /// ギャラリー表示中でも常に確認できるようにする。
     /// done/total が 0 のときも "PDQ" だけ表示するので、計算開始の合図にもなる。
     /// </summary>
     public void SetPdqProgress(bool running, int done, int total)
@@ -128,12 +135,21 @@ public sealed partial class ShellHeaderBar : UserControl
                 PdqProgressChip.Visibility = Visibility.Collapsed;
                 return;
             }
-            PdqProgressChip.Visibility = Visibility.Visible;
-            PdqProgressText.Text = total > 0
-                ? $"PDQ {done} / {total}"
-                : "PDQ";
+            var progress = ShellHeaderBarLogic.PdqProgress(running, done, total);
+            PdqProgressChip.Visibility = progress.Visible ? Visibility.Visible : Visibility.Collapsed;
+            PdqProgressText.Text = progress.Text;
         }
         catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.SetPdqProgress: threw: {ex}"); }
+    }
+
+    /// <summary>オーバーレイ表示中に、ヘッダー内の操作だけを無効化する。</summary>
+    public void SetControlsInteractive(bool interactive)
+    {
+        try
+        {
+            ContentRoot.IsHitTestVisible = interactive;
+        }
+        catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.SetControlsInteractive: threw: {ex}"); }
     }
 
     // -----------------------------------------------------------------------
@@ -146,37 +162,39 @@ public sealed partial class ShellHeaderBar : UserControl
         catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.FilterButton_Click: threw: {ex}"); }
     }
 
+    // 設定ボタンのクリックを ShellPage 側の設定表示要求へ渡す。
     private void SettingsGearBtn_Click(object sender, RoutedEventArgs e)
     {
         try { OnShowSettings?.Invoke(); }
         catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.SettingsGearBtn_Click: threw: {ex}"); }
     }
 
+    // 複数選択ボタンのクリックを選択モード切替要求として渡す。
     private void MultiSelectBtn_Click(object sender, RoutedEventArgs e)
     {
         try { OnToggleMultiSelect?.Invoke(); }
         catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.MultiSelectBtn_Click: threw: {ex}"); }
     }
 
+    // グループ化ボタンを none/world のトグルとして処理する。
     private void GroupingBtn_Click(object sender, RoutedEventArgs e)
     {
         try
         {
-            // binary トグル: 現在 world なら none、none なら world。
-            var next = currentGroupingMode == GroupingMode.world ? GroupingMode.none : GroupingMode.world;
-            OnGroupingChange?.Invoke(next);
+            // 現在 world なら none、none なら world に切り替える。
+            OnGroupingChange?.Invoke(ShellHeaderBarLogic.NextGroupingMode(currentGroupingMode));
         }
         catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.GroupingBtn_Click: threw: {ex}"); }
     }
 
+    // 表示モードボタンを standard/gallery のトグルとして処理する。
     private async void ViewModeBtn_Click(object sender, RoutedEventArgs e)
     {
         try
         {
-            // binary トグル: 現在 standard なら gallery、gallery なら standard。
-            var next = currentViewMode == ViewMode.gallery ? "standard" : "gallery";
+            // 現在 standard なら gallery、gallery なら standard に切り替える。
             if (OnViewModeChange is not null)
-                await OnViewModeChange(next).ConfigureAwait(false);
+                await OnViewModeChange(ShellHeaderBarLogic.NextViewModeName(currentViewMode)).ConfigureAwait(false);
         }
         catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.ViewModeBtn_Click: threw: {ex}"); }
     }
@@ -190,22 +208,23 @@ public sealed partial class ShellHeaderBar : UserControl
         ApplyActiveStyle(MultiSelectBtn, MultiSelectIcon, isMultiSelectActive);
     }
 
+    // グループ化ボタンのアクティブ色と、masonry 中の無効状態を同期する。
     private void SyncGroupingStyle()
     {
-        var groupingActive = currentGroupingMode == GroupingMode.world;
-        ApplyActiveStyle(GroupingBtn, GroupingIcon, groupingActive);
+        var state = ShellHeaderBarLogic.GroupingToggleState(currentGroupingMode, currentViewMode);
+        ApplyActiveStyle(GroupingBtn, GroupingIcon, state.Active);
         // masonry 表示中はグループ化を無効化 (UI 側の制約)
-        var disabled = currentViewMode == ViewMode.gallery;
-        GroupingBtn.IsEnabled = !disabled;
-        GroupingBtn.Opacity = disabled ? 0.4 : 1.0;
+        GroupingBtn.IsEnabled = state.Enabled;
+        GroupingBtn.Opacity = state.Opacity;
     }
 
+    // 表示モードボタンのアイコンとアクティブ色を現在モードへ同期する。
     private void SyncViewModeStyle()
     {
-        var galleryActive = currentViewMode == ViewMode.gallery;
+        var state = ShellHeaderBarLogic.ViewModeToggleState(currentViewMode);
         // 現状のモードを示すアイコン: standard → "grid"、gallery → "gallery"
-        ViewModeIcon.IconName = galleryActive ? "gallery" : "grid";
-        ApplyActiveStyle(ViewModeBtn, ViewModeIcon, galleryActive);
+        ViewModeIcon.IconName = state.IconName ?? "grid";
+        ApplyActiveStyle(ViewModeBtn, ViewModeIcon, state.Active);
     }
 
     /// <summary>
@@ -250,24 +269,40 @@ public sealed partial class ShellHeaderBar : UserControl
     {
         try
         {
-            if (ResolveThemeBrush("ABorderStrong") is { } focusBorder)
+            var keys = ShellHeaderBarLogic.SearchBoxKeys(focused: true);
+            if (ResolveThemeBrush(keys.BorderKey) is { } focusBorder)
                 SearchBoxBorder.BorderBrush = focusBorder;
-            if (ResolveThemeBrush("ASurface") is { } focusFill)
+            if (ResolveThemeBrush(keys.FillKey) is { } focusFill)
                 SearchBoxBorder.Background = focusFill;
         }
         catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.SearchTextBox_GotFocus: threw: {ex}"); }
     }
 
+    // 検索ボックスからフォーカスが外れたら通常の枠線と背景へ戻す。
     private void SearchTextBox_LostFocus(object sender, RoutedEventArgs e)
     {
         try
         {
-            if (ResolveThemeBrush("ABorder") is { } restBorder)
+            var keys = ShellHeaderBarLogic.SearchBoxKeys(focused: false);
+            if (ResolveThemeBrush(keys.BorderKey) is { } restBorder)
                 SearchBoxBorder.BorderBrush = restBorder;
-            if (ResolveThemeBrush("ASurfaceSoft") is { } restFill)
+            if (ResolveThemeBrush(keys.FillKey) is { } restFill)
                 SearchBoxBorder.Background = restFill;
         }
         catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.SearchTextBox_LostFocus: threw: {ex}"); }
+    }
+
+    // Enter キーで検索テキストのバインディングを確定し、即時検索を要求する。
+    private void SearchTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        try
+        {
+            if (!ShellHeaderBarLogic.ShouldSubmitSearch(e.Key)) return;
+            e.Handled = true;
+            SearchTextBox.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
+            OnSearchSubmit?.Invoke();
+        }
+        catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.SearchTextBox_KeyDown: threw: {ex}"); }
     }
 
     /// <summary>ActualTheme に応じた ThemeDictionaries から指定キーのブラシを取り出す。</summary>

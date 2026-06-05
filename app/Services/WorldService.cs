@@ -30,6 +30,7 @@ public sealed class WorldService
     private readonly AlpheratzDb _db;
     private readonly PhotoScanner _scanner;
 
+    /// <summary>ワールド情報を扱う DB とログ由来の解決処理を受け取ってサービスを作成する。</summary>
     public WorldService(AlpheratzDb db, PhotoScanner scanner)
     {
         AppLogger.Trace("WorldService.ctor: enter");
@@ -38,6 +39,7 @@ public sealed class WorldService
         AppLogger.Trace("WorldService.ctor: exit");
     }
 
+    /// <summary>VRChat のワールド詳細 URL を既定ブラウザで開く。</summary>
     public async Task OpenWorldUrlAsync(string worldId, CancellationToken ct = default)
     {
         AppLogger.Trace($"WorldService.OpenWorldUrlAsync: enter worldId={worldId}");
@@ -50,13 +52,14 @@ public sealed class WorldService
         }
         catch (Exception ex)
         {
-            // Rethrow: caller (PhotoModalViewModel) catches and toasts.
+            // 呼出側がユーザー向け通知を出せるよう、入力不正や起動失敗は返す。
             AppLogger.Error($"WorldService.OpenWorldUrlAsync: threw: {ex}");
             throw;
         }
         AppLogger.Trace("WorldService.OpenWorldUrlAsync: exit");
     }
 
+    /// <summary>Twitter/X の Web Intent URL を既定ブラウザで開く。</summary>
     public async Task OpenTweetIntentAsync(string intentUrl, CancellationToken ct = default)
     {
         AppLogger.Trace("WorldService.OpenTweetIntentAsync: enter");
@@ -75,6 +78,7 @@ public sealed class WorldService
         AppLogger.Trace("WorldService.OpenTweetIntentAsync: exit");
     }
 
+    /// <summary>指定写真を Explorer 上で選択表示する。</summary>
     public Task ShowInExplorerAsync(string path, CancellationToken ct = default)
     {
         AppLogger.Trace($"WorldService.ShowInExplorerAsync: enter path={path}");
@@ -102,6 +106,7 @@ public sealed class WorldService
         return Task.CompletedTask;
     }
 
+    /// <summary>指定写真を Windows クリップボードへ画像として設定する。</summary>
     public async Task CopyImageToClipboardAsync(string photoPath, CancellationToken ct = default)
     {
         AppLogger.Trace($"WorldService.CopyImageToClipboardAsync: enter path={photoPath}");
@@ -123,6 +128,7 @@ public sealed class WorldService
         AppLogger.Trace("WorldService.CopyImageToClipboardAsync: exit");
     }
 
+    /// <summary>source 写真のワールド情報を target 写真へコピーする。</summary>
     public Task ApplyWorldMatchFromPhotoAsync(string targetPhotoPath, string sourcePhotoPath, CancellationToken ct = default)
     {
         AppLogger.Trace("WorldService.ApplyWorldMatchFromPhotoAsync: enter");
@@ -131,6 +137,7 @@ public sealed class WorldService
         return task;
     }
 
+    /// <summary>Polaris archive の訪問履歴から未知ワールド写真を解決する。</summary>
     public Task<int> ResolveUnknownWorldsFromArchiveAsync(CancellationToken ct = default)
     {
         AppLogger.Trace("WorldService.ResolveUnknownWorldsFromArchiveAsync: enter");
@@ -139,6 +146,7 @@ public sealed class WorldService
         return task;
     }
 
+    /// <summary>既知ワールド写真との PDQ 距離から、未知ワールド写真を自動解決する。</summary>
     public async Task<int> ResolveUnknownWorldsFromSimilarPhotosAsync(string target, CancellationToken ct = default)
     {
         AppLogger.Trace($"WorldService.ResolveUnknownWorldsFromSimilarPhotosAsync: enter target={target}");

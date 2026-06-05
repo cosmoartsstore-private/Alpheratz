@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -41,6 +42,27 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("TemplatePageViewModel.ctor: exit");
     }
 
+    /// <summary>
+    /// 設定 JSON から読み込んだテンプレート状態を VM に反映する。
+    /// Shell / Settings と状態が分岐すると、別設定の保存時に古いテンプレートで
+    /// 上書きされるため、投稿テンプレートの真実源はこの VM に寄せる。
+    /// </summary>
+    public void applySettings(IReadOnlyList<string>? templates, string? activeTemplate)
+    {
+        var nextTemplates = templates?
+            .Where(template => !string.IsNullOrWhiteSpace(template))
+            .ToArray()
+            ?? Array.Empty<string>();
+        tweetTemplates.ReplaceAll(nextTemplates);
+        ActiveTweetTemplate = !string.IsNullOrWhiteSpace(activeTemplate) && nextTemplates.Contains(activeTemplate)
+            ? activeTemplate
+            : nextTemplates.FirstOrDefault() ?? string.Empty;
+        if (EditingTweetTemplate is not null && !nextTemplates.Contains(EditingTweetTemplate))
+        {
+            cancelEdit();
+        }
+    }
+
     /// <summary>テンプレート内の token (例: "{world}") を value に置換する純粋関数。</summary>
     public static string replaceTemplateToken(string template, string token, string value)
     {
@@ -76,8 +98,7 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
         }
         catch (Exception ex)
         {
-            // Continue: return empty string so caller can detect & abort
-            // safely; legacy alpheratz did not throw out of build.
+            // 投稿処理側が空文字を検知して中断できるよう、本文生成の失敗はここで閉じる。
             AppLogger.Error($"TemplatePageViewModel.buildTweetText: threw: {ex}");
             return string.Empty;
         }
@@ -135,8 +156,7 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
     /// 削除後の選択状態フォロー：
     ///   - 削除したものがアクティブテンプレートだった場合は先頭テンプレートに切り替え
     ///   - 削除したものが編集中だった場合は cancelEdit でドラフトをクリア
-    /// saveTemplates をその場で await するのは、削除が即時永続化されないとアプリ再起動で
-    /// 復活する（旧実装の永続化漏れ）バグを再発させないため。
+    /// saveTemplates をその場で await し、削除直後の状態を設定ファイルへ確実に反映する。
     /// </summary>
     public async Task deleteTemplate(string template, AlpheratzSettingDto currentSetting)
     {
@@ -222,6 +242,7 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("TemplatePageViewModel.saveTemplateDraft: exit");
     }
 
+    /// <summary>ドラフトをテンプレート一覧へ反映してから、設定ファイルへ保存する。</summary>
     public async Task saveTemplate(AlpheratzSettingDto currentSetting)
     {
         AppLogger.Trace("TemplatePageViewModel.saveTemplate: enter");
@@ -230,6 +251,7 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("TemplatePageViewModel.saveTemplate: exit");
     }
 
+    /// <summary>現在のテンプレート一覧とアクティブテンプレートを設定ファイルへ保存する。</summary>
     public async Task saveTemplates(AlpheratzSettingDto currentSetting)
     {
         AppLogger.Trace($"TemplatePageViewModel.saveTemplates: enter count={tweetTemplates.Count}");

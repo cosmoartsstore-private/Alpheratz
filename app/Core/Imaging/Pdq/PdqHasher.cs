@@ -360,7 +360,7 @@ public static class PdqHasher
     }
 
     /// <summary>
-    /// hex 文字列同士のハミング距離。一旦バイトに戻さず 4bit ずつ直接 XOR + popcount で計算する
+    /// hex 文字列同士のハミング距離。バイト配列へ戻さず 4bit ずつ直接 XOR + popcount で計算する
     /// (アロケーションを避けるため)。長さが違うか hex 文字以外を含むと null を返す。
     /// </summary>
     public static int? HexHammingDistance(string left, string right)
@@ -377,6 +377,7 @@ public static class PdqHasher
         return distance;
     }
 
+    /// <summary>16進文字を 0-15 の値へ変換する。不正文字は -1。</summary>
     private static int HexDigit(char c)
     {
         if (c >= '0' && c <= '9') return c - '0';

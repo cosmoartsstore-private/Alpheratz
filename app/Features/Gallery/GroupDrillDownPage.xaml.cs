@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Collections.Generic;
 using System.Linq;
 using Alpheratz.Core;
@@ -17,6 +18,7 @@ namespace Alpheratz.Features.Gallery;
 /// 写真をクリックすると ShellPage が PhotoModal を最上位レイヤ (TopModalContent) に
 /// 重ねて 2 段スタック表示する。
 /// </summary>
+[ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public sealed partial class GroupDrillDownPage : UserControl
 {
     /// <summary>戻るボタン / 背景クリック / ESC / × ボタンで発火する閉じるコールバック。</summary>
@@ -33,6 +35,7 @@ public sealed partial class GroupDrillDownPage : UserControl
 
     public IReadOnlyList<PhotoThumbnailItem> CurrentPhotos => photos;
 
+    // ドリルダウン用の標準グリッドを初期化し、写真クリックとお気に入り操作を中継する。
     public GroupDrillDownPage()
     {
         AppLogger.Trace("GroupDrillDownPage.ctor: enter");
@@ -59,6 +62,7 @@ public sealed partial class GroupDrillDownPage : UserControl
         AppLogger.Trace("GroupDrillDownPage.ctor: exit");
     }
 
+    // 対象グループ名と写真一覧を表示へ反映し、必要なサムネイル生成を要求する。
     public void SetGroupInfo(string groupName, IReadOnlyList<PhotoThumbnailItem> items)
     {
         AppLogger.Trace($"GroupDrillDownPage.SetGroupInfo: enter name={groupName} count={items.Count}");

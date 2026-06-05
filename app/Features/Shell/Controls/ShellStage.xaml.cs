@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Alpheratz.Core;
 using Alpheratz.Features.PhotoModal;
 using Alpheratz.Shared.Animations;
@@ -16,6 +17,7 @@ namespace Alpheratz.Features.Shell.Controls;
 ///   Layer 3: ScanningOverlay (スキャン進捗)
 ///   Layer 4: ToastHost
 /// </summary>
+[ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public sealed partial class ShellStage : UserControl
 {
     public ShellStage()
@@ -63,25 +65,27 @@ public sealed partial class ShellStage : UserControl
         get => ModalLayerHost.Visibility;
         set
         {
-            if (value == Visibility.Visible)
+            var transition = ShellStageLayerLogic.ModalTransition(value, ModalLayerHost.Visibility);
+            if (transition == ShellStageLayerTransition.Open)
             {
                 // version bump で進行中の close onCompleted を無効化する。
-                modalVersion++;
+                modalVersion = ShellStageLayerLogic.NextVersion(modalVersion);
                 ModalLayerHost.Visibility = Visibility.Visible;
-                AnimationHelper.FadeIn(ModalLayerHost, 250);
-                AnimationHelper.ScaleIn(ModalContentHost, fromScale: 0.88f, durationMs: 350);
+                AnimationHelper.FadeIn(ModalLayerHost, ShellStageLayerLogic.ModalFadeInDurationMilliseconds);
+                AnimationHelper.ScaleIn(ModalContentHost, fromScale: 0.88f, durationMs: ShellStageLayerLogic.ModalScaleInDurationMilliseconds);
             }
-            else if (ModalLayerHost.Visibility == Visibility.Visible)
+            else if (transition == ShellStageLayerTransition.Close)
             {
-                var ourVersion = ++modalVersion;
-                AnimationHelper.FadeOut(ModalLayerHost, 200);
-                AnimationHelper.ScaleOut(ModalContentHost, toScale: 0.92f, durationMs: 200, onCompleted: () =>
+                var ourVersion = ShellStageLayerLogic.NextVersion(modalVersion);
+                modalVersion = ourVersion;
+                AnimationHelper.FadeOut(ModalLayerHost, ShellStageLayerLogic.ModalFadeOutDurationMilliseconds);
+                AnimationHelper.ScaleOut(ModalContentHost, toScale: 0.92f, durationMs: ShellStageLayerLogic.ModalScaleOutDurationMilliseconds, onCompleted: () =>
                 {
                     DispatcherQueue?.TryEnqueue(() =>
                     {
                         // アニメ中に再オープン (もしくは別の close) が発生していたら version が
                         // 進んでいる。その場合は自分の cleanup は古い遺物なのでスキップ。
-                        if (modalVersion != ourVersion) return;
+                        if (!ShellStageLayerLogic.CanCompleteClose(modalVersion, ourVersion)) return;
                         ModalContentHost.Content = null;
                         ModalLayerHost.Visibility = Visibility.Collapsed;
                         AnimationHelper.ResetVisual(ModalLayerHost);
@@ -110,8 +114,7 @@ public sealed partial class ShellStage : UserControl
     /// <summary>
     /// 最上位モーダルレイヤの表示。閉じるアニメ完了時に PhotoModalPage であれば
     /// ReleaseImage() を呼んで重い BitmapImage 参照を解放する (再表示時は新規取得)。
-    /// 旧実装ではこの責務が ModalVisibility 側にあったが、PhotoModal を最上位レイヤに
-    /// 移したのに合わせて移動した。
+    /// PhotoModal は最上位レイヤにあるため、このプロパティで表示と解放をまとめて扱う。
     /// version カウンタで「閉じるアニメ進行中に再オープン」したケースのクリーンアップ
     /// 競合を防ぐ。
     /// </summary>
@@ -120,24 +123,26 @@ public sealed partial class ShellStage : UserControl
         get => TopModalLayerHost.Visibility;
         set
         {
-            if (value == Visibility.Visible)
+            var transition = ShellStageLayerLogic.ModalTransition(value, TopModalLayerHost.Visibility);
+            if (transition == ShellStageLayerTransition.Open)
             {
-                topModalVersion++;
+                topModalVersion = ShellStageLayerLogic.NextVersion(topModalVersion);
                 TopModalLayerHost.Visibility = Visibility.Visible;
-                AnimationHelper.FadeIn(TopModalLayerHost, 250);
-                AnimationHelper.ScaleIn(TopModalContentHost, fromScale: 0.88f, durationMs: 350);
+                AnimationHelper.FadeIn(TopModalLayerHost, ShellStageLayerLogic.ModalFadeInDurationMilliseconds);
+                AnimationHelper.ScaleIn(TopModalContentHost, fromScale: 0.88f, durationMs: ShellStageLayerLogic.ModalScaleInDurationMilliseconds);
             }
-            else if (TopModalLayerHost.Visibility == Visibility.Visible)
+            else if (transition == ShellStageLayerTransition.Close)
             {
-                var ourVersion = ++topModalVersion;
-                AnimationHelper.FadeOut(TopModalLayerHost, 200);
-                AnimationHelper.ScaleOut(TopModalContentHost, toScale: 0.92f, durationMs: 200, onCompleted: () =>
+                var ourVersion = ShellStageLayerLogic.NextVersion(topModalVersion);
+                topModalVersion = ourVersion;
+                AnimationHelper.FadeOut(TopModalLayerHost, ShellStageLayerLogic.ModalFadeOutDurationMilliseconds);
+                AnimationHelper.ScaleOut(TopModalContentHost, toScale: 0.92f, durationMs: ShellStageLayerLogic.ModalScaleOutDurationMilliseconds, onCompleted: () =>
                 {
                     DispatcherQueue?.TryEnqueue(() =>
                     {
                         // アニメ中に再オープンされていたら version 不一致 → cleanup スキップ。
                         // ReleaseImage も含めて飛ばす (まだ表示中の image を解放しないように)。
-                        if (topModalVersion != ourVersion) return;
+                        if (!ShellStageLayerLogic.CanCompleteClose(topModalVersion, ourVersion)) return;
                         if (TopModalContentHost.Content is PhotoModal.PhotoModalPage modal)
                             modal.ReleaseImage();
                         TopModalContentHost.Content = null;
@@ -159,14 +164,15 @@ public sealed partial class ShellStage : UserControl
         get => ScanningOverlayControl.Visibility;
         set
         {
-            if (value == Visibility.Visible && ScanningOverlayControl.Visibility != Visibility.Visible)
+            var transition = ShellStageLayerLogic.OverlayTransition(value, ScanningOverlayControl.Visibility);
+            if (transition == ShellStageLayerTransition.Open)
             {
                 ScanningOverlayControl.Visibility = Visibility.Visible;
-                AnimationHelper.FadeIn(ScanningOverlayControl, 300);
+                AnimationHelper.FadeIn(ScanningOverlayControl, ShellStageLayerLogic.OverlayFadeInDurationMilliseconds);
             }
-            else if (value == Visibility.Collapsed && ScanningOverlayControl.Visibility == Visibility.Visible)
+            else if (transition == ShellStageLayerTransition.Close)
             {
-                AnimationHelper.FadeOut(ScanningOverlayControl, 250, onCompleted: () =>
+                AnimationHelper.FadeOut(ScanningOverlayControl, ShellStageLayerLogic.OverlayFadeOutDurationMilliseconds, onCompleted: () =>
                 {
                     DispatcherQueue?.TryEnqueue(() =>
                     {

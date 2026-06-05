@@ -1,5 +1,7 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using Alpheratz.Core;
@@ -14,9 +16,15 @@ using Microsoft.UI.Xaml.Media;
 
 namespace Alpheratz.Features.Gallery.Controls;
 
+[ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public sealed partial class GalleryFilterPanel : UserControl
 {
+    private const double ChoiceRowWidth = 328;
+    private const double ChoiceNameMaxWidth = 218;
+
     private GalleryFiltersState? boundFiltersState;
+    private UiObservableCollection<WorldFilterOptionDto>? boundWorldOptions;
+    private UiObservableCollection<string>? boundMasterTags;
     public Action? OnResetFilters { get; set; }
     public Action<string>? OnDatePresetSelect { get; set; }
     public Action<string>? OnOrientationSelect { get; set; }
@@ -31,7 +39,7 @@ public sealed partial class GalleryFilterPanel : UserControl
     // インスタンス生成時の「今月」で初期化。アプリ起動から日を跨いでも UI 操作で
     // visibleMonth は更新されるので問題なし（コンストラクタ評価で十分）。
     private DateTime visibleMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
-    private string activeDateField = "from";
+    private string activeDateField = GalleryFilterPanelLogic.DateFieldFrom;
     private string draftFrom = "";
     private string draftTo = "";
     private string draftPreset = "none";
@@ -39,8 +47,7 @@ public sealed partial class GalleryFilterPanel : UserControl
     private List<WorldFilterOptionDto> allWorldOptions = [];
     private List<string> allTagOptions = [];
 
-    private static readonly string[] WeekLabels = ["日", "月", "火", "水", "木", "金", "土"];
-
+    /// <summary>フィルタパネルを初期化し、初期表示に必要な曜日ヘッダを構築する。</summary>
     public GalleryFilterPanel()
     {
         AppLogger.Trace("GalleryFilterPanel.ctor: enter");
@@ -79,9 +86,8 @@ public sealed partial class GalleryFilterPanel : UserControl
     }
 
     /// <summary>
-    /// R2-A-23: コントロールが Unloaded された後も boundFiltersState の PropertyChanged が
-    /// このパネルを参照し続けると、フィルタ更新のたびに再描画コードが死んだコントロール上で
-    /// 走ってリーク・例外を発生させる。Unloaded で確実にデタッチする。
+    /// Unloaded 後も boundFiltersState から参照され続けないよう、購読を解除する。
+    /// 死んだコントロール上で再描画が走るとリークや例外の原因になる。
     /// </summary>
     private void UserControl_Unloaded(object sender, RoutedEventArgs e)
     {
@@ -90,7 +96,19 @@ public sealed partial class GalleryFilterPanel : UserControl
             if (boundFiltersState is not null)
             {
                 boundFiltersState.PropertyChanged -= OnFiltersChanged;
+                boundFiltersState.worldFilters.CollectionChanged -= OnFilterCollectionChanged;
+                boundFiltersState.tagFilters.CollectionChanged -= OnFilterCollectionChanged;
                 boundFiltersState = null;
+            }
+            if (boundWorldOptions is not null)
+            {
+                boundWorldOptions.CollectionChanged -= OnWorldOptionsChanged;
+                boundWorldOptions = null;
+            }
+            if (boundMasterTags is not null)
+            {
+                boundMasterTags.CollectionChanged -= OnMasterTagsChanged;
+                boundMasterTags = null;
             }
             ActualThemeChanged -= OnActualThemeChanged;
         }
@@ -100,11 +118,17 @@ public sealed partial class GalleryFilterPanel : UserControl
         }
     }
 
+    /// <summary>ワールドフィルタ候補の参照を差し替え、一覧表示を再構築する。</summary>
     public void setWorldFilterOptions(UiObservableCollection<WorldFilterOptionDto> options)
     {
         AppLogger.Trace($"GalleryFilterPanel.setWorldFilterOptions: enter count={options.Count}");
         try
         {
+            if (boundWorldOptions is not null)
+                boundWorldOptions.CollectionChanged -= OnWorldOptionsChanged;
+
+            boundWorldOptions = options;
+            boundWorldOptions.CollectionChanged += OnWorldOptionsChanged;
             allWorldOptions = options.ToList();
             rebuildWorldCheckboxList();
         }
@@ -112,11 +136,17 @@ public sealed partial class GalleryFilterPanel : UserControl
         AppLogger.Trace("GalleryFilterPanel.setWorldFilterOptions: exit");
     }
 
+    /// <summary>タグマスタの参照を差し替え、タグチェックリストを再構築する。</summary>
     public void setMasterTagsSource(UiObservableCollection<string> tags)
     {
         AppLogger.Trace($"GalleryFilterPanel.setMasterTagsSource: enter count={tags.Count}");
         try
         {
+            if (boundMasterTags is not null)
+                boundMasterTags.CollectionChanged -= OnMasterTagsChanged;
+
+            boundMasterTags = tags;
+            boundMasterTags.CollectionChanged += OnMasterTagsChanged;
             allTagOptions = tags.ToList();
             rebuildTagCheckboxList();
         }
@@ -124,16 +154,23 @@ public sealed partial class GalleryFilterPanel : UserControl
         AppLogger.Trace("GalleryFilterPanel.setMasterTagsSource: exit");
     }
 
+    /// <summary>フィルタ状態をパネルへバインドし、変更通知を UI へ反映する。</summary>
     public void bindFiltersState(GalleryFiltersState state)
     {
         AppLogger.Trace("GalleryFilterPanel.bindFiltersState: enter");
         try
         {
             if (boundFiltersState is not null)
+            {
                 boundFiltersState.PropertyChanged -= OnFiltersChanged;
+                boundFiltersState.worldFilters.CollectionChanged -= OnFilterCollectionChanged;
+                boundFiltersState.tagFilters.CollectionChanged -= OnFilterCollectionChanged;
+            }
 
             boundFiltersState = state;
             boundFiltersState.PropertyChanged += OnFiltersChanged;
+            boundFiltersState.worldFilters.CollectionChanged += OnFilterCollectionChanged;
+            boundFiltersState.tagFilters.CollectionChanged += OnFilterCollectionChanged;
             syncActiveStates();
             syncBadge();
             syncDateTriggerLabel();
@@ -145,145 +182,156 @@ public sealed partial class GalleryFilterPanel : UserControl
         AppLogger.Trace("GalleryFilterPanel.bindFiltersState: exit");
     }
 
+    /// <summary>ワールド候補の増減に合わせてワールドチェックリストを作り直す。</summary>
+    private void OnWorldOptionsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        try
+        {
+            if (boundWorldOptions is not null)
+                allWorldOptions = boundWorldOptions.ToList();
+            rebuildWorldCheckboxList();
+        }
+        catch (Exception ex) { AppLogger.Error($"GalleryFilterPanel.OnWorldOptionsChanged: threw: {ex}"); }
+    }
+
+    /// <summary>タグマスタの増減に合わせてタグチェックリストを作り直す。</summary>
+    private void OnMasterTagsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        try
+        {
+            if (boundMasterTags is not null)
+                allTagOptions = boundMasterTags.ToList();
+            rebuildTagCheckboxList();
+        }
+        catch (Exception ex) { AppLogger.Error($"GalleryFilterPanel.OnMasterTagsChanged: threw: {ex}"); }
+    }
+
+    /// <summary>選択中タグ/ワールドの変更に合わせてパネルの表示状態を同期する。</summary>
+    private void OnFilterCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        try
+        {
+            ApplySyncPlan(GalleryFilterPanelLogic.SyncPlanForSelectionCollectionChanged());
+        }
+        catch (Exception ex) { AppLogger.Error($"GalleryFilterPanel.OnFilterCollectionChanged: threw: {ex}"); }
+    }
+
+    /// <summary>現在のフィルタ後件数をパネル上の件数表示へ反映する。</summary>
     public void setFilteredCount(int count)
     {
         FilteredCountRun.Text = count.ToString();
     }
 
+    /// <summary>GalleryFiltersState のプロパティ変更に応じて関連 UI を同期する。</summary>
     private void OnFiltersChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(GalleryFiltersState.OrientationFilter)
-            or nameof(GalleryFiltersState.SortMode)
-            or nameof(GalleryFiltersState.DisplayFolderMode)
-            or nameof(GalleryFiltersState.GroupingMode))
-        {
-            syncActiveStates();
-        }
-
-        if (e.PropertyName is nameof(GalleryFiltersState.ActiveFilterCount))
-        {
-            syncBadge();
-        }
-
-        if (e.PropertyName is nameof(GalleryFiltersState.DateFrom)
-            or nameof(GalleryFiltersState.DateTo)
-            or nameof(GalleryFiltersState.DatePreset))
-        {
-            syncDateTriggerLabel();
-        }
-
-        if (e.PropertyName is nameof(GalleryFiltersState.FavoritesOnly))
-        {
-            syncFavoriteToggle();
-        }
+        ApplySyncPlan(GalleryFilterPanelLogic.SyncPlanForFilterProperty(e.PropertyName));
     }
 
+    /// <summary>helper が返した同期 plan に従って必要な UI だけを更新する。</summary>
+    private void ApplySyncPlan(FilterPanelSyncPlan plan)
+    {
+        if (plan.ActiveStates) syncActiveStates();
+        if (plan.Badge) syncBadge();
+        if (plan.DateTrigger) syncDateTriggerLabel();
+        if (plan.FavoriteToggle) syncFavoriteToggle();
+        if (plan.TagSummary) syncTagSummary();
+        if (plan.WorldSummary) syncWorldSummary();
+        if (plan.TagChoices) rebuildTagCheckboxList();
+        if (plan.WorldChoices) rebuildWorldCheckboxList();
+    }
+
+    /// <summary>現在のフィルタ値から各ボタンやセクションの active 表示を更新する。</summary>
     private void syncActiveStates()
     {
         if (boundFiltersState is null) return;
         try
         {
-            setActive(OrientationAllBtn, boundFiltersState.OrientationFilter == "all");
-            setActive(OrientationPortraitBtn, boundFiltersState.OrientationFilter == "portrait");
-            setActive(OrientationLandscapeBtn, boundFiltersState.OrientationFilter == "landscape");
-            OrientationAllIcon.Foreground = ThemeHelper.Brush(OrientationAllIcon, boundFiltersState.OrientationFilter == "all" ? "APrimary" : "ATextFaint");
-            OrientationLandscapeIcon.Foreground = ThemeHelper.Brush(OrientationLandscapeIcon, boundFiltersState.OrientationFilter == "landscape" ? "APrimary" : "ATextFaint");
-            OrientationPortraitIcon.Foreground = ThemeHelper.Brush(OrientationPortraitIcon, boundFiltersState.OrientationFilter == "portrait" ? "APrimary" : "ATextFaint");
+            var state = GalleryFilterPanelLogic.ActiveState(
+                boundFiltersState.OrientationFilter,
+                boundFiltersState.SortMode,
+                boundFiltersState.DisplayFolderMode,
+                boundFiltersState.GroupingMode);
 
-            setActive(SortDateBtn, boundFiltersState.SortMode == SortMode.dateDesc);
-            setActive(SortWorldBtn, boundFiltersState.SortMode == SortMode.worldAsc);
+            setActive(OrientationAllBtn, state.OrientationAll);
+            setActive(OrientationPortraitBtn, state.OrientationPortrait);
+            setActive(OrientationLandscapeBtn, state.OrientationLandscape);
+            OrientationAllIcon.Foreground = ThemeHelper.Brush(OrientationAllIcon, GalleryFilterPanelLogic.IconForegroundKey(state.OrientationAll));
+            OrientationLandscapeIcon.Foreground = ThemeHelper.Brush(OrientationLandscapeIcon, GalleryFilterPanelLogic.IconForegroundKey(state.OrientationLandscape));
+            OrientationPortraitIcon.Foreground = ThemeHelper.Brush(OrientationPortraitIcon, GalleryFilterPanelLogic.IconForegroundKey(state.OrientationPortrait));
 
-            setActive(FolderAllBtn, boundFiltersState.DisplayFolderMode == DisplayFolderMode.all);
-            setActive(FolderPrimaryBtn, boundFiltersState.DisplayFolderMode == DisplayFolderMode.primary);
-            setActive(FolderSecondaryBtn, boundFiltersState.DisplayFolderMode == DisplayFolderMode.secondary);
+            setActive(SortDateBtn, state.SortDate);
+            setActive(SortWorldBtn, state.SortWorld);
 
-            setActive(GroupNoneBtn, boundFiltersState.GroupingMode == GroupingMode.none);
-            setActive(GroupWorldBtn, boundFiltersState.GroupingMode == GroupingMode.world);
+            setActive(FolderAllBtn, state.FolderAll);
+            setActive(FolderPrimaryBtn, state.FolderPrimary);
+            setActive(FolderSecondaryBtn, state.FolderSecondary);
+
+            setActive(GroupNoneBtn, state.GroupNone);
+            setActive(GroupWorldBtn, state.GroupWorld);
         }
         catch (Exception ex) { AppLogger.Error($"GalleryFilterPanel.syncActiveStates: threw: {ex}"); }
     }
 
+    /// <summary>有効フィルタ数のバッジ表示を更新する。</summary>
     private void syncBadge()
     {
         if (boundFiltersState is null) return;
-        var count = boundFiltersState.ActiveFilterCount;
-        if (count > 0)
-        {
-            BadgeBorder.Visibility = Visibility.Visible;
-            BadgeText.Text = count.ToString();
-        }
-        else
-        {
-            BadgeBorder.Visibility = Visibility.Collapsed;
-        }
+        var badge = GalleryFilterPanelLogic.Badge(boundFiltersState.ActiveFilterCount);
+        BadgeBorder.Visibility = ToVisibility(badge.Visible);
+        BadgeText.Text = badge.Text;
     }
 
+    /// <summary>日付フィルタのトリガーボタンに表示するラベルを更新する。</summary>
     private void syncDateTriggerLabel()
     {
         if (boundFiltersState is null) return;
         var from = boundFiltersState.DateFrom;
         var to = boundFiltersState.DateTo;
-        if (!string.IsNullOrEmpty(from) || !string.IsNullOrEmpty(to))
-        {
-            DateRangeLabel.Text = $"{(string.IsNullOrEmpty(from) ? "..." : from)} ~ {(string.IsNullOrEmpty(to) ? "..." : to)}";
-            DateClearBtn.Visibility = Visibility.Visible;
-        }
-        else
-        {
-            DateRangeLabel.Text = "すべての期間";
-            DateClearBtn.Visibility = Visibility.Collapsed;
-        }
+        var state = GalleryFilterPanelLogic.DateTrigger(from, to);
+        DateRangeLabel.Text = state.Label;
+        DateClearBtn.Visibility = ToVisibility(state.ClearVisible);
     }
 
+    /// <summary>お気に入りフィルタのトグル表示を現在値に合わせる。</summary>
     private void syncFavoriteToggle()
     {
         if (boundFiltersState is null) return;
-        var active = boundFiltersState.FavoritesOnly;
-        FavoriteStarIcon.Liked = active;
-        if (active)
-        {
-            FavoriteToggleBtn.Background = ThemeHelper.Brush(FavoriteToggleBtn, "AFavoriteSoft");
-            FavoriteToggleBtn.BorderBrush = ThemeHelper.Brush(FavoriteToggleBtn, "AFavoriteBorder");
-            FavoriteLabel.Foreground = ThemeHelper.Brush(FavoriteLabel, "AFavorite");
-        }
-        else
-        {
-            FavoriteToggleBtn.Background = ThemeHelper.Brush(FavoriteToggleBtn, "ASurfaceSoft");
-            FavoriteToggleBtn.BorderBrush = new SolidColorBrush(Colors.Transparent);
-            FavoriteLabel.Foreground = ThemeHelper.Brush(FavoriteLabel, "ATextDim");
-        }
+        var state = GalleryFilterPanelLogic.FavoriteToggle(boundFiltersState.FavoritesOnly);
+        FavoriteStarIcon.Liked = state.Liked;
+        FavoriteToggleBtn.Background = ThemeHelper.Brush(FavoriteToggleBtn, state.BackgroundKey);
+        FavoriteToggleBtn.BorderBrush = state.BorderKey is null
+            ? new SolidColorBrush(Colors.Transparent)
+            : ThemeHelper.Brush(FavoriteToggleBtn, state.BorderKey);
+        FavoriteLabel.Foreground = ThemeHelper.Brush(FavoriteLabel, state.LabelForegroundKey);
     }
 
+    /// <summary>選択中タグの件数サマリを更新する。</summary>
     private void syncTagSummary()
     {
         if (boundFiltersState is null) return;
         var count = boundFiltersState.tagFilters.Count;
-        TagSummaryLabel.Text = count == 0 ? "すべてのタグ" : $"{count}件選択中";
+        TagSummaryLabel.Text = GalleryFilterPanelLogic.FormatSelectionSummary(count, GalleryFilterPanelLogic.AllTagsEmptyLabel);
     }
 
+    /// <summary>選択中ワールドの件数サマリを更新する。</summary>
     private void syncWorldSummary()
     {
         if (boundFiltersState is null) return;
         var count = boundFiltersState.worldFilters.Count;
-        WorldSummaryLabel.Text = count == 0 ? "すべてのワールド" : $"{count}件選択中";
+        WorldSummaryLabel.Text = GalleryFilterPanelLogic.FormatSelectionSummary(count, GalleryFilterPanelLogic.AllWorldsEmptyLabel);
     }
 
+    /// <summary>ボタンの active 用スタイルクラスを有効/無効にする。</summary>
     private static void setActive(Button btn, bool active)
     {
-        if (active)
-        {
-            btn.Background = ThemeHelper.Brush(btn, "APrimarySoft");
-            btn.Foreground = ThemeHelper.Brush(btn, "APrimary");
-            btn.BorderBrush = ThemeHelper.Brush(btn, "ABorderStrong");
-            btn.BorderThickness = new Thickness(1);
-        }
-        else
-        {
-            btn.Background = ThemeHelper.Brush(btn, "ASurfaceSoft");
-            btn.Foreground = ThemeHelper.Brush(btn, "ATextDim");
-            btn.BorderBrush = new SolidColorBrush(Colors.Transparent);
-            btn.BorderThickness = new Thickness(0);
-        }
+        var style = GalleryFilterPanelLogic.ActiveButtonStyle(active);
+        btn.Background = ThemeHelper.Brush(btn, style.BackgroundKey);
+        btn.Foreground = ThemeHelper.Brush(btn, style.ForegroundKey);
+        btn.BorderBrush = style.BorderTransparent || style.BorderKey is null
+            ? new SolidColorBrush(Colors.Transparent)
+            : ThemeHelper.Brush(btn, style.BorderKey);
+        btn.BorderThickness = new Thickness(style.BorderThickness);
     }
 
     // ── Header ──
@@ -301,6 +349,7 @@ public sealed partial class GalleryFilterPanel : UserControl
         catch (Exception ex) { AppLogger.Error($"GalleryFilterPanel.SortDate_Click: {ex}"); }
     }
 
+    /// <summary>ワールド名順ソートと日付順ソートを切り替える。</summary>
     private void SortWorld_Click(object sender, RoutedEventArgs e)
     {
         try { OnSortSelect?.Invoke(SortMode.worldAsc); }
@@ -314,18 +363,19 @@ public sealed partial class GalleryFilterPanel : UserControl
         draftFrom = boundFiltersState.DateFrom;
         draftTo = boundFiltersState.DateTo;
         draftPreset = boundFiltersState.DatePreset.ToString();
-        activeDateField = "from";
+        activeDateField = GalleryFilterPanelLogic.DateFieldFrom;
 
-        var isOpen = DatePickerPopup.Visibility == Visibility.Visible;
-        DatePickerPopup.Visibility = isOpen ? Visibility.Collapsed : Visibility.Visible;
+        var toggle = GalleryFilterPanelLogic.ToggleDropdown(DatePickerPopup.Visibility == Visibility.Visible);
+        DatePickerPopup.Visibility = ToVisibility(toggle.IsOpen);
 
-        if (!isOpen)
+        if (toggle.ShouldResetSearchAndRebuild)
         {
             syncDraftUI();
             buildCalendar();
         }
     }
 
+    /// <summary>日付フィルタを解除し、日付ドラフトも空にする。</summary>
     private void DateClear_Click(object sender, RoutedEventArgs e)
     {
         try { OnDatePresetSelect?.Invoke("none"); }
@@ -335,84 +385,77 @@ public sealed partial class GalleryFilterPanel : UserControl
     // ── From/To chips ──
     private void FromChip_Click(object sender, RoutedEventArgs e)
     {
-        activeDateField = "from";
+        activeDateField = GalleryFilterPanelLogic.DateFieldFrom;
         syncDraftChipHighlight();
     }
 
+    /// <summary>日付ドラフトの終了日入力へフォーカスを移す。</summary>
     private void ToChip_Click(object sender, RoutedEventArgs e)
     {
-        activeDateField = "to";
+        activeDateField = GalleryFilterPanelLogic.DateFieldTo;
         syncDraftChipHighlight();
     }
 
+    /// <summary>日付ドラフトで現在入力中の from/to チップを強調する。</summary>
     private void syncDraftChipHighlight()
     {
-        setActive(FromChipBtn, activeDateField == "from");
-        setActive(ToChipBtn, activeDateField == "to");
+        setActive(FromChipBtn, activeDateField == GalleryFilterPanelLogic.DateFieldFrom);
+        setActive(ToChipBtn, activeDateField == GalleryFilterPanelLogic.DateFieldTo);
     }
 
+    /// <summary>日付ドラフトの入力値をテキストとカレンダー表示へ反映する。</summary>
     private void syncDraftUI()
     {
-        FromValueText.Text = string.IsNullOrEmpty(draftFrom) ? "---" : draftFrom;
-        ToValueText.Text = string.IsNullOrEmpty(draftTo) ? "---" : draftTo;
-
-        var label = (!string.IsNullOrEmpty(draftFrom) || !string.IsNullOrEmpty(draftTo))
-            ? $"{(string.IsNullOrEmpty(draftFrom) ? "..." : draftFrom)} ~ {(string.IsNullOrEmpty(draftTo) ? "..." : draftTo)}"
-            : "すべての期間";
-        CalendarRangeLabel.Text = label;
+        var state = GalleryFilterPanelLogic.DraftDisplay(draftFrom, draftTo);
+        FromValueText.Text = state.FromText;
+        ToValueText.Text = state.ToText;
+        CalendarRangeLabel.Text = state.RangeLabel;
 
         syncDraftChipHighlight();
         syncPresetHighlight();
     }
 
+    /// <summary>現在の日付プリセットに対応するボタンを強調する。</summary>
     private void syncPresetHighlight()
     {
-        setActive(PresetTodayBtn, draftPreset == "today");
-        setActive(PresetLast7Btn, draftPreset == "last7days");
-        setActive(PresetThisMonthBtn, draftPreset == "thisMonth");
-        setActive(PresetLastMonthBtn, draftPreset == "lastMonth");
-        setActive(PresetHalfYearBtn, draftPreset == "halfYear");
-        setActive(PresetOneYearBtn, draftPreset == "oneYear");
+        var state = GalleryFilterPanelLogic.PresetState(draftPreset);
+        setActive(PresetTodayBtn, state.Today);
+        setActive(PresetLast7Btn, state.Last7Days);
+        setActive(PresetThisMonthBtn, state.ThisMonth);
+        setActive(PresetLastMonthBtn, state.LastMonth);
+        setActive(PresetHalfYearBtn, state.HalfYear);
+        setActive(PresetOneYearBtn, state.OneYear);
     }
 
     // ── Presets ──
     private void applyPresetToDraft(string preset)
     {
-        var today = DateTime.Today;
-        DateTime from, to;
-
-        switch (preset)
-        {
-            case "today":
-                from = today; to = today; break;
-            case "last7days":
-                from = today.AddDays(-6); to = today; break;
-            case "thisMonth":
-                from = new DateTime(today.Year, today.Month, 1);
-                to = from.AddMonths(1).AddDays(-1); break;
-            case "lastMonth":
-                from = new DateTime(today.Year, today.Month, 1).AddMonths(-1);
-                to = new DateTime(today.Year, today.Month, 1).AddDays(-1); break;
-            case "halfYear":
-                from = today.AddMonths(-6); to = today; break;
-            case "oneYear":
-                from = today.AddYears(-1); to = today; break;
-            default: return;
-        }
-
+        var draft = GalleryFilterPanelLogic.ApplyPresetToDraft(preset, DateTime.Today);
+        if (draft is null) return;
         draftPreset = preset;
-        draftFrom = from.ToString("yyyy-MM-dd");
-        draftTo = to.ToString("yyyy-MM-dd");
-        visibleMonth = new DateTime(from.Year, from.Month, 1);
+        draftFrom = draft.From;
+        draftTo = draft.To;
+        visibleMonth = draft.VisibleMonth;
         syncDraftUI();
         buildCalendar();
     }
 
+    /// <summary>日付ドラフトへ「今日」プリセットを適用する。</summary>
     private void PresetToday_Click(object sender, RoutedEventArgs e) => applyPresetToDraft("today");
+
+    /// <summary>日付ドラフトへ「過去7日」プリセットを適用する。</summary>
     private void PresetLast7Days_Click(object sender, RoutedEventArgs e) => applyPresetToDraft("last7days");
+
+    /// <summary>日付ドラフトへ「今月」プリセットを適用する。</summary>
     private void PresetThisMonth_Click(object sender, RoutedEventArgs e) => applyPresetToDraft("thisMonth");
+
+    /// <summary>日付ドラフトへ「先月」プリセットを適用する。</summary>
     private void PresetLastMonth_Click(object sender, RoutedEventArgs e) => applyPresetToDraft("lastMonth");
+
+    /// <summary>日付ドラフトへ「半年」プリセットを適用する。</summary>
     private void PresetHalfYear_Click(object sender, RoutedEventArgs e) => applyPresetToDraft("halfYear");
+
+    /// <summary>日付ドラフトへ「1年」プリセットを適用する。</summary>
     private void PresetOneYear_Click(object sender, RoutedEventArgs e) => applyPresetToDraft("oneYear");
 
     // ── Calendar navigation ──
@@ -422,49 +465,50 @@ public sealed partial class GalleryFilterPanel : UserControl
     // 都度評価する property にする。
     private static DateTime CalendarMaxMonth => new(DateTime.Today.Year + 2, 1, 1);
 
+    /// <summary>カレンダー表示月を1か月戻す。</summary>
     private void MonthPrev_Click(object sender, RoutedEventArgs e)
     {
-        var prev = visibleMonth.AddMonths(-1);
-        if (prev < CalendarMinMonth) return;
+        var prev = GalleryFilterPanelLogic.MoveVisibleMonth(visibleMonth, -1, CalendarMinMonth, CalendarMaxMonth);
+        if (prev == visibleMonth) return;
         visibleMonth = prev;
         buildCalendar();
     }
 
+    /// <summary>カレンダー表示月を1か月進める。</summary>
     private void MonthNext_Click(object sender, RoutedEventArgs e)
     {
-        var next = visibleMonth.AddMonths(1);
-        if (next > CalendarMaxMonth) return;
+        var next = GalleryFilterPanelLogic.MoveVisibleMonth(visibleMonth, 1, CalendarMinMonth, CalendarMaxMonth);
+        if (next == visibleMonth) return;
         visibleMonth = next;
         buildCalendar();
     }
 
+    /// <summary>カレンダーの選択範囲と日付ドラフトをクリアする。</summary>
     private void CalendarClear_Click(object sender, RoutedEventArgs e)
     {
-        draftPreset = "none";
+        draftPreset = GalleryFilterPanelLogic.DatePresetNone;
         draftFrom = "";
         draftTo = "";
         syncDraftUI();
         buildCalendar();
     }
 
+    /// <summary>カレンダーで選んだ日付ドラフトを実フィルタへ適用する。</summary>
     private void CalendarApply_Click(object sender, RoutedEventArgs e)
     {
         if (boundFiltersState is null) return;
         try
         {
-            if (draftPreset != "custom" && draftPreset != "none")
+            var request = GalleryFilterPanelLogic.ResolveDateApplyRequest(draftPreset, draftFrom, draftTo);
+            if (request.Kind == DateApplyKind.CustomRange)
             {
-                OnDatePresetSelect?.Invoke(draftPreset);
-            }
-            else if (draftPreset == "none")
-            {
-                OnDatePresetSelect?.Invoke("none");
+                boundFiltersState.DateFrom = request.From;
+                boundFiltersState.DateTo = request.To;
+                boundFiltersState.DatePreset = DatePreset.custom;
             }
             else
             {
-                boundFiltersState.DateFrom = draftFrom;
-                boundFiltersState.DateTo = draftTo;
-                boundFiltersState.DatePreset = DatePreset.custom;
+                OnDatePresetSelect?.Invoke(request.Preset);
             }
             DatePickerPopup.Visibility = Visibility.Collapsed;
         }
@@ -481,7 +525,7 @@ public sealed partial class GalleryFilterPanel : UserControl
             WeekdayHeaderGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             var tb = new TextBlock
             {
-                Text = WeekLabels[i],
+                Text = GalleryFilterPanelLogic.WeekLabels[i],
                 FontSize = 10,
                 FontWeight = Microsoft.UI.Text.FontWeights.ExtraBold,
                 Foreground = ThemeHelper.Brush(WeekdayHeaderGrid, "ATextFaint"),
@@ -492,6 +536,7 @@ public sealed partial class GalleryFilterPanel : UserControl
         }
     }
 
+    /// <summary>表示月と選択範囲に基づいてカレンダーの日付セルを再構築する。</summary>
     private void buildCalendar()
     {
         MonthLabel.Text = $"{visibleMonth.Year}年 {visibleMonth.Month}月";
@@ -503,114 +548,62 @@ public sealed partial class GalleryFilterPanel : UserControl
         for (int i = 0; i < 7; i++)
             CalendarDayGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-        var firstOfMonth = new DateTime(visibleMonth.Year, visibleMonth.Month, 1);
-        int startDow = (int)firstOfMonth.DayOfWeek;
-        int daysInMonth = DateTime.DaysInMonth(visibleMonth.Year, visibleMonth.Month);
+        var cells = GalleryFilterPanelLogic.BuildCalendarDays(visibleMonth, draftFrom, draftTo);
 
-        var startDate = firstOfMonth.AddDays(-startDow);
-        int totalCells = ((startDow + daysInMonth + 6) / 7) * 7;
-
-        int rows = totalCells / 7;
+        int rows = cells.Count / 7;
         for (int r = 0; r < rows; r++)
             CalendarDayGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        var activeStart = parseDate(draftFrom);
-        var activeEnd = parseDate(draftTo);
-
-        for (int i = 0; i < totalCells; i++)
+        foreach (var cell in cells)
         {
-            var cellDate = startDate.AddDays(i);
-            bool inCurrentMonth = cellDate.Month == visibleMonth.Month && cellDate.Year == visibleMonth.Year;
-            bool isStart = activeStart.HasValue && cellDate.Date == activeStart.Value.Date;
-            bool isEnd = activeEnd.HasValue && cellDate.Date == activeEnd.Value.Date;
-            bool inRange = activeStart.HasValue && activeEnd.HasValue
-                           && cellDate.Date >= activeStart.Value.Date && cellDate.Date <= activeEnd.Value.Date;
-
-            Brush? bg;
-            Brush? fg;
-
-            if (isStart || isEnd)
-            {
-                bg = ThemeHelper.Brush(CalendarDayGrid, "APrimary");
-                fg = new SolidColorBrush(Colors.White);
-            }
-            else if (inRange)
-            {
-                bg = ThemeHelper.Brush(CalendarDayGrid, "APrimarySoft");
-                fg = ThemeHelper.Brush(CalendarDayGrid, "AText");
-            }
-            else
-            {
-                bg = new SolidColorBrush(Colors.Transparent);
-                fg = inCurrentMonth
-                    ? ThemeHelper.Brush(CalendarDayGrid, "AText")
-                    : ThemeHelper.Brush(CalendarDayGrid, "ATextDisabled");
-            }
+            var visual = GalleryFilterPanelLogic.CalendarDayVisual(cell);
 
             var btn = new Button
             {
-                Content = cellDate.Day.ToString(),
-                Tag = cellDate,
+                Content = cell.Date.Day.ToString(),
+                Tag = cell.Date,
                 MinWidth = 0,
                 MinHeight = 32,
                 Width = 32,
                 Height = 32,
                 Padding = new Thickness(0),
                 HorizontalAlignment = HorizontalAlignment.Center,
-                Background = bg,
-                Foreground = fg,
+                Background = visual.BackgroundTransparent || visual.BackgroundKey is null
+                    ? new SolidColorBrush(Colors.Transparent)
+                    : ThemeHelper.Brush(CalendarDayGrid, visual.BackgroundKey),
+                Foreground = visual.ForegroundWhite || visual.ForegroundKey is null
+                    ? new SolidColorBrush(Colors.White)
+                    : ThemeHelper.Brush(CalendarDayGrid, visual.ForegroundKey),
                 BorderBrush = new SolidColorBrush(Colors.Transparent),
                 BorderThickness = new Thickness(0),
                 CornerRadius = new CornerRadius(6),
                 FontSize = 11,
-                FontWeight = (isStart || isEnd)
+                FontWeight = visual.FontWeight == FilterPanelFontWeight.ExtraBold
                     ? Microsoft.UI.Text.FontWeights.ExtraBold
                     : Microsoft.UI.Text.FontWeights.SemiBold,
             };
 
             btn.Click += DayCell_Click;
 
-            Grid.SetRow(btn, i / 7);
-            Grid.SetColumn(btn, i % 7);
+            Grid.SetRow(btn, cell.Row);
+            Grid.SetColumn(btn, cell.Column);
             CalendarDayGrid.Children.Add(btn);
         }
     }
 
+    /// <summary>クリックされた日付セルを from/to のドラフト選択へ反映する。</summary>
     private void DayCell_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button btn || btn.Tag is not DateTime clicked) return;
 
-        var clickedStr = clicked.ToString("yyyy-MM-dd");
-        draftPreset = "custom";
-
-        if (activeDateField == "from")
-        {
-            draftFrom = clickedStr;
-            if (!string.IsNullOrEmpty(draftTo) && string.Compare(clickedStr, draftTo, StringComparison.Ordinal) > 0)
-                draftTo = "";
-            activeDateField = "to";
-        }
-        else
-        {
-            if (!string.IsNullOrEmpty(draftFrom) && string.Compare(clickedStr, draftFrom, StringComparison.Ordinal) < 0)
-            {
-                draftTo = draftFrom;
-                draftFrom = clickedStr;
-            }
-            else
-            {
-                draftTo = clickedStr;
-            }
-        }
+        var draft = GalleryFilterPanelLogic.SelectCalendarDate(activeDateField, draftFrom, draftTo, clicked);
+        draftPreset = draft.Preset;
+        draftFrom = draft.From;
+        draftTo = draft.To;
+        activeDateField = draft.ActiveDateField;
 
         syncDraftUI();
         buildCalendar();
-    }
-
-    private static DateTime? parseDate(string value)
-    {
-        if (string.IsNullOrEmpty(value)) return null;
-        return DateTime.TryParse(value, out var dt) ? dt.Date : null;
     }
 
     // ── Orientation ──
@@ -620,12 +613,14 @@ public sealed partial class GalleryFilterPanel : UserControl
         catch (Exception ex) { AppLogger.Error($"GalleryFilterPanel.OrientationAll_Click: {ex}"); }
     }
 
+    /// <summary>縦向きフィルタの選択/解除を切り替える。</summary>
     private void OrientationPortrait_Click(object sender, RoutedEventArgs e)
     {
         try { OnOrientationSelect?.Invoke("portrait"); }
         catch (Exception ex) { AppLogger.Error($"GalleryFilterPanel.OrientationPortrait_Click: {ex}"); }
     }
 
+    /// <summary>横向きフィルタの選択/解除を切り替える。</summary>
     private void OrientationLandscape_Click(object sender, RoutedEventArgs e)
     {
         try { OnOrientationSelect?.Invoke("landscape"); }
@@ -635,60 +630,68 @@ public sealed partial class GalleryFilterPanel : UserControl
     // ── Tags dropdown ──
     private void TagTrigger_Click(object sender, RoutedEventArgs e)
     {
-        var isOpen = TagDropdownPanel.Visibility == Visibility.Visible;
-        TagDropdownPanel.Visibility = isOpen ? Visibility.Collapsed : Visibility.Visible;
-        if (!isOpen)
+        var toggle = GalleryFilterPanelLogic.ToggleDropdown(TagDropdownPanel.Visibility == Visibility.Visible);
+        TagDropdownPanel.Visibility = ToVisibility(toggle.IsOpen);
+        if (toggle.ShouldResetSearchAndRebuild)
         {
             TagSearchBox.Text = "";
             rebuildTagCheckboxList();
         }
     }
 
+    /// <summary>タグ検索文字列の変更に合わせてタグチェックリストを絞り込む。</summary>
     private void TagSearch_TextChanged(object sender, TextChangedEventArgs e)
     {
         rebuildTagCheckboxList();
     }
 
+    /// <summary>タグ検索語と選択状態に基づいてタグチェックリストを再構築する。</summary>
     private void rebuildTagCheckboxList()
     {
         TagCheckboxList.Children.Clear();
         var query = TagSearchBox?.Text?.Trim() ?? "";
-        var filtered = string.IsNullOrEmpty(query)
-            ? allTagOptions
-            : allTagOptions.Where(t => t.Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
+        var choices = GalleryFilterPanelLogic.BuildTagChoices(
+            allTagOptions,
+            query,
+            boundFiltersState?.tagFilters ?? Enumerable.Empty<string>(),
+            boundFiltersState?.TagFilterCounts ?? new Dictionary<string, long>());
 
-        addCheckboxItem(TagCheckboxList, "すべてのタグ", null,
-            boundFiltersState?.tagFilters.Count == 0,
-            () => { clearAllTagFilters(); });
-
-        foreach (var tag in filtered)
+        foreach (var row in choices.Rows)
         {
-            var isChecked = boundFiltersState?.tagFilters.Contains(tag) ?? false;
-            var capturedTag = tag;
-            addCheckboxItem(TagCheckboxList, tag, null, isChecked,
-                () => { toggleTagFilter(capturedTag); });
+            var capturedValue = row.FilterValue;
+            addCheckboxItem(TagCheckboxList, row.Label, row.CountText, row.IsChecked,
+                () =>
+                {
+                    if (capturedValue is null) clearAllTagFilters();
+                    else toggleTagFilter(capturedValue);
+                });
         }
 
-        TagCountLabel.Text = $"{allTagOptions.Count} タグ";
+        TagCountLabel.Text = choices.CountLabel;
     }
 
+    /// <summary>指定タグのフィルタ選択状態を切り替える。</summary>
     private void toggleTagFilter(string tag)
     {
         if (boundFiltersState is null) return;
-        if (boundFiltersState.tagFilters.Contains(tag))
+        if (GalleryFilterPanelLogic.ToggleAction(boundFiltersState.tagFilters, tag) == FilterToggleAction.Remove)
+        {
             OnTagFilterRemove?.Invoke(tag);
+        }
         else
+        {
             OnTagFilterAdd?.Invoke(tag);
+        }
 
         syncTagSummary();
         rebuildTagCheckboxList();
     }
 
+    /// <summary>選択中のタグフィルタをすべて解除する。</summary>
     private void clearAllTagFilters()
     {
         if (boundFiltersState is null) return;
-        var tags = boundFiltersState.tagFilters.ToList();
-        foreach (var t in tags)
+        foreach (var t in GalleryFilterPanelLogic.ValuesToClear(boundFiltersState.tagFilters))
             OnTagFilterRemove?.Invoke(t);
         syncTagSummary();
         rebuildTagCheckboxList();
@@ -697,68 +700,74 @@ public sealed partial class GalleryFilterPanel : UserControl
     // ── World dropdown ──
     private void WorldTrigger_Click(object sender, RoutedEventArgs e)
     {
-        var isOpen = WorldDropdownPanel.Visibility == Visibility.Visible;
-        WorldDropdownPanel.Visibility = isOpen ? Visibility.Collapsed : Visibility.Visible;
-        if (!isOpen)
+        var toggle = GalleryFilterPanelLogic.ToggleDropdown(WorldDropdownPanel.Visibility == Visibility.Visible);
+        WorldDropdownPanel.Visibility = ToVisibility(toggle.IsOpen);
+        if (toggle.ShouldResetSearchAndRebuild)
         {
             WorldSearchBox.Text = "";
             rebuildWorldCheckboxList();
         }
     }
 
+    /// <summary>ワールド検索文字列の変更に合わせてワールドチェックリストを絞り込む。</summary>
     private void WorldSearch_TextChanged(object sender, TextChangedEventArgs e)
     {
         rebuildWorldCheckboxList();
     }
 
+    /// <summary>ワールド検索語と選択状態に基づいてワールドチェックリストを再構築する。</summary>
     private void rebuildWorldCheckboxList()
     {
         WorldCheckboxList.Children.Clear();
         var query = WorldSearchBox?.Text?.Trim() ?? "";
-        var filtered = string.IsNullOrEmpty(query)
-            ? allWorldOptions
-            : allWorldOptions.Where(w => w.world_name?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false).ToList();
+        var choices = GalleryFilterPanelLogic.BuildWorldChoices(
+            allWorldOptions,
+            query,
+            boundFiltersState?.worldFilters ?? Enumerable.Empty<string>());
 
-        var totalCount = allWorldOptions.Sum(w => w.count);
-        addCheckboxItem(WorldCheckboxList, "すべてのワールド", $"{totalCount}枚",
-            boundFiltersState?.worldFilters.Count == 0,
+        var allRow = choices.Rows[0];
+        addCheckboxItem(WorldCheckboxList, allRow.Label, allRow.CountText, allRow.IsChecked,
             () => { clearAllWorldFilters(); });
 
-        if (filtered.Count > 0)
+        if (choices.HasVisitedWorlds)
         {
             addSeparator(WorldCheckboxList);
-            addGroupLabel(WorldCheckboxList, "訪問済みワールド");
+            addGroupLabel(WorldCheckboxList, GalleryFilterPanelLogic.WorldGroupLabel);
 
-            foreach (var opt in filtered)
+            foreach (var row in choices.Rows.Skip(1))
             {
-                if (opt.world_name is null) continue;
-                var isChecked = boundFiltersState?.worldFilters.Contains(opt.world_name) ?? false;
-                var capturedName = opt.world_name;
-                addCheckboxItem(WorldCheckboxList, opt.world_name, $"{opt.count}枚", isChecked,
-                    () => { toggleWorldFilter(capturedName); });
+                var capturedValue = row.FilterValue;
+                if (capturedValue is null) continue;
+                addCheckboxItem(WorldCheckboxList, row.Label, row.CountText, row.IsChecked,
+                    () => { toggleWorldFilter(capturedValue); });
             }
         }
 
-        WorldCountLabel.Text = $"{allWorldOptions.Count} ワールド";
+        WorldCountLabel.Text = choices.CountLabel;
     }
 
+    /// <summary>指定ワールドのフィルタ選択状態を切り替える。</summary>
     private void toggleWorldFilter(string worldName)
     {
         if (boundFiltersState is null) return;
-        if (boundFiltersState.worldFilters.Contains(worldName))
+        if (GalleryFilterPanelLogic.ToggleAction(boundFiltersState.worldFilters, worldName) == FilterToggleAction.Remove)
+        {
             OnWorldFilterRemove?.Invoke(worldName);
+        }
         else
+        {
             OnWorldFilterAdd?.Invoke(worldName);
+        }
 
         syncWorldSummary();
         rebuildWorldCheckboxList();
     }
 
+    /// <summary>選択中のワールドフィルタをすべて解除する。</summary>
     private void clearAllWorldFilters()
     {
         if (boundFiltersState is null) return;
-        var worlds = boundFiltersState.worldFilters.ToList();
-        foreach (var w in worlds)
+        foreach (var w in GalleryFilterPanelLogic.ValuesToClear(boundFiltersState.worldFilters))
             OnWorldFilterRemove?.Invoke(w);
         syncWorldSummary();
         rebuildWorldCheckboxList();
@@ -767,7 +776,12 @@ public sealed partial class GalleryFilterPanel : UserControl
     // ── Shared checkbox item builder ──
     private void addCheckboxItem(StackPanel parent, string label, string? countText, bool isChecked, Action onToggle)
     {
-        var grid = new Grid { Padding = new Thickness(10, 8, 10, 8) };
+        var visual = GalleryFilterPanelLogic.CheckboxVisual(isChecked, countText is not null);
+        var grid = new Grid
+        {
+            Padding = new Thickness(10, 8, 10, 8),
+            Width = ChoiceRowWidth,
+        };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         if (countText is not null)
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -778,14 +792,14 @@ public sealed partial class GalleryFilterPanel : UserControl
             Text = label,
             FontSize = 12,
             FontWeight = Microsoft.UI.Text.FontWeights.Bold,
-            Foreground = ThemeHelper.Brush(parent, isChecked ? "APrimary" : "ATextFaint"),
+            Foreground = ThemeHelper.Brush(parent, visual.NameForegroundKey),
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
+            MaxWidth = ChoiceNameMaxWidth,
         };
         Grid.SetColumn(nameBlock, 0);
         grid.Children.Add(nameBlock);
 
-        int checkCol = 1;
         if (countText is not null)
         {
             var countBlock = new TextBlock
@@ -793,13 +807,12 @@ public sealed partial class GalleryFilterPanel : UserControl
                 Text = countText,
                 FontSize = 11,
                 FontFamily = ThemeHelper.AppResource<FontFamily>("AFontMono"),
-                Foreground = ThemeHelper.Brush(parent, "ATextDisabled"),
+                Foreground = ThemeHelper.Brush(parent, visual.CountForegroundKey),
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(8, 0, 8, 0),
             };
             Grid.SetColumn(countBlock, 1);
             grid.Children.Add(countBlock);
-            checkCol = 2;
         }
 
         var checkBorder = new Border
@@ -808,32 +821,37 @@ public sealed partial class GalleryFilterPanel : UserControl
             Height = 18,
             CornerRadius = new CornerRadius(5),
             BorderThickness = new Thickness(1),
-            BorderBrush = ThemeHelper.Brush(parent, isChecked ? "ABorderStrong" : "ABorder"),
-            Background = ThemeHelper.Brush(parent, isChecked ? "APrimarySoft" : "ASurfaceSoft"),
+            BorderBrush = ThemeHelper.Brush(parent, visual.CheckBorderKey),
+            Background = ThemeHelper.Brush(parent, visual.CheckBackgroundKey),
             VerticalAlignment = VerticalAlignment.Center,
         };
 
-        if (isChecked)
+        if (visual.CheckmarkVisible)
         {
             checkBorder.Child = new TextBlock
             {
                 Text = "✓",
                 FontSize = 10,
                 FontWeight = Microsoft.UI.Text.FontWeights.ExtraBold,
-                Foreground = ThemeHelper.Brush(parent, "APrimary"),
+                Foreground = ThemeHelper.Brush(parent, visual.CheckmarkForegroundKey),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
             };
         }
 
-        Grid.SetColumn(checkBorder, checkCol);
+        Grid.SetColumn(checkBorder, visual.CheckColumn);
         grid.Children.Add(checkBorder);
 
         var itemBorder = new Border
         {
+            Width = ChoiceRowWidth,
             CornerRadius = new CornerRadius(8),
-            Background = isChecked ? ThemeHelper.Brush(parent, "APrimarySoft") : new SolidColorBrush(Colors.Transparent),
-            BorderBrush = isChecked ? ThemeHelper.Brush(parent, "ABorderStrong") : new SolidColorBrush(Colors.Transparent),
+            Background = visual.ItemBackgroundKey is null
+                ? new SolidColorBrush(Colors.Transparent)
+                : ThemeHelper.Brush(parent, visual.ItemBackgroundKey),
+            BorderBrush = visual.ItemBorderKey is null
+                ? new SolidColorBrush(Colors.Transparent)
+                : ThemeHelper.Brush(parent, visual.ItemBorderKey),
             BorderThickness = new Thickness(1),
             Child = grid,
         };
@@ -847,6 +865,7 @@ public sealed partial class GalleryFilterPanel : UserControl
             BorderThickness = new Thickness(0),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Width = ChoiceRowWidth,
         };
 
         btn.Content = itemBorder;
@@ -855,6 +874,7 @@ public sealed partial class GalleryFilterPanel : UserControl
         parent.Children.Add(btn);
     }
 
+    /// <summary>メニュー内へ区切り線を追加する。</summary>
     private static void addSeparator(StackPanel parent)
     {
         parent.Children.Add(new Border
@@ -865,6 +885,7 @@ public sealed partial class GalleryFilterPanel : UserControl
         });
     }
 
+    /// <summary>メニュー内へグループ見出しラベルを追加する。</summary>
     private static void addGroupLabel(StackPanel parent, string text)
     {
         parent.Children.Add(new TextBlock
@@ -891,35 +912,43 @@ public sealed partial class GalleryFilterPanel : UserControl
         catch (Exception ex) { AppLogger.Error($"GalleryFilterPanel.FolderAll_Click: {ex}"); }
     }
 
+    /// <summary>プライマリフォルダのみ表示するフィルタを切り替える。</summary>
     private void FolderPrimary_Click(object sender, RoutedEventArgs e)
     {
         try { OnDisplayFolderSelect?.Invoke(DisplayFolderMode.primary); }
         catch (Exception ex) { AppLogger.Error($"GalleryFilterPanel.FolderPrimary_Click: {ex}"); }
     }
 
+    /// <summary>セカンダリフォルダのみ表示するフィルタを切り替える。</summary>
     private void FolderSecondary_Click(object sender, RoutedEventArgs e)
     {
         try { OnDisplayFolderSelect?.Invoke(DisplayFolderMode.secondary); }
         catch (Exception ex) { AppLogger.Error($"GalleryFilterPanel.FolderSecondary_Click: {ex}"); }
     }
 
+    /// <summary>グルーピング操作の有効/無効を外部から切り替える。</summary>
     public void SetGroupingEnabled(bool enabled)
     {
         GroupWorldBtn.IsEnabled = enabled;
     }
 
+    /// <summary>グルーピングなしへ切り替える。</summary>
     private void GroupNone_Click(object sender, RoutedEventArgs e)
     {
         try { OnGroupingSelect?.Invoke(GroupingMode.none); }
         catch (Exception ex) { AppLogger.Error($"GalleryFilterPanel.GroupNone_Click: {ex}"); }
     }
 
+    /// <summary>ワールド単位のグルーピングへ切り替える。</summary>
     private void GroupWorld_Click(object sender, RoutedEventArgs e)
     {
         try { OnGroupingSelect?.Invoke(GroupingMode.world); }
         catch (Exception ex) { AppLogger.Error($"GalleryFilterPanel.GroupWorld_Click: {ex}"); }
     }
 
-    // Legacy ComboBox-related methods removed — now handled by dropdown checkbox lists.
-    // Keeping method signatures so callers don't break at compile time.
+    // 旧 ComboBox 関連の処理はチェックリスト型ドロップダウンへ統合済み。
+    // 呼び出し側の互換性を保つため、公開面だけ残している。
+
+    /// <summary>bool の表示状態を WinUI の Visibility へ変換する。</summary>
+    private static Visibility ToVisibility(bool visible) => visible ? Visibility.Visible : Visibility.Collapsed;
 }

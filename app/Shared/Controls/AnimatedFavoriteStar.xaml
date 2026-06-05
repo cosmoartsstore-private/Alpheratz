@@ -4,7 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     x:Name="Root">
     <Grid>
-        <!-- Radial glow layer -->
+        <!-- Click animation uses this layer, but the rest state keeps it hidden so the star is not shown with a stray circle. -->
         <Ellipse x:Name="Glow" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                  Margin="-6" Opacity="0">
             <Ellipse.Fill>

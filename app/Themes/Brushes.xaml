@@ -81,7 +81,7 @@
             <SolidColorBrush x:Key="ToggleSwitchKnobFillOffPointerOver" Color="#374151"/>
 
             <!-- Surfaces -->
-            <!-- A-3: ライトの面段差(奥行き)強化。従来は ABg #F9FAFB と ASurface #FFFFFF が近接し、
+            <!-- ライトの面段差(奥行き)強化。従来は ABg #F9FAFB と ASurface #FFFFFF が近接し、
                  ASurfaceSofter #F9FAFB が ABg と同値で段差が潰れていた。影を使わない方針のため
                  面色差+1px 罫線だけで階層を出す必要があり、各層に約 3〜5% の明度差を付けた
                  段差ランプへ整理する:
@@ -94,7 +94,7 @@
             <SolidColorBrush x:Key="ASurfaceSoft" Color="#F3F4F6"/>
             <SolidColorBrush x:Key="ASurfaceSofter" Color="#ECEEF1"/>
             <SolidColorBrush x:Key="ASurfaceHover" Color="#E5E7EB"/>
-            <!-- B-1: ニュートラルボタン(Ghost/Header/Chip)の押下用。ASurfaceHover よりさらに一段濃い solid 面段差。 -->
+            <!-- ニュートラルボタン(Ghost/Header/Chip)の押下用。ASurfaceHover よりさらに一段濃い solid 面段差。 -->
             <SolidColorBrush x:Key="ASurfacePressed" Color="#D1D5DB"/>
             <SolidColorBrush x:Key="ASurfaceTop" Color="#FFFFFF"/>
             <SolidColorBrush x:Key="ASurfaceSide" Color="#F1F3F5"/>
@@ -128,7 +128,7 @@
             <SolidColorBrush x:Key="AWarn" Color="#D97706"/>
             <SolidColorBrush x:Key="ADanger" Color="#DC2626"/>
             <SolidColorBrush x:Key="ADangerSolid" Color="#EF4444"/>
-            <!-- B-1: Danger ボタンの hover/press。役割色(赤)を保ったまま明度ステップで反応させる。 -->
+            <!-- Danger ボタンの hover/press。役割色(赤)を保ったまま明度ステップで反応させる。 -->
             <SolidColorBrush x:Key="ADangerSolidHover" Color="#DC2626"/>
             <SolidColorBrush x:Key="ADangerSolidPressed" Color="#B91C1C"/>
             <SolidColorBrush x:Key="ADangerSoft" Color="#FEF2F2"/>
@@ -227,7 +227,7 @@
             <SolidColorBrush x:Key="ASurfaceSoft" Color="#1E2126"/>
             <SolidColorBrush x:Key="ASurfaceSofter" Color="#23262C"/>
             <SolidColorBrush x:Key="ASurfaceHover" Color="#262A30"/>
-            <!-- B-1: ニュートラルボタン(Ghost/Header/Chip)の押下用。ASurfaceHover よりさらに一段明るい solid 面段差。 -->
+            <!-- ニュートラルボタン(Ghost/Header/Chip)の押下用。ASurfaceHover よりさらに一段明るい solid 面段差。 -->
             <SolidColorBrush x:Key="ASurfacePressed" Color="#2F3338"/>
             <SolidColorBrush x:Key="ASurfaceTop" Color="#0F1115"/>
             <SolidColorBrush x:Key="ASurfaceSide" Color="#13161A"/>
@@ -259,7 +259,7 @@
             <SolidColorBrush x:Key="AWarn" Color="#FBBF24"/>
             <SolidColorBrush x:Key="ADanger" Color="#F87171"/>
             <SolidColorBrush x:Key="ADangerSolid" Color="#EF4444"/>
-            <!-- B-1: Danger ボタンの hover/press。役割色(赤)を保ったまま明度ステップで反応させる。 -->
+            <!-- Danger ボタンの hover/press。役割色(赤)を保ったまま明度ステップで反応させる。 -->
             <SolidColorBrush x:Key="ADangerSolidHover" Color="#DC2626"/>
             <SolidColorBrush x:Key="ADangerSolidPressed" Color="#B91C1C"/>
             <SolidColorBrush x:Key="ADangerSoft" Color="#2D1F1F"/>

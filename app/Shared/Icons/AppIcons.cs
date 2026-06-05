@@ -6,8 +6,8 @@ using Microsoft.UI.Xaml.Media;
 
 namespace Alpheratz.Shared.Icons;
 
-// Centralized SVG path-data constants (Bootstrap Icons, 16x16 viewBox).
-// Render via <shared:AppIcon IconName="refresh"/>.
+// 16x16 viewBox の SVG path-data を一元管理する。
+// XAML からは <shared:AppIcon IconName="refresh"/> のように参照する。
 public static class AppIcons
 {
     public const string Back = "M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0";
@@ -59,17 +59,11 @@ public static class AppIcons
         ["template"] = Template,
     };
 
-    /// <summary>
-    /// Parses an SVG mini-language path-data string into a <see cref="Geometry"/>
-    /// using the WinUI XamlBindingHelper type-converter infrastructure.
-    /// </summary>
+    /// <summary>SVG path-data 文字列を WinUI の型変換で Geometry に変換する。</summary>
     public static Geometry ParseGeometry(string data)
         => (Geometry)XamlBindingHelper.ConvertValue(typeof(Geometry), data);
 
-    /// <summary>
-    /// Looks up an icon by name and returns its parsed <see cref="Geometry"/>,
-    /// or <c>null</c> when the name is unknown.
-    /// </summary>
+    /// <summary>アイコン名から Geometry を取得する。未登録名なら null。</summary>
     public static Geometry? GetGeometry(string iconName)
     {
         if (ByName.TryGetValue(iconName, out var data))

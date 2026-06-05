@@ -6,17 +6,17 @@ using System.Text.RegularExpressions;
 namespace Alpheratz.Features.Gallery;
 
 /// <summary>
-/// Twitter-style search command parser.
-/// Extracts structured filter commands (e.g. "since:2025-01-01", "is:fav") from a raw
-/// search query string and returns the remaining plain text for free-text search.
+/// 検索欄の key:value コマンドを抽出し、残りを通常検索語として返す。
+/// 例: since:2025-01-01、is:fav、tag:"blue sky"。
 /// </summary>
 public static class SearchCommandParser
 {
-    // Matches word:value tokens. Value can be unquoted (no spaces) or quoted with double quotes.
+    // 値は空白なし、または二重引用符で囲んだ文字列を受け付ける。
     private static readonly Regex CommandPattern = new(
         @"(?<key>[a-zA-Z]+):(?:""(?<qval>[^""]*)""|(?<val>\S+))",
         RegexOptions.Compiled);
 
+    /// <summary>検索文字列を構造化コマンドと通常検索語に分ける。</summary>
     public static SearchCommandResult Parse(string rawQuery)
     {
         if (string.IsNullOrWhiteSpace(rawQuery))
@@ -30,7 +30,7 @@ public static class SearchCommandParser
 
         foreach (Match match in CommandPattern.Matches(rawQuery))
         {
-            // Collect any text before this command token
+            // コマンドの前にある通常検索語を保持する。
             if (match.Index > lastIndex)
             {
                 var before = rawQuery.Substring(lastIndex, match.Index - lastIndex);
@@ -48,14 +48,14 @@ public static class SearchCommandParser
             var consumed = tryApplyCommand(key, value, result);
             if (!consumed)
             {
-                // Unknown command: keep as plain text
+                // 不明または不正なコマンドは検索語として残す。
                 plainParts.Add(match.Value);
             }
 
             lastIndex = match.Index + match.Length;
         }
 
-        // Collect any trailing text
+        // 最後のコマンドより後ろにある通常検索語を保持する。
         if (lastIndex < rawQuery.Length)
         {
             var trailing = rawQuery.Substring(lastIndex);
@@ -69,6 +69,7 @@ public static class SearchCommandParser
         return result;
     }
 
+    /// <summary>認識済みコマンドなら結果へ反映し、消費できたかを返す。</summary>
     private static bool tryApplyCommand(string key, string value, SearchCommandResult result)
     {
         switch (key)
@@ -138,6 +139,7 @@ public static class SearchCommandParser
         }
     }
 
+    /// <summary>検索コマンドで許可する yyyy-MM-dd 形式の日付か判定する。</summary>
     private static bool isValidDate(string value)
     {
         return DateTime.TryParseExact(
@@ -150,8 +152,8 @@ public static class SearchCommandParser
 }
 
 /// <summary>
-/// Result of parsing search commands from a raw query string.
-/// Null/empty fields mean the command was not present in the query.
+/// 検索コマンドの解析結果。
+/// null または空の値は、そのコマンドが入力に含まれていないことを示す。
 /// </summary>
 public class SearchCommandResult
 {
@@ -164,16 +166,16 @@ public class SearchCommandResult
     public string? FolderMode { get; set; }
     public string? SortMode { get; set; }
 
+    /// <summary>空の解析結果を作成する。</summary>
     public SearchCommandResult() { }
 
+    /// <summary>プレーン検索文字列だけを持つ解析結果を作成する。</summary>
     public SearchCommandResult(string plainText)
     {
         PlainText = plainText;
     }
 
-    /// <summary>
-    /// Returns true if any command was parsed (i.e. any field is non-null/non-default).
-    /// </summary>
+    /// <summary>1つ以上のコマンドが解析されたかを返す。</summary>
     public bool HasCommands =>
         DateFrom is not null ||
         DateTo is not null ||

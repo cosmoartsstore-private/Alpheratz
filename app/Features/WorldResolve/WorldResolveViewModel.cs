@@ -68,6 +68,7 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
     /// </summary>
     private Dictionary<long, IReadOnlyList<AlpheratzDb.KnownWorldRow>> knownBySlot = new();
 
+    // ワールド解決に必要な DB、サムネイル生成、通知サービスを受け取る。
     public WorldResolveViewModel(AlpheratzDb db, ThumbnailWorker thumbnailWorker, ToastService toastService)
     {
         this.db = db;
@@ -164,12 +165,14 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
         }
     }
 
+    // 個別候補の適用予定状態を反転し、適用件数を更新する。
     public void ToggleApply(WorldResolveItem item)
     {
         item.IsApplied = !item.IsApplied;
         RecountApply();
     }
 
+    // マッチが見つかっている全候補を適用予定にする。
     public void ApplyAll()
     {
         foreach (var item in Items)
@@ -177,12 +180,14 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
         RecountApply();
     }
 
+    // 全候補を適用予定から外す。
     public void SkipAll()
     {
         foreach (var item in Items) item.IsApplied = false;
         RecountApply();
     }
 
+    // Items 内の適用予定件数を数え直し、ボタン表示へ反映する。
     private void RecountApply()
     {
         ApplyCount = Items.Count(x => x.IsApplied);
@@ -249,7 +254,7 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
                 {
                     await thumbnailWorker.GenerateGridAsync(thumbTargets, result =>
                     {
-                        // CandidateEntry is immutable record — thumb is handled via converter in XAML
+                        // CandidateEntry は immutable record なので、候補サムネイルは XAML 側のコンバータで解決する。
                     }, ct).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) { }
@@ -266,7 +271,7 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
 
     /// <summary>
     /// ピッカーで選ばれた候補を ActivePickerItem に反映する。
-    /// MatchThumbPath を一旦 null にしてから再生成キックするのは、UI が古いサムネイルを
+    /// MatchThumbPath を一度 null にしてから再生成キックするのは、UI が古いサムネイルを
     /// 出し続けるのを防ぎ、ロード完了まで「サムネ無し」状態を経由させるため。
     /// </summary>
     public void SelectCandidate(CandidateEntry entry)
@@ -293,6 +298,7 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
         CloseCandidatePicker();
     }
 
+    // 候補ピッカーの選択状態と読み込み状態をクリアして閉じる。
     public void CloseCandidatePicker()
     {
         IsCandidatePickerOpen = false;

@@ -38,10 +38,11 @@ public partial class GalleryDisplayState : UiThreadSafeObservableObject
     public int standardColumnWidth => Math.Max(180, (int)Math.Floor(PanelWidth / Math.Max(1, standardColumnCount)));
     public int standardRowHeight => Math.Max(150, (int)Math.Floor(gridHeight / STANDARD_GRID_VISIBLE_ROW_COUNT));
 
-    // Hot path during binding refresh; tracing would drown the log.
+    // バインディング更新中に高頻度で呼ばれるため、通常ログは出さない。
     public IReadOnlyList<PhotoGridItem> buildDisplayPhotoItems(IReadOnlyList<PhotoThumbnailItem> displayPhotos)
         => displayPhotos.Select(photo => new PhotoGridItem { Photo = photo }).ToArray();
 
+    /// <summary>ギャラリー右ペインの幅を保持し、列数と列幅の再計算を通知する。</summary>
     public void rightPanelRef(double width)
     {
         AppLogger.Trace($"GalleryDisplayState.rightPanelRef: enter width={width}");
@@ -59,6 +60,7 @@ public partial class GalleryDisplayState : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryDisplayState.rightPanelRef: exit");
     }
 
+    /// <summary>グリッド表示領域の高さを保持し、行高の再計算を通知する。</summary>
     public void gridWrapperRef(double height)
     {
         AppLogger.Trace($"GalleryDisplayState.gridWrapperRef: enter height={height}");
@@ -75,6 +77,7 @@ public partial class GalleryDisplayState : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryDisplayState.gridWrapperRef: exit");
     }
 
+    /// <summary>ビュー切替の準備表示を開始し、完了判定用のトークンを返す。</summary>
     public int beginViewPreparation(string label)
     {
         AppLogger.Trace($"GalleryDisplayState.beginViewPreparation: enter label={label}");
@@ -85,6 +88,7 @@ public partial class GalleryDisplayState : UiThreadSafeObservableObject
         return nextToken;
     }
 
+    /// <summary>指定トークンが最新の準備処理なら、準備表示を終了する。</summary>
     public void finishViewPreparation(int token)
     {
         AppLogger.Trace($"GalleryDisplayState.finishViewPreparation: enter token={token} current={viewPreparationTokenRef}");
@@ -96,6 +100,7 @@ public partial class GalleryDisplayState : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryDisplayState.finishViewPreparation: exit");
     }
 
+    /// <summary>保留中のビュー準備タイマーをキャンセルして破棄する。</summary>
     public void clearPendingViewPreparations()
     {
         AppLogger.Trace("GalleryDisplayState.clearPendingViewPreparations: enter");
@@ -112,6 +117,7 @@ public partial class GalleryDisplayState : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryDisplayState.clearPendingViewPreparations: exit");
     }
 
+    /// <summary>グルーピングモード変更前の準備状態を片付け、次のモードを反映する。</summary>
     public void prepareGroupingModeChange(GroupingMode currentGroupingMode, GroupingMode nextGroupingMode, Action<GroupingMode> setGroupingMode)
     {
         AppLogger.Trace($"GalleryDisplayState.prepareGroupingModeChange: enter current={currentGroupingMode} next={nextGroupingMode}");
@@ -134,6 +140,7 @@ public partial class GalleryDisplayState : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryDisplayState.prepareGroupingModeChange: exit");
     }
 
+    /// <summary>表示フォルダモード変更前の準備状態を片付け、次のモードを反映する。</summary>
     public void prepareDisplayFolderModeChange(DisplayFolderMode currentDisplayFolderMode, DisplayFolderMode nextDisplayFolderMode, Action<DisplayFolderMode> setDisplayFolderMode)
     {
         AppLogger.Trace($"GalleryDisplayState.prepareDisplayFolderModeChange: enter current={currentDisplayFolderMode} next={nextDisplayFolderMode}");
@@ -156,6 +163,7 @@ public partial class GalleryDisplayState : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryDisplayState.prepareDisplayFolderModeChange: exit");
     }
 
+    /// <summary>日付プリセットを現在日付基準の from/to 文字列へ変換する。</summary>
     public static DatePresetRange getDateRangeFromPreset(DatePreset preset)
     {
         AppLogger.Trace($"GalleryDisplayState.getDateRangeFromPreset: enter preset={preset}");

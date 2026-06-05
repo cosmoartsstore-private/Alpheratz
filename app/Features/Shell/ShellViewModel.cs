@@ -110,9 +110,11 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         AppLogger.Trace("ShellViewModel.ctor: exit");
     }
 
+    /// <summary>ワールド解決モーダル用の ViewModel を現在のサービス構成から作成する。</summary>
     public WorldResolve.WorldResolveViewModel CreateWorldResolveViewModel()
         => new(db, thumbnailWorker, toastService);
 
+    /// <summary>単一写真を対象にした PhotoModalViewModel を作成する。写真が null なら null。</summary>
     public PhotoModalViewModel? createPhotoModalViewModel(PhotoThumbnailItem? photo)
     {
         AppLogger.Trace($"ShellViewModel.createPhotoModalViewModel: enter photo={photo?.PhotoPath ?? "(null)"}");
@@ -125,6 +127,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         return vm;
     }
 
+    /// <summary>前後ナビゲーション用の写真リストを持つ PhotoModalViewModel を作成する。</summary>
     public PhotoModalViewModel? createPhotoModalViewModelFromList(PhotoThumbnailItem? photo, IReadOnlyList<PhotoThumbnailItem> photos)
     {
         AppLogger.Trace($"ShellViewModel.createPhotoModalViewModelFromList: enter photo={photo?.PhotoPath ?? "(null)"} count={photos.Count}");
@@ -136,6 +139,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         return vm;
     }
 
+    /// <summary>起動時に設定、タグ、ギャラリー、各種イベント購読を初期化する。</summary>
     public async Task initialize()
     {
         AppLogger.Trace("ShellViewModel.initialize: enter");
@@ -177,6 +181,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         AppLogger.Trace("ShellViewModel.initialize: exit");
     }
 
+    /// <summary>写真スキャンをバックグラウンドで開始する。すでに実行中なら何もしない。</summary>
     public Task startScan()
     {
         AppLogger.Trace($"ShellViewModel.startScan: enter isScanningRef={isScanningRef}");
@@ -185,10 +190,8 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         ScanProgress = new ScanProgressDto { processed = 0, total = 0, current_world = "", phase = "scan" };
         try
         {
-            // R2-A-15: 旧実装 `Task.Run(() => scanner.ScanAsync())` は fire-and-forget で、
-            //          ScanAsync の枠外で起きた例外（例: スキャナ生成失敗、Task.Run 自体の失敗）が
-            //          UnobservedTaskException としてアプリ全体に伝播する恐れがあった。
-            //          async ラッパで try/catch し、漏れた例外を scan:error として購読者に通知する。
+            // バックグラウンド起動時の例外も scan:error として通知できるよう、
+            // Task.Run の内側で ScanAsync 全体を try/catch する。
             _ = Task.Run(async () =>
             {
                 try
@@ -213,6 +216,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         return Task.CompletedTask;
     }
 
+    /// <summary>実行中スキャンへキャンセルを要求する。</summary>
     public Task cancelScan()
     {
         AppLogger.Trace("ShellViewModel.cancelScan: enter");
@@ -227,6 +231,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         return Task.CompletedTask;
     }
 
+    /// <summary>保存済み設定を再読み込みし、Shell と子 ViewModel へ反映する。</summary>
     public async Task refreshSettings()
     {
         AppLogger.Trace("ShellViewModel.refreshSettings: enter");
@@ -249,8 +254,8 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
                 ViewMode = nextViewMode;
                 galleryViewModel.displayState.ViewMode = nextViewMode;
                 ActiveTweetTemplate = setting.activeTweetTemplate ?? "";
-                tweetTemplates.Clear();
-                foreach (var template in setting.tweetTemplates ?? []) tweetTemplates.Add(template);
+                tweetTemplates.ReplaceAll(setting.tweetTemplates ?? Array.Empty<string>());
+                templatePageViewModel.applySettings(setting.tweetTemplates, setting.activeTweetTemplate);
             }).ConfigureAwait(false);
             await settingsViewModel.refreshSettings().ConfigureAwait(false);
         }
@@ -258,10 +263,44 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         AppLogger.Trace("ShellViewModel.refreshSettings: exit");
     }
 
+    /// <summary>ギャラリーのワールド候補とタグ件数を再取得する。</summary>
+    private Task refreshGalleryFilterMetadata()
+        => Task.WhenAll(
+            galleryViewModel.loadWorldFilterOptions(),
+            galleryViewModel.loadTagFilterCounts());
+
+    /// <summary>タグを削除し、ギャラリー側のタグフィルタと写真一覧を再同期する。</summary>
+    public async Task deleteTagAndRefreshGallery(string tag)
+    {
+        AppLogger.Trace($"ShellViewModel.deleteTagAndRefreshGallery: enter tag={tag}");
+        try
+        {
+            var deleted = await tagMasterViewModel.tryDeleteTag(tag).ConfigureAwait(false);
+            if (!deleted)
+            {
+                AppLogger.Trace("ShellViewModel.deleteTagAndRefreshGallery: skip refresh");
+                return;
+            }
+
+            await dispatcherService.RunOnUiThread(() =>
+            {
+                while (galleryViewModel.filtersState.tagFilters.Remove(tag)) { }
+            }).ConfigureAwait(false);
+            await Task.WhenAll(
+                galleryViewModel.loadTagFilterCounts(),
+                galleryViewModel.photosState.loadPhotos()).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"ShellViewModel.deleteTagAndRefreshGallery: threw: {ex}");
+            toastService.addToast($"タグ削除後のギャラリー更新に失敗しました: {ex}", ToastType.error);
+        }
+        AppLogger.Trace("ShellViewModel.deleteTagAndRefreshGallery: exit");
+    }
+
     /// <summary>
     /// scan:completed 後の archive 解決 / orientation 計算 / phash 計算を順番に走らせる。
-    /// 旧実装ではこの 3 つを Task.Run で同時に投げていたため、DB writer が競合して
-    /// 部分書き込みや SQLITE_BUSY が起きていた。postScanGate で直列化する。
+    /// この 3 つはすべて DB 書き込みを伴うため、同時実行せず postScanGate で直列化する。
     /// </summary>
     private async Task runPostScanWorkflow()
     {
@@ -280,6 +319,13 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
 
             try { await phashService.StartPdqAnalysisAsync().ConfigureAwait(false); }
             catch (Exception ex) { AppLogger.Error($"ShellViewModel.runPostScanWorkflow phash: threw: {ex}"); }
+
+            try
+            {
+                await refreshGalleryFilterMetadata().ConfigureAwait(false);
+                await eventBus.PublishAsync(EventNames.ScanEnrichCompleted, null).ConfigureAwait(false);
+            }
+            catch (Exception ex) { AppLogger.Error($"ShellViewModel.runPostScanWorkflow refresh: threw: {ex}"); }
         }
         finally
         {
@@ -287,6 +333,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         }
     }
 
+    /// <summary>スキャン進捗、完了、エラーのイベント購読を登録する。</summary>
     private Task registerScanListeners()
     {
         AppLogger.Trace("ShellViewModel.registerScanListeners: enter");
@@ -303,9 +350,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
                 try
                 {
                     dispatcherService.requestAnimationFrame(() => { isScanningRef = false; ScanStatus = "completed"; });
-                    await galleryViewModel.loadWorldFilterOptions().ConfigureAwait(false);
-                    // M-5c: スキャンで写真が増減するためタグ件数も更新する。
-                    await galleryViewModel.loadTagFilterCounts().ConfigureAwait(false);
+                    await refreshGalleryFilterMetadata().ConfigureAwait(false);
                     // archive → orientation → phash を直列実行する。
                     _ = Task.Run(runPostScanWorkflow);
                 }
@@ -329,6 +374,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         return Task.CompletedTask;
     }
 
+    /// <summary>PDQ と orientation 補完の進捗イベントを購読し、画面状態へ反映する。</summary>
     private async Task registerPhashWorker()
     {
         AppLogger.Trace("ShellViewModel.registerPhashWorker: enter");
@@ -392,9 +438,11 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         catch (Exception ex) { AppLogger.Error($"ShellViewModel.registerPhashWorker: subscription failed: {ex}"); throw; }
     }
 
+    /// <summary>Shell が保持する現在設定から保存用 DTO を作る。overrides は指定項目だけ優先する。</summary>
     public AlpheratzSettingDto buildSettingPayload(AlpheratzSettingDto? overrides = null)
     {
         AppLogger.Trace("ShellViewModel.buildSettingPayload: enter");
+        var currentTweetTemplates = templatePageViewModel.tweetTemplates.ToArray();
         var payload = new AlpheratzSettingDto
         {
             photoFolderPath = overrides?.photoFolderPath ?? PhotoFolderPath,
@@ -402,13 +450,14 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
             enableStartup = overrides?.enableStartup ?? StartupEnabled,
             themeMode = overrides?.themeMode ?? ThemeMode,
             viewMode = overrides?.viewMode ?? ViewMode,
-            tweetTemplates = overrides?.tweetTemplates ?? tweetTemplates,
-            activeTweetTemplate = overrides?.activeTweetTemplate ?? ActiveTweetTemplate,
+            tweetTemplates = overrides?.tweetTemplates ?? currentTweetTemplates,
+            activeTweetTemplate = overrides?.activeTweetTemplate ?? templatePageViewModel.ActiveTweetTemplate,
         };
         AppLogger.Trace("ShellViewModel.buildSettingPayload: exit");
         return payload;
     }
 
+    /// <summary>保留中スロットの写真フォルダを変更し、設定保存と DB キャッシュリセットを行う。</summary>
     public async Task applyFolderChange(string newPath)
     {
         AppLogger.Trace($"ShellViewModel.applyFolderChange: enter newPath={newPath}");
@@ -424,6 +473,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
             })).ConfigureAwait(false);
             await refreshSettings().ConfigureAwait(false);
             await galleryViewModel.photosState.loadPhotos().ConfigureAwait(false);
+            await refreshGalleryFilterMetadata().ConfigureAwait(false);
             await startScan().ConfigureAwait(false);
             toastService.addToast("写真フォルダを更新しました");
         }
@@ -436,6 +486,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         AppLogger.Trace("ShellViewModel.applyFolderChange: exit");
     }
 
+    /// <summary>指定スロットの写真キャッシュを削除し、設定上のフォルダパスも空にする。</summary>
     public async Task executeResetFolder(int slot)
     {
         AppLogger.Trace($"ShellViewModel.executeResetFolder: enter slot={slot}");
@@ -451,6 +502,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
             { photoFolderPath = nextPrimaryPath, secondaryPhotoFolderPath = nextSecondaryPath })).ConfigureAwait(false);
             await refreshSettings().ConfigureAwait(false);
             await galleryViewModel.photosState.loadPhotos().ConfigureAwait(false);
+            await refreshGalleryFilterMetadata().ConfigureAwait(false);
             if (!string.IsNullOrEmpty(nextPrimaryPath) || !string.IsNullOrEmpty(nextSecondaryPath)) await startScan().ConfigureAwait(false);
             PendingResetRequest = null;
             toastService.addToast(slot == 1 ? "1st 写真フォルダをリセットしました" : "2nd 写真フォルダをリセットしました");
@@ -464,6 +516,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         AppLogger.Trace("ShellViewModel.executeResetFolder: exit");
     }
 
+    /// <summary>フォルダ変更の確認ダイアログに必要な保留状態を設定する。</summary>
     public void promptFolderChange(int slot, string newPath)
     {
         AppLogger.Trace($"ShellViewModel.promptFolderChange: enter slot={slot} newPath={newPath}");
@@ -471,6 +524,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         AppLogger.Trace("ShellViewModel.promptFolderChange: exit");
     }
 
+    /// <summary>フォルダリセットの確認ダイアログに必要な保留状態を設定する。</summary>
     public void handleResetFolder(int slot)
     {
         AppLogger.Trace($"ShellViewModel.handleResetFolder: enter slot={slot}");
@@ -481,12 +535,14 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         AppLogger.Trace("ShellViewModel.handleResetFolder: exit");
     }
 
+    /// <summary>標準表示とギャラリー表示を切り替え、設定へ保存する。</summary>
     public async Task handleToggleViewMode()
     {
         var nextMode = ViewMode == ViewMode.standard ? ViewMode.gallery : ViewMode.standard;
         await handleSetViewMode(nextMode).ConfigureAwait(false);
     }
 
+    /// <summary>指定された表示モードを Shell とギャラリーへ反映し、設定へ保存する。</summary>
     public async Task handleSetViewMode(ViewMode nextMode)
     {
         AppLogger.Trace($"ShellViewModel.handleSetViewMode: enter ViewMode={ViewMode} next={nextMode}");
@@ -510,6 +566,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         AppLogger.Trace($"ShellViewModel.handleSetViewMode: exit ViewMode={ViewMode}");
     }
 
+    /// <summary>テーマ設定を更新し、設定ファイルへ保存する。</summary>
     public async Task handleThemeChange(ThemeMode mode)
     {
         AppLogger.Trace($"ShellViewModel.handleThemeChange: enter mode={mode}");
@@ -526,6 +583,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         AppLogger.Trace("ShellViewModel.handleThemeChange: exit");
     }
 
+    /// <summary>自動起動の希望値を更新し、設定ファイルと OS 側へ保存する。</summary>
     public async Task handleStartupPreference(bool enabled)
     {
         AppLogger.Trace($"ShellViewModel.handleStartupPreference: enter enabled={enabled}");
@@ -543,6 +601,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         AppLogger.Trace("ShellViewModel.handleStartupPreference: exit");
     }
 
+    /// <summary>イベント購読と子ステートを解放する。</summary>
     public async ValueTask DisposeAsync()
     {
         AppLogger.Trace($"ShellViewModel.DisposeAsync: enter scanCount={scanUnlistenFns.Count} phashCount={phashUnlistenFns.Count}");

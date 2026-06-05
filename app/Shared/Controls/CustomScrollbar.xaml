@@ -10,13 +10,13 @@
           PointerPressed="Track_PointerPressed"
           PointerMoved="Track_PointerMoved"
           PointerReleased="Track_PointerReleased">
-        <!-- Track rail (subtle pill behind the thumb) -->
+        <!-- Track rail (subtle rounded background behind the thumb) -->
         <Border x:Name="TrackRail"
                 Margin="4,0"
                 CornerRadius="{StaticResource ARadiusPill}"
                 Background="{ThemeResource AScrollbarTrack}"
                 Opacity="0"/>
-        <!-- Thumb (pill, animated to thicker on hover) -->
+        <!-- Thumb (rounded, animated to thicker on hover) -->
         <Border x:Name="Thumb"
                 Width="6"
                 HorizontalAlignment="Center"

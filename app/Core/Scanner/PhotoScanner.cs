@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -42,6 +43,7 @@ public sealed partial class PhotoScanner
         AppLogger.Trace("PhotoScanner.ctor: exit");
     }
 
+    /// <summary>現在実行中のスキャンへキャンセルを要求する。</summary>
     public void RequestCancel()
     {
         AppLogger.Trace("PhotoScanner.RequestCancel: enter");
@@ -50,6 +52,7 @@ public sealed partial class PhotoScanner
         AppLogger.Trace("PhotoScanner.RequestCancel: exit");
     }
 
+    /// <summary>設定された写真フォルダをスキャンし、DB の写真メタデータを更新する。</summary>
     public async Task ScanAsync(CancellationToken externalCt = default)
     {
         AppLogger.Trace("PhotoScanner.ScanAsync: enter");
@@ -78,6 +81,7 @@ public sealed partial class PhotoScanner
         }
     }
 
+    /// <summary>写真ファイルの列挙、差分判定、DB 更新、進捗通知を実行する本体処理。</summary>
     private async Task DoScanAsync(CancellationToken ct)
     {
         AppLogger.Trace("PhotoScanner.DoScanAsync: enter");
@@ -98,6 +102,11 @@ public sealed partial class PhotoScanner
             if (!photoDirs.Exists(d => d.path == setting.SecondaryPhotoFolderPath))
                 photoDirs.Add((2, setting.SecondaryPhotoFolderPath));
         }
+        else if (!string.IsNullOrWhiteSpace(setting.SecondaryPhotoFolderPath))
+        {
+            await _bus.PublishAsync(EventNames.ScanError, $"2nd 写真フォルダが見つかりません: {setting.SecondaryPhotoFolderPath}").ConfigureAwait(false);
+            return;
+        }
 
         if (photoDirs.Count == 0)
         {
@@ -115,12 +124,11 @@ public sealed partial class PhotoScanner
 
         await _bus.PublishAsync(EventNames.ScanProgress, new ScanProgressDto { processed = 0, total = 0, current_world = "ファイルを収集中...", phase = "scan" }).ConfigureAwait(false);
 
-        // Load existing photos
+        // 既存 DB 情報を読み、再スキャン時に保持できるメタデータを判断する。
         var existing = await _db.GetExistingPhotosAsync(ct).ConfigureAwait(false);
 
-        // Collect files.
-        // R2-A-25: シンボリックリンクのループ（A -> B -> A）で無限再帰しないように
-        // 訪問済みディレクトリの正規化フルパスを集合で管理する。
+        // シンボリックリンクなどで同じディレクトリへ戻る経路があるため、
+        // 訪問済みの正規化フルパスを持って無限再帰を防ぐ。
         var foundFiles = new List<(long slot, string filename, string path)>();
         var visitedDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (slot, dir) in photoDirs)
@@ -135,10 +143,11 @@ public sealed partial class PhotoScanner
         foreach (var (_, _, path) in foundFiles)
             foundPathSet.Add(AppPaths.NormalizePathForDb(path));
 
-        // Delete photos whose files no longer exist on disk
-        await _db.DeleteMissingPhotosAsync(foundPathSet, ct).ConfigureAwait(false);
+        // 今回スキャンしたスロット内で、ディスク上に存在しなくなった写真を DB から消す。
+        var scannedSlots = photoDirs.Select(d => d.slot).Distinct().ToArray();
+        await _db.DeleteMissingPhotosAsync(foundPathSet, scannedSlots, ct).ConfigureAwait(false);
 
-        // Filter to candidates needing update
+        // 既存値と比較し、DB 更新が必要な写真だけを候補にする。
         var candidates = new List<(long slot, string filename, string path, ScanRefreshKind kind)>();
         foreach (var (slot, filename, path) in foundFiles)
         {
@@ -153,7 +162,7 @@ public sealed partial class PhotoScanner
                 var sourceChanged = ex.SourceSlot != slot;
                 var missingWorld = ex.WorldName is null && ex.WorldId is null && ex.MatchSource is null;
                 var filenameChanged = ex.PhotoFilename != filename;
-                var fileModified = IsFileModifiedSinceTimestamp(path, ex);
+                var fileModified = IsFileModifiedSinceStoredMtime(path, ex);
 
                 if (reappeared || sourceChanged || fileModified)
                     candidates.Add((slot, filename, path, ScanRefreshKind.Full));
@@ -192,7 +201,8 @@ public sealed partial class PhotoScanner
         await _bus.PublishAsync(EventNames.ScanCompleted, null).ConfigureAwait(false);
     }
 
-    private static PhotoUpsertData AnalyzePhoto(string path, string filename, long slot, ExistingPhotoInfo? existing, ScanRefreshKind kind)
+    /// <summary>1枚の写真から DB upsert 用のメタデータを組み立てる。</summary>
+    internal static PhotoUpsertData AnalyzePhoto(string path, string filename, long slot, ExistingPhotoInfo? existing, ScanRefreshKind kind)
     {
         var timestamp = ResolveTimestamp(path, filename);
         var normalizedPath = AppPaths.NormalizePathForDb(path);
@@ -222,9 +232,8 @@ public sealed partial class PhotoScanner
             && existing.Orientation is { Length: > 0 } existingOrient
             && existingOrient != "unknown")
         {
-            // R2-A-18: MetadataOnly はワールド情報の補完を目的とした再走査なので、
-            //          ファイルを再オープンせずに既存の寸法/orientation を保持する。
-            //          既存値が "unknown" または null/0 の場合のみ ResolveImageDimensions を実行する。
+            // MetadataOnly はワールド情報の補完が目的なので、寸法や orientation は既存値を優先する。
+            // 既存値が未確定の場合だけ画像を再読込する。
             orientation = existingOrient;
             imageWidth = existingWidth;
             imageHeight = existingHeight;
@@ -241,6 +250,7 @@ public sealed partial class PhotoScanner
             WorldId = worldId,
             WorldName = worldName,
             Timestamp = timestamp,
+            LastModifiedUtc = ResolveLastModifiedUtc(path),
             Orientation = orientation,
             ImageWidth = imageWidth,
             ImageHeight = imageHeight,
@@ -249,7 +259,7 @@ public sealed partial class PhotoScanner
         };
     }
 
-    private static (string? worldName, string? worldId, string? matchSource) ResolveWorldInfo(
+    internal static (string? worldName, string? worldId, string? matchSource) ResolveWorldInfo(
         string normalizedPath, string filename, string path, ExistingPhotoInfo? existing)
     {
         if (filename.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
@@ -260,7 +270,7 @@ public sealed partial class PhotoScanner
         }
 
         if (existing is { WorldName: not null } or { WorldId: not null })
-            return (existing.WorldName, existing.WorldId, "title");
+            return (existing.WorldName, existing.WorldId, existing.MatchSource ?? "title");
 
         return (null, null, "unresolved");
     }
@@ -332,6 +342,7 @@ public sealed partial class PhotoScanner
         return (0, 0);
     }
 
+    /// <summary>ファイル名の日時を優先し、取れない場合はファイル更新時刻から撮影日時文字列を作る。</summary>
     private static string ResolveTimestamp(string path, string filename)
     {
         var m = ReFilename().Match(filename);
@@ -351,7 +362,21 @@ public sealed partial class PhotoScanner
         }
     }
 
-    private static (string? name, string? id) ExtractVrcMetadataFromPng(string path)
+    /// <summary>ファイル更新時刻を UTC の固定フォーマット文字列として返す。</summary>
+    private static string? ResolveLastModifiedUtc(string path)
+    {
+        try
+        {
+            return File.GetLastWriteTimeUtc(path).ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Warn($"ファイル更新時刻を取得できませんでした [{path}]: {ex.Message}");
+            return null;
+        }
+    }
+
+    internal static (string? name, string? id) ExtractVrcMetadataFromPng(string path)
     {
         try
         {
@@ -411,7 +436,7 @@ public sealed partial class PhotoScanner
         return (null, null);
     }
 
-    private static (string? name, string? id) ParseVrcFromXmp(string xmp)
+    internal static (string? name, string? id) ParseVrcFromXmp(string xmp)
     {
         var idMatch = ReWorldId().Match(xmp);
         var nameMatch = ReWorldName().Match(xmp);
@@ -421,24 +446,25 @@ public sealed partial class PhotoScanner
         );
     }
 
-    private static bool IsFileModifiedSinceTimestamp(string path, ExistingPhotoInfo existing)
+    /// <summary>DB に保存済みの更新時刻と現在のファイル更新時刻を比較する。</summary>
+    private static bool IsFileModifiedSinceStoredMtime(string path, ExistingPhotoInfo existing)
     {
         try
         {
+            if (string.IsNullOrWhiteSpace(existing.LastModifiedUtc))
+                return true;
+
             var fileMtime = File.GetLastWriteTimeUtc(path);
-            var creationTs = ResolveTimestamp(path, existing.PhotoFilename);
-            // ResolveTimestamp は InvariantCulture で format した "yyyy-MM-dd HH:mm:ss" を返すので、
-            // パースも明示的に InvariantCulture + ExactFormat にして、地域設定で format 解釈が
-            // 変わる事故を防ぐ。
-            if (!DateTime.TryParseExact(creationTs, "yyyy-MM-dd HH:mm:ss",
-                    CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var created))
-                return false;
-            return fileMtime > created.ToUniversalTime().AddMinutes(1);
+            if (!DateTime.TryParseExact(existing.LastModifiedUtc, "yyyy-MM-dd HH:mm:ss",
+                    CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var storedMtime))
+                return true;
+
+            return Math.Abs((fileMtime - storedMtime).TotalSeconds) > 1;
         }
         catch { return false; }
     }
 
-    private static void CollectPhotosRecursive(
+    internal static void CollectPhotosRecursive(
         long slot,
         string dir,
         List<(long, string, string)> files,
@@ -447,8 +473,8 @@ public sealed partial class PhotoScanner
     {
         ct.ThrowIfCancellationRequested();
 
-        // R2-A-25: シンボリックリンク循環（A -> B -> A）を検出して無限再帰を防ぐ。
-        // また、訪問済みディレクトリは再帰しない（ハードリンクや bind mount でも同様の事故を防ぐ）。
+        // シンボリックリンク循環や同一ディレクトリへの別経路で、再帰が終わらなくなるのを防ぐ。
+        // 訪問済みディレクトリは再度辿らない。
         string canonical;
         try
         {
@@ -531,7 +557,8 @@ public sealed partial class PhotoScanner
     private static readonly Regex ReLogEntering = new(@"\[Behaviour\] Entering Room: (.*)", RegexOptions.Compiled);
     private static readonly Regex ReLogLeftRoom = new(@"\[Behaviour\] OnLeftRoom", RegexOptions.Compiled);
 
-    private static List<ArchiveWorldVisitData> LoadPolarisWorldVisits(string archiveDir)
+    /// <summary>Polaris archive 内の VRChat ログからワールド訪問履歴を読み込む。</summary>
+    internal static List<ArchiveWorldVisitData> LoadPolarisWorldVisits(string archiveDir)
     {
         var visits = new List<ArchiveWorldVisitData>();
         IEnumerable<string> logFiles;
@@ -549,7 +576,7 @@ public sealed partial class PhotoScanner
     /// File.ReadLines だと巨大行が 1 つでもあると LOH に乗って OOM することがあるため、
     /// 手動でストリームを舐めて長さ制限を効かせる。
     /// </summary>
-    private static IEnumerable<string> ReadCappedLines(string path)
+    internal static IEnumerable<string> ReadCappedLines(string path)
     {
         using var sr = new StreamReader(path);
         var sb = new StringBuilder();
@@ -589,7 +616,8 @@ public sealed partial class PhotoScanner
         }
     }
 
-    private static void LoadVisitsFromLog(string logPath, List<ArchiveWorldVisitData> visits)
+    /// <summary>1つの VRChat ログファイルから入退室イベントを読み取り、訪問区間へ変換する。</summary>
+    internal static void LoadVisitsFromLog(string logPath, List<ArchiveWorldVisitData> visits)
     {
         string? currentWorld = null;
         string? currentJoinTime = null;
@@ -607,9 +635,8 @@ public sealed partial class PhotoScanner
                 var enterMatch = ReLogEntering.Match(line);
                 if (enterMatch.Success)
                 {
-                    // R2-A-10: 旧実装は前のワールドを閉じる際 LeaveTime に「次の Entering の時刻」を入れていたが、
-                    //          実際にはユーザーがいつ前のワールドを抜けたかは不明である（OnLeftRoom が来ていない）。
-                    //          LeaveTime=null として未確定であることを明示する。
+                    // OnLeftRoom がない限り、前のワールドをいつ抜けたかは分からない。
+                    // 次の Entering 時刻で閉じず、LeaveTime=null として未確定の区間にする。
                     if (currentWorld is not null && currentJoinTime is not null)
                         visits.Add(new ArchiveWorldVisitData { SourceLogName = Path.GetFileName(logPath), WorldName = currentWorld, JoinTime = currentJoinTime, LeaveTime = null });
                     if (lineTime is not null) { currentWorld = enterMatch.Groups[1].Value; currentJoinTime = lineTime; }

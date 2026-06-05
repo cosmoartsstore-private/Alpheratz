@@ -1,12 +1,15 @@
 using Alpheratz.Core;
+using System.Diagnostics.CodeAnalysis;
 #if !RELEASE_SELF_CONTAINED
 using Microsoft.Windows.ApplicationModel.DynamicDependency;
 #endif
 
 namespace Alpheratz;
 
+[ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 partial class Program
 {
+    // WinUI のプロセス起動点。Bootstrap と Application.Start は OS/WinAppSDK 境界なので直接テストしない。
     [STAThread]
     static void Main(string[] args)
     {
@@ -48,8 +51,7 @@ partial class Program
                 }
                 catch (Exception ex)
                 {
-                    // Rethrow: Application.Start is the entry point and we
-                    // cannot continue without a constructed App.
+                    // App を構築できない状態では起動を継続できないため、ログ後に停止させる。
                     AppLogger.Error($"Program.Main.AppStart: fatal: {ex}");
                     throw;
                 }

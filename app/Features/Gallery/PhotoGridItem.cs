@@ -6,11 +6,8 @@ using Microsoft.UI.Xaml;
 namespace Alpheratz.Features.Gallery;
 
 /// <summary>
-/// グリッド (および GroupDrillDown) の 1 セル分の表示モデル。
-/// 写真本体 (<see cref="Photo"/>) に加えて、グルーピング表示用の代表バッジ情報
-/// (<see cref="GroupCount"/>, <see cref="GroupKey"/>, <see cref="GroupPhotos"/>) を持つ。
-/// 非グループ表示では GroupCount は null で、その派生 (<see cref="GroupCountVisibility"/>) で
-/// バッジを非表示にする。
+/// グリッドとドリルダウンで使う1セル分の表示モデル。
+/// 通常写真に加えて、グループ表示時の件数と代表写真群を持つ。
 /// </summary>
 public partial class PhotoGridItem : UiThreadSafeObservableObject
 {
@@ -19,12 +16,15 @@ public partial class PhotoGridItem : UiThreadSafeObservableObject
     [ObservableProperty] private string? groupKey;
     [ObservableProperty] private IReadOnlyList<PhotoThumbnailItem>? groupPhotos;
 
+    /// <summary>グループ件数バッジの表示可否。2件以上のグループだけ表示する。</summary>
     public Visibility GroupCountVisibility =>
         GroupCount is > 1 ? Visibility.Visible : Visibility.Collapsed;
 
+    /// <summary>グループ件数バッジの表示文字列。</summary>
     public string GroupCountLabel =>
         GroupCount is > 1 ? $"{GroupCount}枚" : "";
 
+    /// <summary>件数変更時に、件数バッジ関連の派生プロパティを更新する。</summary>
     partial void OnGroupCountChanged(int? value)
     {
         OnPropertyChanged(nameof(GroupCountVisibility));

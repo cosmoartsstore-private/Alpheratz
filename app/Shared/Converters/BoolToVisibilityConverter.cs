@@ -10,6 +10,7 @@ namespace Alpheratz.Shared.Converters;
 /// </summary>
 public sealed class BoolToVisibilityConverter : IValueConverter
 {
+    /// <summary>bool 値を Visibility に変換する。parameter が "invert" なら結果を反転する。</summary>
     public object Convert(object value, Type targetType, object parameter, string language)
     {
         var b = value is bool x && x;
@@ -18,6 +19,7 @@ public sealed class BoolToVisibilityConverter : IValueConverter
         return b ? Visibility.Visible : Visibility.Collapsed;
     }
 
+    /// <summary>表示制御専用の変換なので逆変換は提供しない。</summary>
     public object ConvertBack(object value, Type targetType, object parameter, string language)
         => throw new NotSupportedException();
 }

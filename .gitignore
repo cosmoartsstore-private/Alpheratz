@@ -20,6 +20,7 @@ Thumbs.db
 # --- .NET / Visual Studio ---
 [Bb]in/
 [Oo]bj/
+TestResults/
 *.user
 *.suo
 *.userosscache

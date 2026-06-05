@@ -10,7 +10,7 @@
     KeyDown="Page_KeyDown">
     <Page.Resources/>
     <Grid Background="Transparent" Tapped="Backdrop_Tapped">
-        <Border MaxWidth="1480" MaxHeight="900" MinWidth="700" Margin="32"
+        <Border MaxWidth="1560" MaxHeight="920" MinWidth="960" Margin="32"
                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                 CornerRadius="{StaticResource ARadiusModal}"
                 Background="{ThemeResource ASurface}"
@@ -19,8 +19,8 @@
                 Tapped="ModalContent_Tapped">
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto" MinWidth="300" MaxWidth="420"/>
+                    <ColumnDefinition Width="*" MinWidth="520"/>
+                    <ColumnDefinition Width="380"/>
                 </Grid.ColumnDefinitions>
                 <Grid x:Name="ImagePanel" Grid.Column="0" Background="{ThemeResource AMediaBg}"
                       CornerRadius="{StaticResource ARadiusModalRight}">
@@ -50,8 +50,20 @@
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
-                    <Grid Grid.Row="0" Padding="24,16,16,0">
+                    <Grid Grid.Row="0" Padding="24,18,16,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Spacing="5" Margin="0,0,16,0" VerticalAlignment="Top">
+                            <TextBlock x:Name="WorldNameText" FontSize="{StaticResource AFontSize2Xl}" FontWeight="ExtraBold"
+                                       Foreground="{ThemeResource AText}" TextWrapping="WrapWholeWords"
+                                       TextTrimming="CharacterEllipsis" MaxLines="2"/>
+                            <TextBlock x:Name="MatchSourceLabel" FontSize="{StaticResource AFontSizeSm}"
+                                       Foreground="{ThemeResource ATextFaint}" Visibility="Collapsed"/>
+                        </StackPanel>
                         <Button x:Name="CloseButtonOverlay" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                Grid.Column="1"
                                 Width="34" Height="34"
                                 CornerRadius="{StaticResource ARadiusButton}"
                                 Background="{ThemeResource ASurfaceSoft}"
@@ -62,30 +74,8 @@
                             <shared:AppIcon IconName="close" IconSize="12" Foreground="{ThemeResource ATextDim}"/>
                         </Button>
                     </Grid>
-                    <StackPanel Grid.Row="1" Padding="24,8,24,0" Spacing="10">
-                        <StackPanel Spacing="4">
-                            <TextBlock x:Name="WorldNameText" FontSize="{StaticResource AFontSize2Xl}" FontWeight="ExtraBold"
-                                       Foreground="{ThemeResource AText}" TextTrimming="CharacterEllipsis"/>
-                            <StackPanel Orientation="Horizontal" Spacing="6" x:Name="MatchSourcePanel" Visibility="Collapsed">
-                                <Border Width="28" Height="28" CornerRadius="14" Background="{ThemeResource ASurfaceSoft}">
-                                    <shared:AppIcon IconName="exclamationCircleFill" IconSize="14"
-                                                    Foreground="{ThemeResource AWarn}"
-                                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                </Border>
-                                <TextBlock x:Name="MatchSourceLabel" FontSize="{StaticResource AFontSizeSm}" Foreground="{ThemeResource ATextFaint}" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <Border Padding="8,3" CornerRadius="{StaticResource ARadiusSm}" Background="{ThemeResource APrimarySoft}">
-                                <TextBlock Text="{Binding state.SelectedPhoto.MatchSource}" FontSize="{StaticResource AFontSizeXs}" FontWeight="SemiBold" Foreground="{ThemeResource APrimary}"/>
-                            </Border>
-                            <Border Padding="8,3" CornerRadius="{StaticResource ARadiusSm}" Background="{ThemeResource APrimarySoft}">
-                                <TextBlock Text="{Binding state.SelectedPhoto.SourceSlot}" FontSize="{StaticResource AFontSizeXs}" FontWeight="SemiBold" Foreground="{ThemeResource APrimary}"/>
-                            </Border>
-                        </StackPanel>
-                        <Rectangle Height="1" Fill="{ThemeResource ABorder}" Opacity="0.9"/>
-                    </StackPanel>
-                    <ScrollViewer Grid.Row="2" Padding="24,14,24,24" VerticalScrollBarVisibility="Auto">
+                    <Rectangle Grid.Row="1" Height="1" Fill="{ThemeResource ABorder}" Opacity="0.9"/>
+                    <ScrollViewer Grid.Row="2" Padding="24,16,24,24" VerticalScrollBarVisibility="Auto">
                         <StackPanel Spacing="10">
                             <TextBlock Text="タグ" FontSize="{StaticResource AFontSizeSm}" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}" CharacterSpacing="60"/>
                             <Grid x:Name="TagAddRow" ColumnSpacing="10">
@@ -101,14 +91,16 @@
                             <ItemsControl ItemsSource="{Binding state.SelectedPhoto.Tags}">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
-                                        <StackPanel Orientation="Horizontal" Spacing="6"/>
+                                        <shared:WrapPanel HorizontalSpacing="6" VerticalSpacing="6"/>
                                     </ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <Button Tag="{Binding}" Click="RemoveTag_Click" Style="{StaticResource ChipButtonStyle}">
                                             <StackPanel Orientation="Horizontal" Spacing="4">
-                                                <TextBlock Text="{Binding}" FontSize="{StaticResource AFontSizeXs}" FontWeight="Bold" Foreground="{ThemeResource APrimary}" VerticalAlignment="Center"/>
+                                                <TextBlock Text="{Binding}" FontSize="{StaticResource AFontSizeXs}" FontWeight="Bold"
+                                                           Foreground="{ThemeResource APrimary}" VerticalAlignment="Center"
+                                                           MaxWidth="210" TextTrimming="CharacterEllipsis"/>
                                                 <TextBlock Text="×" FontSize="{StaticResource AFontSizeXs}" Foreground="{ThemeResource ATextFaint}" VerticalAlignment="Center"/>
                                             </StackPanel>
                                         </Button>

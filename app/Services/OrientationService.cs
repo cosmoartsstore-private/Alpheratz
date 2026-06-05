@@ -22,12 +22,12 @@ public sealed class OrientationService
     private readonly LocalEventBus eventBus;
     private int isRunning;
     private OrientationProgressEvent currentProgress = new();
-    // PublishAsync を fire-and-forget で連続発火すると、2 個目の方が先に完了して
-    // 進捗バーが瞬間的に巻き戻る可能性がある。直前の publish タスクの後に次を
-    // ContinueWith で繋ぐことで FIFO 順序を保証する。
+    // 進捗イベントが逆順で届くと、進捗バーが一時的に巻き戻って見える。
+    // 直前の publish の後ろへ次の publish をつなぎ、発行順を保つ。
     private Task _publishTail = Task.CompletedTask;
     private readonly object _publishLock = new();
 
+    /// <summary>補完対象 DB と進捗通知先を受け取ってワーカーを作成する。</summary>
     public OrientationService(AlpheratzDb db, LocalEventBus eventBus)
     {
         AppLogger.Trace("OrientationService.ctor: enter");
@@ -36,17 +36,19 @@ public sealed class OrientationService
         AppLogger.Trace("OrientationService.ctor: exit");
     }
 
+    /// <summary>現在の orientation 補完進捗を返す。</summary>
     public Task<OrientationProgressEvent> GetOrientationProgressAsync(CancellationToken ct = default)
     {
         AppLogger.Trace("OrientationService.GetOrientationProgressAsync: enter");
         return Task.FromResult(currentProgress);
     }
 
+    /// <summary>orientation または寸法が欠落している写真を新しい順に補完する。</summary>
     public async Task StartOrientationCalculationAsync(CancellationToken ct = default)
     {
         AppLogger.Trace("OrientationService.StartOrientationCalculationAsync: enter");
 
-        // Single-flight: skip if a worker is already running.
+        // 同じ DB 行を並列更新しないよう、実行中の二重起動は無視する。
         if (Interlocked.Exchange(ref isRunning, 1) != 0)
         {
             AppLogger.Trace("OrientationService.StartOrientationCalculationAsync: skip (already running)");
@@ -76,13 +78,18 @@ public sealed class OrientationService
                     try
                     {
                         var (orientation, w, h) = PhotoScanner.ProbeImageDimensions(item.PhotoPath);
+                        if (orientation is null or "" or "unknown" || w is null || h is null)
+                        {
+                            orientation = "unreadable";
+                            w = null;
+                            h = null;
+                        }
                         await db.UpdatePhotoOrientationAndDimensionsAsync(
                             item.PhotoPath, orientation, w, h, ct).ConfigureAwait(false);
                     }
                     catch (Exception ex)
                     {
-                        // Continue: a single broken file should not abort the whole batch
-                        // (legacy alpheratz logs and skips).
+                        // 1枚の破損ファイルで補完ワーカー全体を止めない。
                         AppLogger.Warn($"orientation skip [{item.PhotoFilename}]: {ex.Message}");
                     }
 
@@ -106,12 +113,11 @@ public sealed class OrientationService
         AppLogger.Trace("OrientationService.StartOrientationCalculationAsync: exit");
     }
 
+    /// <summary>進捗スナップショットを更新し、イベントバスへ順序を保って通知する。</summary>
     private void UpdateProgress(int processed, int total, bool running)
     {
-        // ローカル変数 snapshot にコピーしてから PublishAsync へ渡す（後段の
-        // currentProgress 上書きで snapshot が改竄されないようにする）。
-        // さらに _publishTail を ContinueWith で繋いで FIFO 発行することで、
-        // 連続呼び出し時に handler 実行順が逆転して進捗バーが巻き戻る現象を防ぐ。
+        // フィールドをそのまま publish せず、呼び出し時点の値をスナップショットとして渡す。
+        // _publishTail で直列化し、連続更新時も handler の実行順が逆転しないようにする。
         var snapshot = new OrientationProgressEvent { processed = processed, total = total, running = running };
         currentProgress = snapshot;
         lock (_publishLock)

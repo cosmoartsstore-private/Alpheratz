@@ -13,7 +13,7 @@ namespace Alpheratz.Core;
 /// ファイルに flush する非同期ロガー。
 /// Trace は [Conditional("TRACE_LOGGING")] により、TRACE_LOGGING シンボルが定義されていない
 /// ビルドでは呼び出しごと（引数の文字列補間も含めて）C# コンパイラレベルで消える。
-/// このため Trace を hot path に置いても Release ビルドでは GC プレッシャを生まない。
+/// このため高頻度経路に Trace を置いても Release ビルドでは GC 負荷を生まない。
 /// </summary>
 public static class AppLogger
 {
@@ -29,8 +29,13 @@ public static class AppLogger
         false;
 #endif
 
+    /// <summary>警告レベルのログを非同期書き込みキューへ追加する。</summary>
     public static void Warn(string message) => Enqueue("WARN", message);
+
+    /// <summary>エラーレベルのログを非同期書き込みキューへ追加する。</summary>
     public static void Error(string message) => Enqueue("ERROR", message);
+
+    /// <summary>情報レベルのログを非同期書き込みキューへ追加する。</summary>
     public static void Info(string message) => Enqueue("INFO", message);
 
     /// <summary>
@@ -38,8 +43,10 @@ public static class AppLogger
     /// （引数の評価も含めてコンパイラが call site を消す）。Release ビルドではコストゼロ。
     /// </summary>
     [Conditional("TRACE_LOGGING")]
+    // TRACE_LOGGING 有効時だけ、詳細トレースを非同期書き込みキューへ追加する。
     public static void Trace(string message) => Enqueue("TRACE", message);
 
+    /// <summary>AppPaths が使えない場合でもログを書ける既定の保存先を返す。</summary>
     private static string GetFallbackLogPath()
     {
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -48,6 +55,7 @@ public static class AppLogger
         return Path.Combine(dir, "info.log");
     }
 
+    /// <summary>ログ行をキューへ積み、未実行ならバックグラウンド flush を開始する。</summary>
     private static void Enqueue(string level, string message)
     {
         // 地域設定で format 解釈が揺れないよう InvariantCulture で固定する。
@@ -60,6 +68,7 @@ public static class AppLogger
         }
     }
 
+    /// <summary>キュー内のログ行をファイルへ追記し、失敗した行は再試行用に戻す。</summary>
     private static void Flush()
     {
         // dequeue したログ行は writer の Dispose 直前まで保持しておく。

@@ -41,6 +41,7 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
     [ObservableProperty] private bool isBulkTagModalOpen;
     public UiObservableCollection<SelectedPhotoRefDto> selectedPhotoRefs { get; } = [];
 
+    /// <summary>写真サービスと通知サービスを受け取り、選択変更の監視を開始する。</summary>
     public GallerySelectionState(PhotoService photoService, ToastService toastService)
     {
         AppLogger.Trace("GallerySelectionState.ctor: enter");
@@ -50,6 +51,7 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
         AppLogger.Trace("GallerySelectionState.ctor: exit");
     }
 
+    /// <summary>選択パスの変更に合わせて、一括操作用の写真参照を非同期で更新する。</summary>
     private void selectedPhotoPathsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         AppLogger.Trace($"GallerySelectionState.selectedPhotoPathsChanged: enter action={e.Action}");
@@ -64,6 +66,7 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
         AppLogger.Trace("GallerySelectionState.selectedPhotoPathsChanged: exit");
     }
 
+    /// <summary>写真の選択状態を切り替える。Shift 選択時はアンカーから対象までを範囲追加する。</summary>
     public void toggleSelectedPhoto(PhotoGridItem item, bool shiftKey, IReadOnlyList<PhotoGridItem> displayPhotoItems)
     {
         AppLogger.Trace($"GallerySelectionState.toggleSelectedPhoto: enter shiftKey={shiftKey}");
@@ -119,6 +122,7 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
         AppLogger.Trace("GallerySelectionState.toggleSelectedPhoto: exit");
     }
 
+    /// <summary>選択中の写真と範囲選択アンカーをすべてクリアする。</summary>
     public void clearSelectedPhotos()
     {
         AppLogger.Trace($"GallerySelectionState.clearSelectedPhotos: enter count={selectedPhotoPaths.Count}");
@@ -134,6 +138,7 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
         AppLogger.Trace("GallerySelectionState.clearSelectedPhotos: exit");
     }
 
+    /// <summary>マルチセレクトモードを切り替える。終了時は残った選択をクリアする。</summary>
     public void handleToggleMultiSelectMode()
     {
         AppLogger.Trace($"GallerySelectionState.handleToggleMultiSelectMode: enter IsMultiSelectMode={IsMultiSelectMode}");
@@ -153,6 +158,7 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
         AppLogger.Trace($"GallerySelectionState.handleToggleMultiSelectMode: exit IsMultiSelectMode={IsMultiSelectMode}");
     }
 
+    /// <summary>一括操作に使う写真参照リストを現在の選択内容で置き換える。</summary>
     public void setSelectedPhotoRefs(IEnumerable<SelectedPhotoRefDto> refsToSet)
     {
         AppLogger.Trace("GallerySelectionState.setSelectedPhotoRefs: enter");
@@ -171,6 +177,7 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
         AppLogger.Trace($"GallerySelectionState.setSelectedPhotoRefs: exit count={selectedPhotoRefs.Count}");
     }
 
+    /// <summary>選択パスから DB 上の (photo_path, source_slot) ペアを再取得する。</summary>
     public async Task loadSelectedPhotoRefs()
     {
         AppLogger.Trace("GallerySelectionState.loadSelectedPhotoRefs: enter");
@@ -178,6 +185,7 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
         if (DETACH_RUNTIME_DATA || DETACH_AUXILIARY_RUNTIME_DATA)
         {
             AppLogger.Trace("GallerySelectionState.loadSelectedPhotoRefs: skip (detached)");
+            cancelSelectedPhotoRefsLoad();
             selectedPhotoRefs.Clear();
             return;
         }
@@ -185,15 +193,13 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
         if (selectedPhotoPaths.Count == 0)
         {
             AppLogger.Trace("GallerySelectionState.loadSelectedPhotoRefs: skip (no selection)");
+            cancelSelectedPhotoRefsLoad();
             selectedPhotoRefs.Clear();
             return;
         }
 
-        // 旧実装: Cancel(); Dispose(); selectedPhotoRefsCancellation = new(...) は
-        // 3 ステップが直列でないため、別スレッドの loadSelectedPhotoRefs が同じ CTS を
-        // 参照したまま走り抜けて Dispose 済み CTS にアクセスする race があった。
-        // 新規 CTS を作ってから Interlocked.Exchange で原子的に差し替え、旧 CTS を
-        // ローカル参照で受け取って Cancel/Dispose する。
+        // CTS の差し替え、キャンセル、破棄を分けると、並行ロードが破棄済み CTS を参照し得る。
+        // 新しい CTS を先に作り、Interlocked.Exchange で参照を一度に入れ替える。
         var newCts = new CancellationTokenSource();
         var oldCts = Interlocked.Exchange(ref selectedPhotoRefsCancellation, newCts);
         if (oldCts is not null)
@@ -217,8 +223,7 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
         }
         catch (Exception err)
         {
-            // Continue: legacy alpheratz only toasts on non-cancellation
-            // failure; cancellations are silent.
+            // キャンセルは通常操作なので通知しない。実際の取得失敗だけをトーストで知らせる。
             AppLogger.Error($"GallerySelectionState.loadSelectedPhotoRefs: threw: {err}");
             if (!token.IsCancellationRequested)
             {
@@ -228,6 +233,17 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
         AppLogger.Trace("GallerySelectionState.loadSelectedPhotoRefs: exit");
     }
 
+    /// <summary>進行中の選択参照ロードをキャンセルし、CTS を解放する。</summary>
+    private void cancelSelectedPhotoRefsLoad()
+    {
+        var cts = Interlocked.Exchange(ref selectedPhotoRefsCancellation, null);
+        if (cts is null) return;
+
+        try { cts.Cancel(); } catch (ObjectDisposedException) { }
+        try { cts.Dispose(); } catch (ObjectDisposedException) { }
+    }
+
+    /// <summary>選択変更の購読を解除し、進行中の補助ロードを停止する。</summary>
     public void Dispose()
     {
         AppLogger.Trace("GallerySelectionState.Dispose: enter");

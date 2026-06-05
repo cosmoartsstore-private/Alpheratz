@@ -7,14 +7,18 @@ using Alpheratz.Shared.Models;
 
 namespace Alpheratz.Services;
 
+/// <summary>
+/// AppConfig の保存形式を画面向け DTO に変換するサービス。
+/// 読み書きを同じ lock で直列化し、設定ファイルのスナップショット整合性を保つ。
+/// </summary>
 public sealed class SettingsService
 {
     private readonly AppConfig _config;
-    // R2-A-21: LoadSetting → mutate → SaveSetting の Read-Modify-Write が複数スレッドから
-    //          並列に走ると、片方の TweetTemplates 等が他方で上書きされるなどの race が起きうる。
-    //          ファイル/状態を介して直列化するため、SaveSettingAsync 全体を lock で囲む。
+    // LoadSetting → mutate → SaveSetting を並列実行すると、片方の変更が別の保存で上書きされる。
+    // 読み書き全体を同じロックで囲み、設定ファイルを単一の状態として扱う。
     private readonly object _writeGate = new();
 
+    /// <summary>設定ストアを受け取ってサービスを作成する。</summary>
     public SettingsService(AppConfig config)
     {
         AppLogger.Trace("SettingsService.ctor: enter");
@@ -22,13 +26,13 @@ public sealed class SettingsService
         AppLogger.Trace("SettingsService.ctor: exit");
     }
 
+    /// <summary>保存済み設定を画面向け DTO に変換して返す。</summary>
     public Task<AlpheratzSettingDto> GetSettingAsync(CancellationToken ct = default)
     {
         AppLogger.Trace("SettingsService.GetSettingAsync: enter");
         try
         {
-            // R2-A-21: 読み込み中に SaveSetting が走ると一貫性のないスナップショットを掴む可能性があるため、
-            //          書込ロックと同じ lock で囲んで保護する。読み込みは短時間なので contention は問題にならない。
+            // 保存中の中間状態を読まないよう、書き込みと同じロックでスナップショットを取る。
             AlpheratzSettingDto dto;
             lock (_writeGate)
             {
@@ -55,14 +59,14 @@ public sealed class SettingsService
         }
     }
 
+    /// <summary>DTO の指定項目だけを既存設定へ反映して保存する。</summary>
     public Task SaveSettingAsync(AlpheratzSettingDto dto, CancellationToken ct = default)
     {
         AppLogger.Trace("SettingsService.SaveSettingAsync: enter");
         try
         {
-            // R2-A-21: Load → mutate → Save は単一ロックで完全に直列化する。
-            //          dto.tweetTemplates の参照を直接保持すると、呼出側がさらに編集したときに
-            //          ファイルへ書き出した内容と実メモリで乖離するため、必ずコピーを取る。
+            // DTO のコレクション参照をそのまま保持すると、呼出側の後続編集で保存内容が揺れる。
+            // 保存時点の値として扱うため、テンプレート一覧はコピーして保持する。
             lock (_writeGate)
             {
                 var s = _config.LoadSetting();
@@ -85,6 +89,7 @@ public sealed class SettingsService
         return Task.CompletedTask;
     }
 
+    /// <summary>自動起動の希望値を保存する。</summary>
     public Task SaveStartupPreferenceAsync(bool enabled, CancellationToken ct = default)
     {
         AppLogger.Trace($"SettingsService.SaveStartupPreferenceAsync: enter enabled={enabled}");

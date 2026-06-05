@@ -1,4 +1,5 @@
 using Alpheratz.Core;
+using System.Diagnostics.CodeAnalysis;
 using Alpheratz.Core.Database;
 using Alpheratz.Core.Imaging;
 using Alpheratz.Core.Scanner;
@@ -17,6 +18,7 @@ using Microsoft.UI.Xaml;
 
 namespace Alpheratz;
 
+[ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public partial class App : Application
 {
     private Window? mainWindow;
@@ -25,14 +27,14 @@ public partial class App : Application
     public static Window? MainWindowInstance => (Current as App)?.mainWindow;
     public static IServiceProvider? Services => (Current as App)?.serviceProvider;
 
+    // アプリケーションリソースを初期化する前に、保存済みテーマを可能な範囲で適用する。
     public App()
     {
         AppLogger.Trace("App.ctor: enter");
 
-        // Application.RequestedTheme must be set BEFORE InitializeComponent().
-        // Read the persisted theme directly from setting.json (DI not available yet).
-        // Without this, the OS theme is used, and Application.Current.Resources["key"]
-        // plus {ThemeResource} at the Application level all resolve to the wrong theme.
+        // Application.RequestedTheme は InitializeComponent より前に設定する必要がある。
+        // この時点では DI が未構築なので、setting.json を直接読んで保存済みテーマを反映する。
+        // ここを遅らせると Application レベルの ThemeResource が OS テーマで解決される。
         try
         {
             var settingDir = AppPaths.GetSettingDir();
@@ -86,16 +88,14 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            // Continue: the app is already in a partially-initialized state
-            // and there is nothing meaningful we can do beyond logging. The
-            // legacy alpheratz frontend likewise swallowed top-level errors
-            // so the runtime stayed alive long enough to show a toast.
+            // ここまで来るとアプリは部分初期化済みなので、最上位ではログだけ残す。
             AppLogger.Error($"App.OnLaunched: fatal: {ex}");
         }
 
         AppLogger.Trace("App.OnLaunched: exit");
     }
 
+    // DI、DB、Window、スプラッシュを順に初期化し、Shell への遷移を開始する。
     private void OnLaunchedCore(LaunchActivatedEventArgs args)
     {
         AppLogger.Trace($"App.OnLaunchedCore: enter (build {System.Reflection.Assembly.GetExecutingAssembly().GetName().Version})");
@@ -145,8 +145,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            // Rethrow: the app cannot run without its database; this matches
-            // the legacy startup contract that bailed loudly on init failure.
+            // DB が初期化できない状態では画面のデータ操作を安全に開始できない。
             AppLogger.Error($"App.OnLaunchedCore: DB initialize failed: {ex}");
             throw;
         }
@@ -155,9 +154,9 @@ public partial class App : Application
         var shellViewModel = serviceProvider.GetRequiredService<ShellViewModel>();
         AppLogger.Trace("App.OnLaunchedCore: ShellViewModel resolved");
 
-        // Window must be created and activated BEFORE any Page's InitializeComponent()
-        // because WinUI3's compositor is not initialized until a Window exists.
-        // Creating a Page before this point deadlocks inside Application.LoadComponent().
+        // WinUI 3 の compositor は Window 作成まで初期化されないため、
+        // Page.InitializeComponent より先に Window を作成・Activate する。
+        // 逆順にすると Application.LoadComponent 内で停止することがある。
         MainWindow win;
         try
         {
@@ -184,9 +183,8 @@ public partial class App : Application
             throw;
         }
 
-        // Show the splash first so the user sees the brand mark + phase
-        // status while ShellViewModel.initialize() runs in the background.
-        // ShellPage is constructed lazily once dataReady fires below.
+        // ShellViewModel.initialize() は時間がかかるため、先にスプラッシュを表示する。
+        // ShellPage は dataReady 到達後に遅延生成し、起動直後の空白を避ける。
         BootstrapPage bootstrapPage;
         try
         {
@@ -203,9 +201,9 @@ public partial class App : Application
             throw;
         }
 
-        // Mirror lifecycle phase changes onto the splash status text. The
-        // dispatcher hop is required because PhaseAdvanced may fire from a
-        // background thread (e.g. the initialize() continuation).
+        // ライフサイクルフェーズをスプラッシュの表示へ反映する。
+        // PhaseAdvanced は initialize() 継続などバックグラウンドから発火し得るため、
+        // UI 更新は DispatcherQueue へ戻す。
         lifecycle.PhaseAdvanced += (_, phase) =>
         {
             try
@@ -248,6 +246,7 @@ public partial class App : Application
     private bool shellSwapped;
     private DateTimeOffset splashShownAt;
 
+    // スプラッシュの導入アニメーション後に ShellViewModel の初期化をバックグラウンドで開始する。
     private async Task BeginSplashSequenceAsync(BootstrapPage bootstrapPage, ShellViewModel shellViewModel, AppLifecycleService lifecycle)
     {
         AppLogger.Trace("App.BeginSplashSequence: intro blank start");
@@ -273,6 +272,7 @@ public partial class App : Application
         }, TaskContinuationOptions.ExecuteSynchronously);
     }
 
+    // スプラッシュをフェードアウトし、メインの ShellPage を Window へ差し替える。
     private async void SwapToShell(MainWindow win, ShellViewModel shellViewModel, BootstrapPage bootstrapPage)
     {
         if (shellSwapped) return;

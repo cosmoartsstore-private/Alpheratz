@@ -1,4 +1,7 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
+using System.ComponentModel;
+using System.IO;
 using System.Threading.Tasks;
 using Alpheratz.Core;
 using Alpheratz.Shared.Animations;
@@ -8,7 +11,6 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
-using System.ComponentModel;
 
 namespace Alpheratz.Features.PhotoModal;
 
@@ -17,6 +19,7 @@ namespace Alpheratz.Features.PhotoModal;
 /// ShellPage によってインスタンスがキャッシュ・再利用されるため、UpdateViewModel で
 /// 中身を差し替えて生成コストを抑える。
 /// </summary>
+[ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public sealed partial class PhotoModalPage : Page
 {
     private PhotoModalViewModel viewModel;
@@ -60,6 +63,7 @@ public sealed partial class PhotoModalPage : Page
         }
     }
 
+    /// <summary>初期 ViewModel を受け取り、状態変更購読と DataContext を設定する。</summary>
     public PhotoModalPage(PhotoModalViewModel viewModel)
     {
         AppLogger.Trace("PhotoModalPage.ctor: enter");
@@ -80,6 +84,7 @@ public sealed partial class PhotoModalPage : Page
         AppLogger.Trace("PhotoModalPage.ctor: exit");
     }
 
+    /// <summary>モーダル表示中に ViewModel を差し替え、状態変更の購読も付け替える。</summary>
     public void UpdateViewModel(PhotoModalViewModel next)
     {
         viewModel.state.PropertyChanged -= OnStatePropertyChanged;
@@ -92,9 +97,10 @@ public sealed partial class PhotoModalPage : Page
         syncModalImage();
     }
 
+    /// <summary>選択写真やタグの変更に合わせてモーダル表示を同期する。</summary>
     private void OnStatePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(PhotoModalState.SelectedPhoto))
+        if (PhotoModalPageLogic.ShouldSyncForPropertyChanged(e.PropertyName))
         {
             syncWorldName();
             syncMatchSource();
@@ -103,30 +109,27 @@ public sealed partial class PhotoModalPage : Page
         }
     }
 
+    /// <summary>選択写真に合わせて表示画像の source とサイズ表記を更新する。</summary>
     private void syncModalImage()
     {
         try
         {
             var photo = viewModel.state.SelectedPhoto;
-            var path = photo?.EffectiveDisplayPath;
-            if (string.IsNullOrEmpty(path))
+            var request = PhotoModalPageLogic.ModalImageRequest(photo?.EffectiveDisplayPath, Path.DirectorySeparatorChar);
+            if (request is null)
             {
                 ModalImage.Source = null;
                 return;
             }
-            // DB の正規化済みパスは forward-slash を含む可能性があるため、
-            // BitmapImage に渡す前にネイティブのディレクトリセパレータへ変換する
-            // (ThumbnailService.GenerateThumbnailAsync と同じ正規化)。
-            path = path.Replace('/', System.IO.Path.DirectorySeparatorChar);
             // DecodePixelWidth を Modal の最大表示幅 (1920px) で頭打ちにする。
             // 設定しないと 4K 写真が約 50MB のメモリにフルデコードされ、Modal の開閉だけで
             // 数百 MB の一時メモリを使う。Modal レイアウト上はこれ以上のピクセルを使い切らない。
             ModalImage.Source = new BitmapImage
             {
                 CreateOptions = BitmapCreateOptions.IgnoreImageCache,
-                DecodePixelWidth = 1920,
+                DecodePixelWidth = request.DecodePixelWidth,
                 DecodePixelType = DecodePixelType.Logical,
-                UriSource = new Uri(path, UriKind.Absolute),
+                UriSource = new Uri(request.NormalizedPath, UriKind.Absolute),
             };
         }
         catch (Exception ex)
@@ -135,82 +138,67 @@ public sealed partial class PhotoModalPage : Page
         }
     }
 
+    /// <summary>選択写真のワールド名表示を更新する。</summary>
     private void syncWorldName()
     {
         var photo = viewModel.state.SelectedPhoto;
-        var worldName = photo?.WorldName;
-        WorldNameText.Text = string.IsNullOrEmpty(worldName) ? "ワールド不明" : worldName;
+        WorldNameText.Text = PhotoModalPageLogic.WorldNameText(photo?.WorldName);
     }
 
+    /// <summary>ワールド情報の取得元表示を現在の match_source に合わせる。</summary>
     private void syncMatchSource()
     {
         var photo = viewModel.state.SelectedPhoto;
-        var source = photo?.MatchSource;
+        var display = PhotoModalPageLogic.MatchSource(photo?.MatchSource);
 
-        string? label = source switch
+        if (display.Visible)
         {
-            "polaris_archive" => "archive ログから補完",
-            "phash" => "類似写真から推測",
-            _ => null,
-        };
-
-        if (label is not null)
-        {
-            MatchSourcePanel.Visibility = Visibility.Visible;
-            MatchSourceLabel.Text = label;
+            MatchSourceLabel.Visibility = Visibility.Visible;
+            MatchSourceLabel.Text = display.Label;
         }
         else
         {
-            MatchSourcePanel.Visibility = Visibility.Collapsed;
+            MatchSourceLabel.Visibility = Visibility.Collapsed;
+            MatchSourceLabel.Text = string.Empty;
         }
     }
 
+    /// <summary>タグ未設定時の補足表示を選択写真のタグ数に合わせる。</summary>
     private void syncEmptyTagNote()
     {
         var photo = viewModel.state.SelectedPhoto;
-        var currentTags = photo?.Tags;
-        var availableCount = 0;
-
-        if (masterTags is not null && currentTags is not null)
-        {
-            foreach (var tag in masterTags)
-            {
-                if (!currentTags.Contains(tag))
-                    availableCount++;
-            }
-        }
-        else if (masterTags is not null)
-        {
-            availableCount = masterTags.Count;
-        }
-
-        var hasAvailable = availableCount > 0;
-        TagAddRow.Visibility = hasAvailable ? Visibility.Visible : Visibility.Collapsed;
-        EmptyTagNote.Visibility = hasAvailable ? Visibility.Collapsed : Visibility.Visible;
+        var display = PhotoModalPageLogic.TagAddDisplay(masterTags, photo?.Tags);
+        TagAddRow.Visibility = display.HasAvailable ? Visibility.Visible : Visibility.Collapsed;
+        EmptyTagNote.Visibility = display.HasAvailable ? Visibility.Collapsed : Visibility.Visible;
     }
 
+    /// <summary>閉じるボタンからモーダルのクローズ要求を発行する。</summary>
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
         try { OnClose?.Invoke(); }
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.CloseButton_Click: {ex}"); }
     }
 
+    /// <summary>背景タップでモーダルのクローズ要求を発行する。</summary>
     private void Backdrop_Tapped(object sender, TappedRoutedEventArgs e)
     {
         try { OnClose?.Invoke(); }
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.Backdrop_Tapped: {ex}"); }
     }
 
+    /// <summary>モーダル本体のタップが背景タップ扱いにならないよう伝播を止める。</summary>
     private void ModalContent_Tapped(object sender, TappedRoutedEventArgs e)
     {
         e.Handled = true;
     }
 
+    /// <summary>ページ破棄時に購読を解除し、保持している画像参照を解放する。</summary>
     private void Page_Unloaded(object sender, RoutedEventArgs e)
     {
         viewModel.state.PropertyChanged -= OnStatePropertyChanged;
     }
 
+    /// <summary>ページ表示時に初期フォーカスと表示同期を行う。</summary>
     private void Page_Loaded(object sender, RoutedEventArgs e)
     {
         try
@@ -224,28 +212,27 @@ public sealed partial class PhotoModalPage : Page
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.Page_Loaded: {ex}"); }
     }
 
+    /// <summary>Escape や左右キーで閉じる/前後移動/戻る操作を実行する。</summary>
     private void Page_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         try
         {
-            if (FocusManager.GetFocusedElement(XamlRoot) is TextBox)
-                return;
-
-            switch (e.Key)
+            var isTextInputFocused = FocusManager.GetFocusedElement(XamlRoot) is TextBox;
+            switch (PhotoModalPageLogic.ResolveKeyAction(isTextInputFocused, e.Key))
             {
-                case Windows.System.VirtualKey.Escape:
+                case PhotoModalPageKeyAction.Close:
                     e.Handled = true;
                     OnClose?.Invoke();
                     break;
-                case Windows.System.VirtualKey.Left:
+                case PhotoModalPageKeyAction.GoPrevious:
                     e.Handled = true;
                     OnGoPrev?.Invoke();
                     break;
-                case Windows.System.VirtualKey.Right:
+                case PhotoModalPageKeyAction.GoNext:
                     e.Handled = true;
                     OnGoNext?.Invoke();
                     break;
-                case Windows.System.VirtualKey.Back:
+                case PhotoModalPageKeyAction.GoBack:
                     e.Handled = true;
                     OnGoBack?.Invoke();
                     break;
@@ -254,6 +241,7 @@ public sealed partial class PhotoModalPage : Page
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.Page_KeyDown: {ex}"); }
     }
 
+    /// <summary>類似検索履歴から前の写真へ戻る。</summary>
     private void BackButton_Click(object sender, RoutedEventArgs e)
     {
         try { OnGoBack?.Invoke(); }
@@ -261,6 +249,7 @@ public sealed partial class PhotoModalPage : Page
     }
 
 
+    /// <summary>選択写真の VRChat ワールドページを開く。</summary>
     private async void OpenWorld_Click(object sender, RoutedEventArgs e)
     {
         try
@@ -271,6 +260,7 @@ public sealed partial class PhotoModalPage : Page
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.OpenWorld_Click: {ex}"); }
     }
 
+    /// <summary>選択写真を Explorer 上で表示する。</summary>
     private async void OpenExplorer_Click(object sender, RoutedEventArgs e)
     {
         try
@@ -281,6 +271,7 @@ public sealed partial class PhotoModalPage : Page
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.OpenExplorer_Click: {ex}"); }
     }
 
+    /// <summary>選択写真とアクティブテンプレートから投稿 intent を開く。</summary>
     private async void Tweet_Click(object sender, RoutedEventArgs e)
     {
         try
@@ -294,6 +285,7 @@ public sealed partial class PhotoModalPage : Page
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.Tweet_Click: {ex}"); }
     }
 
+    /// <summary>画像をクリップボードへ置いたことを示す一時オーバーレイを表示する。</summary>
     private void ShowClipboardOverlay()
     {
         try
@@ -303,6 +295,7 @@ public sealed partial class PhotoModalPage : Page
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.ShowClipboardOverlay: {ex}"); }
     }
 
+    /// <summary>選択写真のお気に入り状態を切り替える。</summary>
     private async void Favorite_Click(object sender, RoutedEventArgs e)
     {
         try
@@ -313,30 +306,33 @@ public sealed partial class PhotoModalPage : Page
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.Favorite_Click: {ex}"); }
     }
 
+    /// <summary>既存タグボタンから選択写真へタグを追加する。</summary>
     private async void AddExistingTag_Click(object sender, RoutedEventArgs e)
     {
         try
         {
-            if (ExistingTagCombo.SelectedItem is string tag && !string.IsNullOrEmpty(tag))
+            var request = PhotoModalPageLogic.AddExistingTagRequest(
+                ExistingTagCombo.SelectedItem,
+                viewModel.state.SelectedPhoto?.PhotoPath,
+                OnAddTag is not null);
+            if (request is not null)
             {
-                var photoPath = viewModel.state.SelectedPhoto?.PhotoPath;
-                if (photoPath is not null && OnAddTag is not null)
-                {
-                    await OnAddTag(photoPath, tag);
-                    ExistingTagCombo.SelectedIndex = -1;
-                    syncEmptyTagNote();
-                }
+                await OnAddTag!(request.PhotoPath, request.Tag);
+                ExistingTagCombo.SelectedIndex = -1;
+                syncEmptyTagNote();
             }
         }
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.AddExistingTag_Click: {ex}"); }
     }
 
+    /// <summary>タグマスタ画面の表示を要求する。</summary>
     private void OpenTagMaster_Click(object sender, RoutedEventArgs e)
     {
         try { OnOpenTagMaster?.Invoke(); }
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.OpenTagMaster_Click: {ex}"); }
     }
 
+    /// <summary>モーダル画像の BitmapImage 参照を解放し、閉じた後のメモリ保持を避ける。</summary>
     public void ReleaseImage()
     {
         try
@@ -347,33 +343,34 @@ public sealed partial class PhotoModalPage : Page
     }
 
 
+    /// <summary>選択写真からクリックされたタグを削除する。</summary>
     private async void RemoveTag_Click(object sender, RoutedEventArgs e)
     {
         try
         {
-            var tag = (sender as FrameworkElement)?.Tag as string;
-            var photoPath = viewModel.state.SelectedPhoto?.PhotoPath;
-            if (string.IsNullOrEmpty(tag) || photoPath is null || OnRemoveTag is null) return;
-            await OnRemoveTag(photoPath, tag);
+            var request = PhotoModalPageLogic.RemoveTagRequest(
+                (sender as FrameworkElement)?.Tag,
+                viewModel.state.SelectedPhoto?.PhotoPath,
+                OnRemoveTag is not null);
+            if (request is null) return;
+            await OnRemoveTag!(request.PhotoPath, request.Tag);
             syncEmptyTagNote();
         }
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.RemoveTag_Click: {ex}"); }
     }
 
-    // -----------------------------------------------------------------------
-    // Bottom action button hover effects
-    // -----------------------------------------------------------------------
-
+    /// <summary>下部アクションボタンにポインタが乗ったときに hover 背景へ切り替える。</summary>
     private void BottomAction_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
         try
         {
-            if (sender is Button btn && ThemeHelper.Brush(btn, "ASurfaceHover") is { } hover)
+            if (sender is Button btn && ThemeHelper.Brush(btn, PhotoModalPageLogic.BottomActionHoverBrushKey) is { } hover)
                 btn.Background = hover;
         }
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.BottomAction_PointerEntered: {ex}"); }
     }
 
+    /// <summary>下部アクションボタンからポインタが外れたときに pressed 表示を解除する。</summary>
     private void BottomAction_PointerExited(object sender, PointerRoutedEventArgs e)
     {
         try

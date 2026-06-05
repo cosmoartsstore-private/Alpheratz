@@ -10,11 +10,10 @@
         BorderBrush="{ThemeResource ABorder}"
         BorderThickness="0,0,0,1">
         <!--
-            "検索条件" ピル (Grid.Column=0) はクリックで左レーン (ShellPage.RailColumn) を
-            開閉する。検索条件パネル自体は左レーンに常駐表示で、Visibility ではなく
-            RailColumn.Width を 320 ⇄ 0 に切替する形で展開/収納を表現する。
+            "検索条件" ボタンは ShellPage 側の検索条件オーバーレイを開閉する。
+            検索条件パネル自体はオーバーレイ内に固定配置し、親要素を付け替えない。
         -->
-        <Grid ColumnSpacing="10">
+        <Grid x:Name="ContentRoot" ColumnSpacing="10">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
@@ -25,7 +24,7 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Left: 検索条件ピル (左レーン開閉トリガ) -->
+            <!-- 左側: 検索条件ボタン -->
             <Button x:Name="FilterPillBtn" Grid.Column="0"
                     Style="{StaticResource HeaderPillButtonStyle}"
                     Click="FilterButton_Click"
@@ -47,7 +46,7 @@
                 </StackPanel>
             </Button>
 
-            <!-- Center: search box -->
+            <!-- 中央: 検索ボックス -->
             <Border x:Name="SearchBoxBorder" Grid.Column="1"
                     MaxWidth="472"
                     HorizontalAlignment="Stretch"
@@ -74,13 +73,14 @@
                              VerticalAlignment="Center"
                              AutomationProperties.Name="ワールド名検索"
                              GotFocus="SearchTextBox_GotFocus"
-                             LostFocus="SearchTextBox_LostFocus"/>
+                             LostFocus="SearchTextBox_LostFocus"
+                             KeyDown="SearchTextBox_KeyDown"/>
                 </Grid>
             </Border>
 
             <!--
-                PDQ progress chip (旧 RightRail から移植)。
-                ハッシュ計算中だけ表示され、完了数 / 全体数を pill 形状で示す。
+                PDQ 進捗表示。
+                ハッシュ計算中だけ表示され、完了数 / 全体数をコンパクトに示す。
                 visibility は SetPdqProgress 経由でコード側からセットする。
             -->
             <Border x:Name="PdqProgressChip" Grid.Column="2"
@@ -107,14 +107,14 @@
             </Border>
 
             <!--
-                Right side: gallery view controls + settings.
-                LeftRail から移植した 3 つのトグル (ビューモード / グループ化 / 複数選択) を、
-                設定ボタンの直前に並べる。各ボタンは binary トグルで、アクティブ時に
+                右側: ギャラリー表示操作と設定。
+                3 つの切替ボタン (ビューモード / グループ化 / 複数選択) を、
+                設定ボタンの直前に並べる。各ボタンは 2 状態切替で、アクティブ時に
                 背景・枠線・前景色が APrimarySoft / ABorderStrong / APrimary に切り替わる
                 (UpdateActiveStyle ヘルパで code-behind から付与)。
             -->
 
-            <!-- View mode toggle (standard <-> gallery / masonry) -->
+            <!-- 表示モード切替 (標準グリッド / マソンリー) -->
             <Button x:Name="ViewModeBtn" Grid.Column="3"
                     Style="{StaticResource HeaderIconButtonStyle}"
                     AutomationProperties.Name="表示モード切替"
@@ -124,7 +124,7 @@
                 <shared:AppIcon x:Name="ViewModeIcon" IconName="grid" IconSize="16" Foreground="{ThemeResource ATextDim}"/>
             </Button>
 
-            <!-- Grouping toggle (none <-> world). Masonry 表示中は無効化される。 -->
+            <!-- グループ化切替 (なし / ワールド)。Masonry 表示中は無効化される。 -->
             <Button x:Name="GroupingBtn" Grid.Column="4"
                     Style="{StaticResource HeaderIconButtonStyle}"
                     AutomationProperties.Name="グループ化切替"
@@ -134,7 +134,7 @@
                 <shared:AppIcon x:Name="GroupingIcon" IconName="group" IconSize="16" Foreground="{ThemeResource ATextDim}"/>
             </Button>
 
-            <!-- Multi-select toggle -->
+            <!-- 複数選択モード切替 -->
             <Button x:Name="MultiSelectBtn" Grid.Column="5"
                     Style="{StaticResource HeaderIconButtonStyle}"
                     AutomationProperties.Name="複数選択モード切替"
@@ -144,7 +144,7 @@
                 <shared:AppIcon x:Name="MultiSelectIcon" IconName="selectMultiple" IconSize="16" Foreground="{ThemeResource ATextDim}"/>
             </Button>
 
-            <!-- Right: settings gear -->
+            <!-- 右端: 設定ボタン -->
             <Button x:Name="SettingsGearBtn" Grid.Column="6"
                     Style="{StaticResource HeaderIconButtonStyle}"
                     ToolTipService.ToolTip="設定"

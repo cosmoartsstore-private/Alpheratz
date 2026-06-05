@@ -1,4 +1,5 @@
 using Alpheratz.Core;
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -12,6 +13,7 @@ namespace Alpheratz;
 /// RootHost (Grid) に ShellPage 等のルートページを差し替えて表示する。
 /// 起動時に最大化した状態で表示される。
 /// </summary>
+[ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public partial class MainWindow : Window
 {
     public MainWindow()

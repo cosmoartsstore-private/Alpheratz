@@ -21,7 +21,7 @@
     <CornerRadius x:Key="ARadiusMd">10</CornerRadius>
     <CornerRadius x:Key="ARadiusLg">14</CornerRadius>
     <CornerRadius x:Key="ARadiusXl">16</CornerRadius>
-    <!-- Pill-ish button corner used in header icon / header pill / photo modal action buttons -->
+    <!-- Rounded button corner used in header icons, header text buttons, and photo modal action buttons -->
     <CornerRadius x:Key="ARadiusButton">17</CornerRadius>
     <CornerRadius x:Key="ARadiusModal">28</CornerRadius>
     <CornerRadius x:Key="ARadiusPill">999</CornerRadius>

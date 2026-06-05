@@ -14,8 +14,13 @@ namespace Alpheratz.Core;
 /// </summary>
 public class UiObservableCollection<T> : ObservableCollection<T>
 {
+    /// <summary>空の UI 安全コレクションを作成する。</summary>
     public UiObservableCollection() { }
+
+    /// <summary>既存の列挙値を初期値として UI 安全コレクションを作成する。</summary>
     public UiObservableCollection(IEnumerable<T> collection) : base(collection) { }
+
+    /// <summary>既存のリストを初期値として UI 安全コレクションを作成する。</summary>
     public UiObservableCollection(List<T> list) : base(list) { }
 
     /// <summary>

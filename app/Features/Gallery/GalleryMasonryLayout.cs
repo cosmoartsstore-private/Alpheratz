@@ -3,10 +3,10 @@ using System.Collections.Generic;
 
 namespace Alpheratz.Features.Gallery;
 
-/// <summary>マソンリーレイアウト上の1カードの位置・サイズ情報。</summary>
+/// <summary>Masonry レイアウト上の1カードの位置とサイズ。</summary>
 public sealed record MasonryItem(PhotoThumbnailItem Photo, double Top, double Left, double Width, double Height);
 
-/// <summary>マソンリーレイアウトの計算結果。</summary>
+/// <summary>Masonry レイアウト計算の結果。</summary>
 public sealed record MasonryLayoutResult(
     IReadOnlyList<MasonryItem> Items,
     double TotalHeight,
@@ -15,30 +15,26 @@ public sealed record MasonryLayoutResult(
     double Gap);
 
 /// <summary>
-/// マソンリーレイアウトの座標計算を行う純粋関数クラス。
-/// 各写真のアスペクト比に基づいてカード高を算出し、
-/// 最も短いカラムに順次配置していく（Greedy 法）。
+/// Masonry レイアウトの座標を計算する純粋ロジック。
+/// 写真の縦横比からカード高を求め、現在最も低い列へ順に配置する。
 /// </summary>
 public static class GalleryMasonryLayout
 {
     public const double Gap = 14;
 
     /// <summary>
-    /// 1カラムの最小幅。自動列数の算出基準も兼ねる。
-    /// 320px にすることで標準的な最大化ウィンドウ（約1920px）で5列前後になり、
-    /// ウィンドウ幅に応じて列数が増減する（狭ければ減り、広ければ増える）。
+    /// 1列の最小幅。列数の自動制限にも使う。
+    /// 画面幅が足りない場合は列数を減らし、カードが潰れないようにする。
     /// </summary>
     public const double MinColumnWidth = 320;
 
     /// <summary>
-    /// 仮想化の二分探索が遡る「想定される最大カード高」の上限（探索マージン専用）。
-    /// 実際のカード高はアスペクト比から決まるので、ここは取りこぼし防止の安全側の上限。
+    /// 仮想化の探索範囲に使う最大カード高。
+    /// 実際のカード高は写真の縦横比から計算する。
     /// </summary>
     public const double MaxCardHeight = 900;
 
-    // カードは写真の実アスペクト比そのままで描画する（マソンリーの本質）。
-    // 破損データや極端なパノラマ対策として比率だけを安全範囲にクランプする。
-    // ピクセル単位の高さクランプは比率を歪めてサムネイルがクロップされる原因になるため使わない。
+    // 極端な縦横比だけを抑え、写真本来の比率を優先する。
     private const double MinAspect = 0.5;   // これ以上は縦長にしない (1:2)
     private const double MaxAspect = 2.0;   // これ以上は横長にしない (2:1)
 
@@ -49,7 +45,6 @@ public static class GalleryMasonryLayout
         int requestedColumnCount)
     {
         var availableWidth = Math.Max(panelWidth - 8, MinColumnWidth);
-        // MinColumnWidth を割り込まない最大カラム数にクランプする
         var maxFitColumns = Math.Max(1, (int)Math.Floor((availableWidth + Gap) / (MinColumnWidth + Gap)));
         var columnCount = Math.Max(1, Math.Min(requestedColumnCount, maxFitColumns));
         var columnWidth = Math.Floor((availableWidth - Gap * (columnCount - 1)) / columnCount);
@@ -59,7 +54,7 @@ public static class GalleryMasonryLayout
         var items = new List<MasonryItem>(photos.Count);
         foreach (var photo in photos)
         {
-            // 最も短いカラムに配置する（Greedy 法）
+            // 最も低い列へ置くことで、列ごとの高さの偏りを抑える。
             var targetColumn = 0;
             for (var i = 1; i < columnCount; i++)
             {
@@ -81,7 +76,7 @@ public static class GalleryMasonryLayout
         return new MasonryLayoutResult(items, totalHeight, columnWidth, columnCount, Gap);
     }
 
-    /// <summary>写真のアスペクト比を返す。寸法不明時は orientation フィールドで推定する。</summary>
+    /// <summary>写真の縦横比を返す。寸法がない場合は orientation から推定する。</summary>
     private static double GetAspectRatio(PhotoThumbnailItem photo)
     {
         var w = photo.ImageWidth ?? 0;
@@ -93,9 +88,8 @@ public static class GalleryMasonryLayout
     }
 
     /// <summary>
-    /// カラム幅と写真のアスペクト比からカード高を算出する。
-    /// カード比率＝写真比率になるため UniformToFill でもクロップが発生せず、
-    /// ギャラリーのサムネイルとモーダルの表示が一致する。
+    /// 列幅と写真の縦横比からカード高を計算する。
+    /// 画像比率を保つため、UniformToFill のような切り抜きはしない。
     /// </summary>
     private static double GetCardHeight(PhotoThumbnailItem photo, double columnWidth)
     {

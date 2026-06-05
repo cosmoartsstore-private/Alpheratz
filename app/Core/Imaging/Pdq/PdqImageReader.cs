@@ -7,11 +7,13 @@ using Windows.Storage.Streams;
 
 namespace Alpheratz.Core.Imaging.Pdq;
 
-// Loads an image off-disk and returns a luminance buffer suited for PDQ.
-// Mirrors the Rust pipeline: thumbnail down to <=512 along the long edge,
-// preserve aspect ratio, then convert to single-channel f32.
+/// <summary>
+/// 画像ファイルを Windows Imaging で読み込み、PDQ 計算用の輝度バッファへ変換する。
+/// 長辺 512px 以下に縮小してから単一チャンネル化し、ハッシュ計算の入力サイズを安定させる。
+/// </summary>
 public static class PdqImageReader
 {
+    /// <summary>指定パスの画像を読み込み、PDQ 用 luma 配列と縮小後サイズを返す。読めない場合は null。</summary>
     public static async Task<(float[] luma, int width, int height)?> ReadLumaAsync(string path)
     {
         try
@@ -27,6 +29,7 @@ public static class PdqImageReader
         }
     }
 
+    /// <summary>IRandomAccessStream から画像をデコードし、必要に応じて縮小して luma 配列へ変換する。</summary>
     private static async Task<(float[] luma, int width, int height)?> ReadLumaCoreAsync(IRandomAccessStream stream)
     {
         var decoder = await BitmapDecoder.CreateAsync(stream);

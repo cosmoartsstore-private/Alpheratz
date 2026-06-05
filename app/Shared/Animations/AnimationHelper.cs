@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
@@ -10,12 +11,14 @@ namespace Alpheratz.Shared.Animations;
 /// Composition API ベースのアニメーションヘルパー。
 /// CSS transition 相当の軽量アニメーションを WinUI で再現する。
 /// </summary>
+[ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public static class AnimationHelper
 {
     // -----------------------------------------------------------------------
     // Opacity fade
     // -----------------------------------------------------------------------
 
+    /// <summary>要素の Opacity を 1 へフェードインさせる。</summary>
     public static void FadeIn(UIElement element, int durationMs = 200, int delayMs = 0)
     {
         var visual = ElementCompositionPreview.GetElementVisual(element);
@@ -27,6 +30,7 @@ public static class AnimationHelper
         visual.StartAnimation("Opacity", anim);
     }
 
+    /// <summary>要素の Opacity を 0 へフェードアウトさせ、完了時に任意の処理を呼ぶ。</summary>
     public static void FadeOut(UIElement element, int durationMs = 200, int delayMs = 0, Action? onCompleted = null)
     {
         var visual = ElementCompositionPreview.GetElementVisual(element);
@@ -49,6 +53,7 @@ public static class AnimationHelper
         }
     }
 
+    /// <summary>要素の Opacity を指定値へアニメーションさせる。</summary>
     public static void FadeTo(UIElement element, float targetOpacity, int durationMs = 200)
     {
         var visual = ElementCompositionPreview.GetElementVisual(element);
@@ -59,6 +64,7 @@ public static class AnimationHelper
         visual.StartAnimation("Opacity", anim);
     }
 
+    /// <summary>フェードイン後に指定時間保持し、その後フェードアウトする。</summary>
     public static void FadeInOut(UIElement element, int fadeInMs = 200, int holdMs = 1200, int fadeOutMs = 400)
     {
         var visual = ElementCompositionPreview.GetElementVisual(element);
@@ -90,6 +96,7 @@ public static class AnimationHelper
     // Slide (TranslateX / TranslateY via Offset)
     // -----------------------------------------------------------------------
 
+    /// <summary>指定オフセットから現在位置へスライドしながら表示する。</summary>
     public static void SlideIn(UIElement element, float fromX = 0, float fromY = 0, int durationMs = 180)
     {
         var visual = ElementCompositionPreview.GetElementVisual(element);
@@ -112,6 +119,7 @@ public static class AnimationHelper
         visual.StartAnimation("Opacity", opacityAnim);
     }
 
+    /// <summary>指定オフセットへスライドしながら非表示にし、完了時に任意の処理を呼ぶ。</summary>
     public static void SlideOut(UIElement element, float toX = 0, float toY = 0, int durationMs = 180, Action? onCompleted = null)
     {
         var visual = ElementCompositionPreview.GetElementVisual(element);
@@ -140,6 +148,7 @@ public static class AnimationHelper
     // Scale (bounce / pop) — modal open/close style
     // -----------------------------------------------------------------------
 
+    /// <summary>小さめのスケールから拡大しながら表示する。</summary>
     public static void ScaleIn(UIElement element, float fromScale = 0.88f, int durationMs = 350)
     {
         var visual = ElementCompositionPreview.GetElementVisual(element);
@@ -149,7 +158,7 @@ public static class AnimationHelper
         visual.Scale = new Vector3(fromScale, fromScale, 1f);
         visual.Opacity = 0f;
 
-        // cubic-bezier(0.34, 1.56, 0.64, 1) — elastic/spring overshoot
+        // 少し行き過ぎる easing にして、モーダル表示に軽い弾みを出す。
         var ease = compositor.CreateCubicBezierEasingFunction(new Vector2(0.34f, 1.56f), new Vector2(0.64f, 1f));
 
         var scaleAnim = compositor.CreateVector3KeyFrameAnimation();
@@ -164,6 +173,7 @@ public static class AnimationHelper
         visual.StartAnimation("Opacity", opacityAnim);
     }
 
+    /// <summary>少し縮小しながら非表示にし、完了時に任意の処理を呼ぶ。</summary>
     public static void ScaleOut(UIElement element, float toScale = 0.92f, int durationMs = 200, Action? onCompleted = null)
     {
         var visual = ElementCompositionPreview.GetElementVisual(element);
@@ -194,11 +204,13 @@ public static class AnimationHelper
     // Combined: slide-up + fade (for toasts, overlays)
     // -----------------------------------------------------------------------
 
+    /// <summary>下方向から上へスライドしながらフェードインする。</summary>
     public static void SlideUpFadeIn(UIElement element, float fromY = 20f, int durationMs = 250)
     {
         SlideIn(element, 0, fromY, durationMs);
     }
 
+    /// <summary>上方向へスライドしながらフェードアウトする。</summary>
     public static void SlideUpFadeOut(UIElement element, float toY = -10f, int durationMs = 200, Action? onCompleted = null)
     {
         SlideOut(element, 0, toY, durationMs, onCompleted);
@@ -208,16 +220,19 @@ public static class AnimationHelper
     // Utility: set visual properties instantly (no animation)
     // -----------------------------------------------------------------------
 
+    /// <summary>アニメーションなしで Opacity を直接設定する。</summary>
     public static void SetOpacity(UIElement element, float opacity)
     {
         ElementCompositionPreview.GetElementVisual(element).Opacity = opacity;
     }
 
+    /// <summary>アニメーションなしで Offset を直接設定する。</summary>
     public static void SetOffset(UIElement element, float x, float y)
     {
         ElementCompositionPreview.GetElementVisual(element).Offset = new Vector3(x, y, 0);
     }
 
+    /// <summary>Opacity、Offset、Scale を通常表示状態へ戻す。</summary>
     public static void ResetVisual(UIElement element)
     {
         var visual = ElementCompositionPreview.GetElementVisual(element);

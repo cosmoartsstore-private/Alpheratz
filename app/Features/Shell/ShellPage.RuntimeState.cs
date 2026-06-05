@@ -9,14 +9,16 @@ using Microsoft.UI.Xaml;
 
 namespace Alpheratz.Features.Shell;
 
-// Tracing convention: every method emits enter/exit traces plus one trace per
-// meaningful branch so a crash log can be read top-down to the last surviving
-// call. Hot read-only properties are exempt to keep the log usable.
+/// <summary>
+/// ShellPage のロード後に必要な実行時状態を配線する部分クラス。
+/// 起動フェーズ通知とテーマ反映を、画面構築後の安全なタイミングで行う。
+/// </summary>
 public sealed partial class ShellPage
 {
     private bool runtimeStateWired;
     private AppLifecycleService? lifecycleService;
 
+    // ShellPage 表示後にライフサイクル通知とテーマ反映を一度だけ配線する。
     private void ShellPage_Loaded(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("ShellPage.ShellPage_Loaded: enter");
@@ -34,13 +36,11 @@ public sealed partial class ShellPage
             AppLogger.Warn("ShellPage.ShellPage_Loaded: AppLifecycleService not resolved");
         }
 
-        // Apply the persisted theme before the first frame so the user does
-        // not see a Light->Dark flash on cold start.
+        // 初回フレーム前に保存済みテーマを適用し、起動時の明暗切替のちらつきを防ぐ。
         ApplyTheme(viewModel.ThemeMode);
 
-        // Wait one dispatcher tick after Loaded before flipping uiReady so the
-        // first layout/render pass actually completes. Subscribers gated on
-        // uiReady can then safely touch visual tree state.
+        // Loaded 直後は初回レイアウトが終わっていないため、1 tick 待ってから uiReady に進める。
+        // uiReady を待つ側は、この後なら visual tree の状態を安全に参照できる。
         DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
         {
             AppLogger.Trace("ShellPage.ShellPage_Loaded: dispatcher tick, advancing to uiReady");
@@ -50,6 +50,7 @@ public sealed partial class ShellPage
         AppLogger.Trace("ShellPage.ShellPage_Loaded: exit");
     }
 
+    // 保存済みテーマを Shell と各キャッシュ済みページへ明示的に反映する。
     private void ApplyTheme(ThemeMode mode)
     {
         AppLogger.Trace($"ShellPage.ApplyTheme: enter mode={mode}");
@@ -98,6 +99,7 @@ public sealed partial class ShellPage
         AppLogger.Trace("ShellPage.ApplyTheme: exit");
     }
 
+    // Shell 破棄時に ViewModel 購読とドリルダウン関連コールバックを解除する。
     private void ShellPage_Unloaded(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("ShellPage.ShellPage_Unloaded: enter");
@@ -120,6 +122,7 @@ public sealed partial class ShellPage
         AppLogger.Trace("ShellPage.ShellPage_Unloaded: exit");
     }
 
+    // スキャン状態文字列に合わせて全画面スキャンオーバーレイの表示を切り替える。
     private void UpdateScanningOverlayVisibility()
     {
         AppLogger.Trace($"ShellPage.UpdateScanningOverlayVisibility: enter scanStatus={viewModel.ScanStatus}");

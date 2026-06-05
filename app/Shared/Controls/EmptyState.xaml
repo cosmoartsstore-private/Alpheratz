@@ -4,15 +4,6 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:shared="using:Alpheratz.Shared.Controls">
     <Grid Padding="32">
-        <!-- Background watermark logo (stub: current opaque PNG, swap when alpha asset is ready). -->
-        <Image Source="ms-appx:///Assets/Logo.png"
-               Stretch="Uniform"
-               MaxWidth="520"
-               Opacity="0.06"
-               HorizontalAlignment="Center"
-               VerticalAlignment="Center"
-               IsHitTestVisible="False"/>
-
         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14" MaxWidth="380">
             <Border Width="88" Height="88" CornerRadius="{StaticResource ARadiusModal}"
                     Background="{ThemeResource ASurfaceSoft}"

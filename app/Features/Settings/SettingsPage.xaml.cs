@@ -1,10 +1,9 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Collections.Specialized;
 using System.ComponentModel;
-using System.IO;
 using System.Threading.Tasks;
 using Alpheratz.Core;
-using Alpheratz.Features.Template;
 using Alpheratz.Services;
 using Alpheratz.Shared.Services;
 using Microsoft.UI.Xaml;
@@ -23,6 +22,7 @@ namespace Alpheratz.Features.Settings;
 /// 表示は ShellStage の ModalContent スロット経由 (<see cref="ShellPage.ShowSettings"/>)。
 /// 旧 <c>Stage.MainContent</c> 差し替え経路は廃止。
 /// </summary>
+[ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public sealed partial class SettingsPage : Page
 {
     private readonly SettingsCompositeViewModel viewModel;
@@ -86,6 +86,7 @@ public sealed partial class SettingsPage : Page
         AppLogger.Trace("SettingsPage.ctor: exit");
     }
 
+    /// <summary>設定画面表示時にタグ一覧の空状態とテンプレートカード表示を同期する。</summary>
     private void SettingsPage_Loaded(object sender, RoutedEventArgs e)
     {
         try
@@ -99,6 +100,7 @@ public sealed partial class SettingsPage : Page
         catch (Exception ex) { AppLogger.Error($"SettingsPage.SettingsPage_Loaded: threw: {ex}"); }
     }
 
+    /// <summary>設定画面破棄時にイベント購読とコールバック参照を解除する。</summary>
     private void SettingsPage_Unloaded(object sender, RoutedEventArgs e)
     {
         try
@@ -117,71 +119,72 @@ public sealed partial class SettingsPage : Page
         catch (Exception ex) { AppLogger.Error($"SettingsPage.OnActualThemeChanged: {ex}"); }
     }
 
-    // -----------------------------------------------------------------------
-    // モーダル開閉用ハンドラ
-    // -----------------------------------------------------------------------
-
+    /// <summary>背景タップで設定モーダルのクローズ要求を発行する。</summary>
     private void Backdrop_Tapped(object sender, TappedRoutedEventArgs e)
     {
         OnClose?.Invoke();
     }
 
+    /// <summary>モーダル本体のタップが背面閉じ処理へ伝播しないよう止める。</summary>
     private void ModalContent_Tapped(object sender, TappedRoutedEventArgs e)
     {
         // モーダル内側のクリックが背景にバブルしないようにする (Backdrop_Tapped で閉じてしまうのを防ぐ)
         e.Handled = true;
     }
 
+    /// <summary>閉じるボタンから設定モーダルのクローズ要求を発行する。</summary>
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
         OnClose?.Invoke();
     }
 
+    /// <summary>Escape キーで設定モーダルを閉じる。</summary>
     private void Page_KeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (e.Key == Windows.System.VirtualKey.Escape)
+        if (SettingsPageLogic.ShouldCloseModal(e.Key))
         {
             OnClose?.Invoke();
             e.Handled = true;
         }
     }
 
-    // -----------------------------------------------------------------------
-    // 全般セクションのハンドラ
-    // -----------------------------------------------------------------------
-
+    /// <summary>プライマリ写真フォルダの選択ダイアログを開く。</summary>
     private async void ChoosePrimaryFolder_Click(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("SettingsPage.ChoosePrimaryFolder_Click: enter");
-        try { if (OnChooseFolder is not null) await OnChooseFolder(1).ConfigureAwait(false); }
+        try { if (OnChooseFolder is not null) await OnChooseFolder(SettingsPageLogic.PrimaryFolderSlot).ConfigureAwait(false); }
         catch (Exception ex) { AppLogger.Error($"SettingsPage.ChoosePrimaryFolder_Click: threw: {ex}"); }
         AppLogger.Trace("SettingsPage.ChoosePrimaryFolder_Click: exit");
     }
 
+    /// <summary>セカンダリ写真フォルダの選択ダイアログを開く。</summary>
     private async void ChooseSecondaryFolder_Click(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("SettingsPage.ChooseSecondaryFolder_Click: enter");
-        try { if (OnChooseFolder is not null) await OnChooseFolder(2).ConfigureAwait(false); }
+        try { if (OnChooseFolder is not null) await OnChooseFolder(SettingsPageLogic.SecondaryFolderSlot).ConfigureAwait(false); }
         catch (Exception ex) { AppLogger.Error($"SettingsPage.ChooseSecondaryFolder_Click: threw: {ex}"); }
         AppLogger.Trace("SettingsPage.ChooseSecondaryFolder_Click: exit");
     }
 
+    /// <summary>プライマリ写真フォルダのリセット確認を要求する。</summary>
     private void ResetPrimaryFolder_Click(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("SettingsPage.ResetPrimaryFolder_Click: enter");
-        try { OnResetFolder?.Invoke(1); }
+        try { OnResetFolder?.Invoke(SettingsPageLogic.PrimaryFolderSlot); }
         catch (Exception ex) { AppLogger.Error($"SettingsPage.ResetPrimaryFolder_Click: threw: {ex}"); }
         AppLogger.Trace("SettingsPage.ResetPrimaryFolder_Click: exit");
     }
 
+    /// <summary>セカンダリ写真フォルダのリセット確認を要求する。</summary>
     private void ResetSecondaryFolder_Click(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("SettingsPage.ResetSecondaryFolder_Click: enter");
-        try { OnResetFolder?.Invoke(2); }
+        try { OnResetFolder?.Invoke(SettingsPageLogic.SecondaryFolderSlot); }
         catch (Exception ex) { AppLogger.Error($"SettingsPage.ResetSecondaryFolder_Click: threw: {ex}"); }
         AppLogger.Trace("SettingsPage.ResetSecondaryFolder_Click: exit");
     }
 
+    /// <summary>自動起動トグルの変更を設定へ保存する。</summary>
     private async void StartupToggle_Toggled(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("SettingsPage.StartupToggle_Toggled: enter");
@@ -194,6 +197,7 @@ public sealed partial class SettingsPage : Page
         AppLogger.Trace("SettingsPage.StartupToggle_Toggled: exit");
     }
 
+    /// <summary>ライトテーマを選択して保存する。</summary>
     private async void ThemeLight_Click(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("SettingsPage.ThemeLight_Click: enter");
@@ -202,6 +206,7 @@ public sealed partial class SettingsPage : Page
         AppLogger.Trace("SettingsPage.ThemeLight_Click: exit");
     }
 
+    /// <summary>ダークテーマを選択して保存する。</summary>
     private async void ThemeDark_Click(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("SettingsPage.ThemeDark_Click: enter");
@@ -210,24 +215,28 @@ public sealed partial class SettingsPage : Page
         AppLogger.Trace("SettingsPage.ThemeDark_Click: exit");
     }
 
+    /// <summary>StellaRecord へ現在の実行ファイルを登録する。</summary>
     private void RegisterStellaRecord_Click(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("SettingsPage.RegisterStellaRecord_Click: enter");
         try
         {
-            if (!StellaRecordRegistration.IsStellaRecordAvailable())
+            var request = SettingsPageLogic.StellaRecordRegistration(
+                StellaRecordRegistration.IsStellaRecordAvailable(),
+                Environment.ProcessPath,
+                AppContext.BaseDirectory);
+            if (request is null)
             {
                 AppLogger.Trace("SettingsPage.RegisterStellaRecord_Click: StellaRecord not available");
                 return;
             }
-            var exePath = Environment.ProcessPath ?? string.Empty;
-            var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "icon.png");
-            StellaRecordRegistration.Register(exePath, iconPath);
+            StellaRecordRegistration.Register(request.ExePath, request.IconPath);
         }
         catch (Exception ex) { AppLogger.Error($"SettingsPage.RegisterStellaRecord_Click: threw: {ex}"); }
         AppLogger.Trace("SettingsPage.RegisterStellaRecord_Click: exit");
     }
 
+    /// <summary>未知ワールド解析モーダルの表示を要求する。</summary>
     private async void StartWorldAnalysis_Click(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("SettingsPage.StartWorldAnalysis_Click: enter");
@@ -236,30 +245,31 @@ public sealed partial class SettingsPage : Page
         AppLogger.Trace("SettingsPage.StartWorldAnalysis_Click: exit");
     }
 
-    // -----------------------------------------------------------------------
-    // タグマスタセクションのハンドラ
-    // -----------------------------------------------------------------------
-
+    /// <summary>タグマスタの件数変更を UI スレッドへ戻して空表示に反映する。</summary>
     private void MasterTags_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         DispatcherQueue.TryEnqueue(UpdateTagEmptyState);
     }
 
+    /// <summary>タグマスタ一覧の空表示を現在件数に合わせて切り替える。</summary>
     private void UpdateTagEmptyState()
     {
-        var isEmpty = viewModel.TagMaster.masterTags.Count == 0;
-        TagEmptyState.Visibility = isEmpty ? Visibility.Visible : Visibility.Collapsed;
+        TagEmptyState.Visibility = SettingsPageLogic.IsTagEmpty(viewModel.TagMaster.masterTags.Count)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
+    /// <summary>タグ入力欄の Enter キーでタグ追加を実行する。</summary>
     private void TagInput_KeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (e.Key == Windows.System.VirtualKey.Enter)
+        if (SettingsPageLogic.ShouldSubmitTag(e.Key))
         {
             e.Handled = true;
             AddTag_Click(sender, e);
         }
     }
 
+    /// <summary>入力中のタグをタグマスタへ追加する。</summary>
     private async void AddTag_Click(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("SettingsPage.AddTag_Click: enter");
@@ -276,12 +286,14 @@ public sealed partial class SettingsPage : Page
         AppLogger.Trace("SettingsPage.AddTag_Click: exit");
     }
 
+    /// <summary>クリックされたタグ削除ボタンに対応するタグを削除する。</summary>
     private async void DeleteTag_Click(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("SettingsPage.DeleteTag_Click: enter");
         try
         {
-            if ((sender as FrameworkElement)?.DataContext is not string tag) return;
+            var tag = SettingsPageLogic.StringItem((sender as FrameworkElement)?.DataContext);
+            if (tag is null) return;
             if (OnDeleteTag is not null)
             {
                 await OnDeleteTag(tag).ConfigureAwait(false);
@@ -293,30 +305,30 @@ public sealed partial class SettingsPage : Page
         AppLogger.Trace("SettingsPage.DeleteTag_Click: exit");
     }
 
-    // -----------------------------------------------------------------------
-    // 投稿テンプレートセクションのハンドラ
-    // -----------------------------------------------------------------------
-
+    /// <summary>テンプレート ViewModel の変更通知から編集欄またはカード表示を更新する。</summary>
     private void TemplateViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(TemplatePageViewModel.EditingTweetTemplate))
+        switch (SettingsPageLogic.TemplatePropertyAction(e.PropertyName))
         {
-            DispatcherQueue.TryEnqueue(UpdateEditorState);
-        }
-        else if (e.PropertyName is nameof(TemplatePageViewModel.ActiveTweetTemplate))
-        {
-            DispatcherQueue.TryEnqueue(RefreshTemplateCardVisuals);
+            case TemplatePropertyUpdate.UpdateEditor:
+                DispatcherQueue.TryEnqueue(UpdateEditorState);
+                break;
+            case TemplatePropertyUpdate.RefreshCards:
+                DispatcherQueue.TryEnqueue(RefreshTemplateCardVisuals);
+                break;
         }
     }
 
+    /// <summary>テンプレート編集モードに合わせてボタン表示と入力欄を更新する。</summary>
     private void UpdateEditorState()
     {
-        var isEditing = viewModel.Template.EditingTweetTemplate is not null;
-        CancelEditButton.Visibility = isEditing ? Visibility.Visible : Visibility.Collapsed;
-        SaveButton.Content = isEditing ? "更新" : "登録";
-        EditorModeLabel.Text = isEditing ? "テンプレート編集" : "新規テンプレート";
+        var state = SettingsPageLogic.TemplateEditor(viewModel.Template.EditingTweetTemplate);
+        CancelEditButton.Visibility = state.CancelVisible ? Visibility.Visible : Visibility.Collapsed;
+        SaveButton.Content = state.SaveButtonText;
+        EditorModeLabel.Text = state.ModeLabel;
     }
 
+    /// <summary>テンプレート編集をキャンセルし、カード表示を更新する。</summary>
     private void CancelEdit_Click(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("SettingsPage.CancelEdit_Click: enter");
@@ -329,6 +341,7 @@ public sealed partial class SettingsPage : Page
         AppLogger.Trace("SettingsPage.CancelEdit_Click: exit");
     }
 
+    /// <summary>テンプレートのドラフトを保存し、カード表示を更新する。</summary>
     private async void SaveTemplate_Click(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("SettingsPage.SaveTemplate_Click: enter");
@@ -345,12 +358,14 @@ public sealed partial class SettingsPage : Page
         AppLogger.Trace("SettingsPage.SaveTemplate_Click: exit");
     }
 
+    /// <summary>選択されたテンプレートを編集モードへ移す。</summary>
     private void EditTemplate_Click(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("SettingsPage.EditTemplate_Click: enter");
         try
         {
-            if ((sender as FrameworkElement)?.DataContext is not string template) return;
+            var template = SettingsPageLogic.StringItem((sender as FrameworkElement)?.DataContext);
+            if (template is null) return;
             if (OnStartEdit is not null) OnStartEdit(template);
             else viewModel.Template.startEdit(template);
         }
@@ -358,33 +373,38 @@ public sealed partial class SettingsPage : Page
         AppLogger.Trace("SettingsPage.EditTemplate_Click: exit");
     }
 
+    /// <summary>選択されたテンプレートを削除して保存する。</summary>
     private async void DeleteTemplate_Click(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("SettingsPage.DeleteTemplate_Click: enter");
         try
         {
-            if ((sender as FrameworkElement)?.DataContext is not string template) return;
+            var template = SettingsPageLogic.StringItem((sender as FrameworkElement)?.DataContext);
+            if (template is null) return;
             if (OnDeleteTemplate is not null)
             {
                 await OnDeleteTemplate(template).ConfigureAwait(false);
             }
-            else
+            else if (SettingsPageLogic.ShouldRemoveTemplateLocally(
+                hasDeleteCallback: false,
+                templateExists: viewModel.Template.tweetTemplates.Contains(template)))
             {
                 AppLogger.Warn("SettingsPage.DeleteTemplate_Click: OnDeleteTemplate not wired; collection-only delete");
-                if (viewModel.Template.tweetTemplates.Contains(template))
-                    viewModel.Template.tweetTemplates.Remove(template);
+                viewModel.Template.tweetTemplates.Remove(template);
             }
         }
         catch (Exception ex) { AppLogger.Error($"SettingsPage.DeleteTemplate_Click: threw: {ex}"); }
         AppLogger.Trace("SettingsPage.DeleteTemplate_Click: exit");
     }
 
+    /// <summary>テンプレートカードをアクティブテンプレートとして選択する。</summary>
     private async void TemplateCard_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
         AppLogger.Trace("SettingsPage.TemplateCard_PointerPressed: enter");
         try
         {
-            if ((sender as FrameworkElement)?.DataContext is not string template) return;
+            var template = SettingsPageLogic.StringItem((sender as FrameworkElement)?.DataContext);
+            if (template is null) return;
             if (OnSelectTemplate is not null)
                 await OnSelectTemplate(template).ConfigureAwait(false);
             else
@@ -394,6 +414,7 @@ public sealed partial class SettingsPage : Page
         AppLogger.Trace("SettingsPage.TemplateCard_PointerPressed: exit");
     }
 
+    /// <summary>テンプレートカード読込時にアクティブ状態の見た目を適用する。</summary>
     private void TemplateCard_Loaded(object sender, RoutedEventArgs e)
     {
         try
@@ -405,6 +426,7 @@ public sealed partial class SettingsPage : Page
         catch (Exception ex) { AppLogger.Error($"SettingsPage.TemplateCard_Loaded: threw: {ex}"); }
     }
 
+    /// <summary>表示中のテンプレートカードすべてのアクティブ表示を更新する。</summary>
     private void RefreshTemplateCardVisuals()
     {
         try
@@ -421,6 +443,7 @@ public sealed partial class SettingsPage : Page
         catch (Exception ex) { AppLogger.Error($"SettingsPage.RefreshTemplateCardVisuals: threw: {ex}"); }
     }
 
+    /// <summary>テンプレートカード内の Border を VisualTree から探す。</summary>
     private static Border? FindChildBorder(DependencyObject parent)
     {
         for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
@@ -433,17 +456,19 @@ public sealed partial class SettingsPage : Page
         return null;
     }
 
+    /// <summary>テンプレートカードのアクティブ/通常スタイルを適用する。</summary>
     private static void ApplyTemplateCardStyle(Border card, bool isActive)
     {
-        card.BorderBrush = ThemeHelper.Brush(card, isActive ? "ABorderStrong" : "ABorder");
-        card.Background = ThemeHelper.Brush(card, isActive ? "AAccentSoft" : "ASurfaceSoft");
+        var state = SettingsPageLogic.TemplateCard(isActive);
+        card.BorderBrush = ThemeHelper.Brush(card, state.BorderKey);
+        card.Background = ThemeHelper.Brush(card, state.BackgroundKey);
 
         var grid = card.Child as Grid;
         var stack = grid?.Children[0] as StackPanel;
         if (stack?.Children[0] is TextBlock label)
         {
-            label.Text = isActive ? "使用中" : "テンプレート";
-            label.Foreground = ThemeHelper.Brush(card, isActive ? "APrimary" : "ATextDim");
+            label.Text = state.Label;
+            label.Foreground = ThemeHelper.Brush(card, state.LabelForegroundKey);
         }
     }
 }

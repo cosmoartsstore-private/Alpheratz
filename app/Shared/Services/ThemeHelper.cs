@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.UI.Xaml.Media;
 
 namespace Alpheratz.Shared.Services;
@@ -16,6 +17,7 @@ namespace Alpheratz.Shared.Services;
 /// Brushes.xaml を MainWindow.RootHost.Resources に MergedDictionary として登録することで
 /// element ActualTheme で解決されるようになっている。
 /// </summary>
+[ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public static class ThemeHelper
 {
     /// <summary>
