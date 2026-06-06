@@ -320,7 +320,7 @@ public sealed class GalleryFilterPanelLogicTests
         var filtered = GalleryFilterPanelLogic.FilterWorldOptions(worlds, "night");
         var unknown = GalleryFilterPanelLogic.FilterWorldOptions(worlds, "不明");
 
-        Assert.Equal("unknown", GalleryFilterPanelLogic.GetWorldFilterValue(""));
+        Assert.Equal(WorldFilterValues.Unknown, GalleryFilterPanelLogic.GetWorldFilterValue(""));
         Assert.Equal("ワールド不明", GalleryFilterPanelLogic.GetWorldDisplayName(null));
         Assert.Equal(15, GalleryFilterPanelLogic.TotalWorldCount(worlds));
         Assert.Single(filtered);
@@ -345,13 +345,13 @@ public sealed class GalleryFilterPanelLogicTests
             new WorldFilterOptionDto { world_name = "Night Market", count = 9 },
         };
 
-        var choices = GalleryFilterPanelLogic.BuildWorldChoices(worlds, "不明", ["unknown"]);
+        var choices = GalleryFilterPanelLogic.BuildWorldChoices(worlds, "不明", [WorldFilterValues.Unknown]);
         var noMatch = GalleryFilterPanelLogic.BuildWorldChoices(worlds, "missing", []);
 
         Assert.Equal("3 ワールド", choices.CountLabel);
         Assert.True(choices.HasVisitedWorlds);
         Assert.Equal(new FilterChoiceRow("すべてのワールド", "15枚", false, null), choices.Rows[0]);
-        Assert.Equal(new FilterChoiceRow("ワールド不明", "2枚", true, "unknown"), choices.Rows[1]);
+        Assert.Equal(new FilterChoiceRow("ワールド不明", "2枚", true, WorldFilterValues.Unknown), choices.Rows[1]);
 
         Assert.False(noMatch.HasVisitedWorlds);
         Assert.Single(noMatch.Rows);

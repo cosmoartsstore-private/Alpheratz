@@ -28,6 +28,7 @@ public partial class PhotoModalState : UiThreadSafeObservableObject
 
     private readonly PhotoService photoService;
     private readonly ToastService toastService;
+    private readonly DispatcherService dispatcherService;
     private CancellationTokenSource? selectedPhotoCancellation;
 
     [ObservableProperty] private PhotoThumbnailItem? selectedPhoto;
@@ -49,11 +50,12 @@ public partial class PhotoModalState : UiThreadSafeObservableObject
         AppLogger.Trace("PhotoModalState.setPhotoList: exit");
     }
 
-    public PhotoModalState(PhotoService photoService, ToastService toastService)
+    public PhotoModalState(PhotoService photoService, ToastService toastService, DispatcherService? dispatcherService = null)
     {
         AppLogger.Trace("PhotoModalState.ctor: enter");
         this.photoService = photoService;
         this.toastService = toastService;
+        this.dispatcherService = dispatcherService ?? new DispatcherService();
         AppLogger.Trace("PhotoModalState.ctor: exit");
     }
 
@@ -240,7 +242,13 @@ public partial class PhotoModalState : UiThreadSafeObservableObject
 
             if (SelectedPhoto is not null && SelectedPhoto.PhotoPath == selectedPhotoSnapshot.PhotoPath)
             {
-                SelectedPhoto.Tags = tags;
+                await dispatcherService.RunOnUiThread(() =>
+                {
+                    if (SelectedPhoto is not null && SelectedPhoto.PhotoPath == selectedPhotoSnapshot.PhotoPath)
+                    {
+                        SelectedPhoto.Tags = tags;
+                    }
+                }).ConfigureAwait(false);
             }
         }
         catch (Exception err)

@@ -99,19 +99,23 @@ public sealed class GalleryPhotosStateBehaviorTests : IDisposable
                 Thumb("/photo/b.jpg", "b.jpg", "Alpha", "2026-06-05 11:00:00"),
                 Thumb("/photo/c.jpg", "c.jpg", null, "2026-06-05 12:00:00"),
                 Thumb("/photo/d.jpg", "d.jpg", "   ", "2026-06-05 13:00:00"),
+                Thumb("/photo/e.jpg", "e.jpg", "unknown", "2026-06-05 14:00:00"),
             ],
             autoGenerateThumbnails: false);
 
         state.rebuildDisplayItems(GroupingMode.world);
 
-        Assert.Equal(2, state.displayItems.Count);
+        Assert.Equal(3, state.displayItems.Count);
         var alpha = Assert.Single(state.displayItems, item => item.GroupKey == "Alpha");
-        var unknown = Assert.Single(state.displayItems, item => item.GroupKey == "unknown");
+        var unknown = Assert.Single(state.displayItems, item => item.GroupKey == GalleryPhotosStateLogic.UnknownWorldGroupKey);
+        var literalUnknown = Assert.Single(state.displayItems, item => item.GroupKey == "unknown");
         Assert.Equal(2, alpha.GroupCount);
         Assert.Equal(2, unknown.GroupCount);
+        Assert.Equal(1, literalUnknown.GroupCount);
         Assert.Equal("Alpha", alpha.Photo.WorldName);
         Assert.Equal(["/photo/a.jpg", "/photo/b.jpg"], alpha.GroupPhotos!.Select(photo => photo.PhotoPath));
         Assert.Equal(["/photo/c.jpg", "/photo/d.jpg"], unknown.GroupPhotos!.Select(photo => photo.PhotoPath));
+        Assert.Equal(["/photo/e.jpg"], literalUnknown.GroupPhotos!.Select(photo => photo.PhotoPath));
     }
 
     /// <summary>
@@ -130,6 +134,8 @@ public sealed class GalleryPhotosStateBehaviorTests : IDisposable
             GalleryPhotosStateLogic.BuildWorldGroupKey("   "));
         Assert.Equal("Alpha",
             GalleryPhotosStateLogic.BuildWorldGroupKey(" Alpha "));
+        Assert.Equal("unknown",
+            GalleryPhotosStateLogic.BuildWorldGroupKey("unknown"));
     }
 
     /// <summary>

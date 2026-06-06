@@ -14,8 +14,10 @@ namespace Alpheratz.Shared.Services;
 /// </summary>
 public sealed class ToastService
 {
-    /// <summary>UI にバインドされる toast コレクション。UiObservableCollection なので別スレッドからの Add/Remove 安全。</summary>
+    /// <summary>UI にバインドされる toast コレクション。変更は必ず dispatcherService 経由で行う。</summary>
     public UiObservableCollection<ToastMessage> toasts { get; } = [];
+
+    private readonly DispatcherService dispatcherService;
 
     // 単調増加 id カウンタ。
     // 以前は UtcNow.ToUnixTimeMilliseconds() を id にしていたが、
@@ -25,10 +27,14 @@ public sealed class ToastService
     // 初期値を現在時刻 * 1000 にしてあるのは、再起動間でも id が近傍にならないようにするため。
     private static long _idCounter = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000;
 
+    public ToastService(DispatcherService? dispatcherService = null)
+    {
+        this.dispatcherService = dispatcherService ?? new DispatcherService();
+    }
+
     /// <summary>
     /// 通知を表示する。duration ms 後にバックグラウンドタスクで自動削除される。
-    /// MainWindow の DispatcherQueue があればそれ経由で Remove、無ければ
-    /// toasts コレクション自体が UI スレッドマーシャリングを持っているので直接 Remove する。
+    /// Add/Remove は dispatcherService 経由で UI スレッドへ寄せる。
     /// </summary>
     public void addToast(string msg, ToastType type = ToastType.info, int duration = 3000)
     {
@@ -37,7 +43,7 @@ public sealed class ToastService
         {
             var id = Interlocked.Increment(ref _idCounter);
             var toast = new ToastMessage(id, msg, type);
-            toasts.Add(toast);
+            _ = dispatcherService.RunOnUiThread(() => toasts.Add(toast));
 
             _ = Task.Run(async () =>
             {
@@ -45,24 +51,7 @@ public sealed class ToastService
                 try
                 {
                     await Task.Delay(duration).ConfigureAwait(false);
-                    var dq = App.MainWindowInstance?.DispatcherQueue;
-                    if (dq is not null)
-                    {
-                        _ = dq.TryEnqueue(() =>
-                        {
-                            try { toasts.Remove(toast); }
-                            catch (Exception ex) { AppLogger.Error($"ToastService.addToast.remove: threw: {ex}"); }
-                        });
-                    }
-                    else
-                    {
-                        // MainWindow がまだ初期化されていない / すでに閉じられている場合は
-                        // toasts コレクション自体が UI スレッドにマーシャリングする実装なので
-                        // ここで直接 Remove を呼んでも安全。Remove を完全にスキップすると
-                        // 古い Toast が永遠に表示されたままになるバグになる。
-                        try { toasts.Remove(toast); }
-                        catch (Exception ex) { AppLogger.Error($"ToastService.addToast.remove (no dq): threw: {ex}"); }
-                    }
+                    await dispatcherService.RunOnUiThread(() => toasts.Remove(toast)).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {

@@ -1,4 +1,5 @@
 using Alpheratz.Core.Database;
+using Alpheratz.Models;
 using Alpheratz.Shared.Models;
 
 namespace Alpheratz.Tests;
@@ -139,13 +140,16 @@ public sealed class DatabaseBehaviorTests : IDisposable
     public async Task GetPhotosPageAsync_FiltersUnknownWorldAndCombinesSimpleFilters()
     {
         await db.UpsertPhotoAsync(Photo("/photo/unknown.jpg", "unknown.jpg", "2026-06-05 10:00:00", orientation: "portrait", sourceSlot: 1));
+        await db.UpsertPhotoAsync(Photo("/photo/blank-unknown.jpg", "blank-unknown.jpg", "2026-06-05 10:30:00", worldName: "   ", orientation: "portrait", sourceSlot: 1));
         await db.UpsertPhotoAsync(Photo("/photo/alpha.jpg", "alpha.jpg", "2026-06-05 11:00:00", worldName: "Alpha", orientation: "portrait", sourceSlot: 1));
         await db.UpsertPhotoAsync(Photo("/photo/beta.jpg", "beta.jpg", "2026-06-05 12:00:00", worldName: "Beta", orientation: "landscape", sourceSlot: 2));
+        await db.UpsertPhotoAsync(Photo("/photo/literal-unknown.jpg", "literal-unknown.jpg", "2026-06-05 13:00:00", worldName: "unknown", sourceSlot: 1));
         await db.SetPhotoFavoriteAsync("/photo/alpha.jpg", true);
         await db.SetPhotoFavoriteAsync("/photo/beta.jpg", true);
 
-        var unknownOnly = await db.GetPhotosPageAsync(new PhotoQueryParams { WorldExacts = ["unknown"] });
-        var mixedWorlds = await db.GetPhotosPageAsync(new PhotoQueryParams { WorldExacts = ["Alpha", "unknown"] });
+        var unknownOnly = await db.GetPhotosPageAsync(new PhotoQueryParams { WorldExacts = [WorldFilterValues.Unknown] });
+        var mixedWorlds = await db.GetPhotosPageAsync(new PhotoQueryParams { WorldExacts = ["Alpha", WorldFilterValues.Unknown] });
+        var literalUnknown = await db.GetPhotosPageAsync(new PhotoQueryParams { WorldExacts = ["unknown"] });
         var combined = await db.GetPhotosPageAsync(new PhotoQueryParams
         {
             Orientation = "portrait",
@@ -153,8 +157,9 @@ public sealed class DatabaseBehaviorTests : IDisposable
             SourceSlot = 1,
         });
 
-        Assert.Equal(["/photo/unknown.jpg"], unknownOnly.Items.Select(item => item.photo_path).ToArray());
-        Assert.Equal(["/photo/alpha.jpg", "/photo/unknown.jpg"], mixedWorlds.Items.Select(item => item.photo_path).Order().ToArray());
+        Assert.Equal(["/photo/blank-unknown.jpg", "/photo/unknown.jpg"], unknownOnly.Items.Select(item => item.photo_path).Order().ToArray());
+        Assert.Equal(["/photo/alpha.jpg", "/photo/blank-unknown.jpg", "/photo/unknown.jpg"], mixedWorlds.Items.Select(item => item.photo_path).Order().ToArray());
+        Assert.Equal(["/photo/literal-unknown.jpg"], literalUnknown.Items.Select(item => item.photo_path).ToArray());
         Assert.Equal(["/photo/alpha.jpg"], combined.Items.Select(item => item.photo_path).ToArray());
     }
 
@@ -212,15 +217,20 @@ public sealed class DatabaseBehaviorTests : IDisposable
     {
         await db.UpsertPhotoAsync(Photo("/photo/alpha-1.jpg", "alpha-1.jpg", "2026-06-05 10:00:00", worldName: "Alpha"));
         await db.UpsertPhotoAsync(Photo("/photo/alpha-2.jpg", "alpha-2.jpg", "2026-06-05 11:00:00", worldName: "Alpha"));
+        await db.UpsertPhotoAsync(Photo("/photo/alpha-3.jpg", "alpha-3.jpg", "2026-06-05 11:30:00", worldName: "Alpha"));
+        await db.UpsertPhotoAsync(Photo("/photo/alpha-trimmed.jpg", "alpha-trimmed.jpg", "2026-06-05 11:45:00", worldName: " Alpha "));
         await db.UpsertPhotoAsync(Photo("/photo/beta.jpg", "beta.jpg", "2026-06-05 12:00:00", worldName: "Beta"));
         await db.UpsertPhotoAsync(Photo("/photo/unknown.jpg", "unknown.jpg", "2026-06-05 13:00:00"));
+        await db.UpsertPhotoAsync(Photo("/photo/empty.jpg", "empty.jpg", "2026-06-05 13:30:00", worldName: ""));
+        await db.UpsertPhotoAsync(Photo("/photo/blank.jpg", "blank.jpg", "2026-06-05 14:00:00", worldName: "   "));
 
         var options = await db.GetWorldFilterOptionsAsync();
 
         Assert.Equal("Alpha", options[0].world_name);
-        Assert.Equal(2, options[0].count);
-        Assert.Contains(options, option => option.world_name is null && option.count == 1);
+        Assert.Equal(4, options[0].count);
+        Assert.Contains(options, option => option.world_name is null && option.count == 3);
         Assert.Contains(options, option => option.world_name == "Beta" && option.count == 1);
+        Assert.DoesNotContain(options, option => option.world_name is "" or "   " or " Alpha ");
     }
 
     /// <summary>

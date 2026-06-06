@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Alpheratz.Features.Gallery;
 using Windows.System;
 
 namespace Alpheratz.Features.PhotoModal;
@@ -17,6 +18,13 @@ internal static class PhotoModalPageLogic
     /// <summary>SelectedPhoto の変更だけを、モーダル表示全体の再同期対象として扱う。</summary>
     public static bool ShouldSyncForPropertyChanged(string? propertyName)
         => propertyName == nameof(PhotoModalState.SelectedPhoto);
+
+    /// <summary>選択中 PhotoThumbnailItem の内部変更で、コードビハインド表示を再同期すべきもの。</summary>
+    public static bool ShouldSyncForSelectedPhotoProperty(string? propertyName)
+        => propertyName is nameof(PhotoThumbnailItem.Tags)
+            or nameof(PhotoThumbnailItem.WorldName)
+            or nameof(PhotoThumbnailItem.MatchSource)
+            or nameof(PhotoThumbnailItem.EffectiveDisplayPath);
 
     /// <summary>PhotoModal 画像として表示するパスとデコード幅を返す。パスが空なら null。</summary>
     public static PhotoModalImageRequest? ModalImageRequest(string? effectiveDisplayPath, char directorySeparatorChar)

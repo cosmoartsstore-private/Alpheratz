@@ -9,7 +9,7 @@ namespace Alpheratz.Features.Gallery.Controls;
 /// </summary>
 internal static class GalleryFilterPanelLogic
 {
-    public const string UnknownWorldFilterValue = "unknown";
+    public const string UnknownWorldFilterValue = WorldFilterValues.Unknown;
     public const string UnknownWorldLabel = "ワールド不明";
     public const string AllTagsEmptyLabel = "すべてのタグ";
     public const string AllWorldsEmptyLabel = "すべてのワールド";

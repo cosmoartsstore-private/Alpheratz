@@ -100,13 +100,11 @@ public sealed class PhotoService
         AppLogger.Trace($"PhotoService.GetWorldGroupPhotosAsync: enter groupKey={groupKey}");
         try
         {
-            var isPathKey = groupKey.Contains('\\') || groupKey.Contains('/');
             var page = await _db.GetPhotosPageAsync(new PhotoQueryParams
             {
                 StartDate = startDate,
                 EndDate = endDate,
-                WorldExacts = isPathKey ? null : [groupKey],
-                PhotoPathExact = isPathKey ? groupKey : null,
+                WorldExacts = [groupKey],
                 SourceSlot = sourceSlot,
                 Orientation = orientation,
                 FavoritesOnly = favoritesOnly,

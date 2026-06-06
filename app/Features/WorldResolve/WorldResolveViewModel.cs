@@ -32,6 +32,7 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
     private readonly AlpheratzDb db;
     private readonly ThumbnailWorker thumbnailWorker;
     private readonly ToastService toastService;
+    private readonly DispatcherService dispatcherService;
 
     /// <summary>解析対象写真リスト（UI 上のメインリスト）。</summary>
     public UiObservableCollection<WorldResolveItem> Items { get; } = [];
@@ -69,11 +70,16 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
     private Dictionary<long, IReadOnlyList<AlpheratzDb.KnownWorldRow>> knownBySlot = new();
 
     // ワールド解決に必要な DB、サムネイル生成、通知サービスを受け取る。
-    public WorldResolveViewModel(AlpheratzDb db, ThumbnailWorker thumbnailWorker, ToastService toastService)
+    public WorldResolveViewModel(
+        AlpheratzDb db,
+        ThumbnailWorker thumbnailWorker,
+        ToastService toastService,
+        DispatcherService? dispatcherService = null)
     {
         this.db = db;
         this.thumbnailWorker = thumbnailWorker;
         this.toastService = toastService;
+        this.dispatcherService = dispatcherService ?? new DispatcherService();
     }
 
     /// <summary>
@@ -83,13 +89,12 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
     /// </summary>
     public async Task InitializeAsync(CancellationToken ct = default)
     {
-        IsLoading = true;
+        await dispatcherService.RunOnUiThread(() => IsLoading = true).ConfigureAwait(false);
         try
         {
             var unknowns = await db.GetUnknownWorldPhotosWithPhashAsync(ct).ConfigureAwait(false);
             if (unknowns.Count == 0)
             {
-                IsLoading = false;
                 return;
             }
 
@@ -123,8 +128,11 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
                 items.Add(item);
             }
 
-            Items.ReplaceAll(items);
-            IsLoading = false;
+            await dispatcherService.RunOnUiThread(() =>
+            {
+                Items.ReplaceAll(items);
+                IsLoading = false;
+            }).ConfigureAwait(false);
 
             var thumbTargets = new List<(string path, long slot)>();
             foreach (var item in items)
@@ -140,12 +148,16 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
                 {
                     await thumbnailWorker.GenerateGridAsync(thumbTargets, result =>
                     {
-                        foreach (var item in items)
+                        foreach (var item in items.Where(item =>
+                            item.TargetPhotoPath == result.PhotoPath || item.MatchPhotoPath == result.PhotoPath))
                         {
-                            if (item.TargetPhotoPath == result.PhotoPath)
-                                item.TargetThumbPath = result.ThumbPath;
-                            if (item.MatchPhotoPath == result.PhotoPath)
-                                item.MatchThumbPath = result.ThumbPath;
+                            _ = dispatcherService.RunOnUiThread(() =>
+                            {
+                                if (item.TargetPhotoPath == result.PhotoPath)
+                                    item.TargetThumbPath = result.ThumbPath;
+                                if (item.MatchPhotoPath == result.PhotoPath)
+                                    item.MatchThumbPath = result.ThumbPath;
+                            });
                         }
                     }, ct).ConfigureAwait(false);
                 }
@@ -161,7 +173,7 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
         }
         finally
         {
-            IsLoading = false;
+            await dispatcherService.RunOnUiThread(() => IsLoading = false).ConfigureAwait(false);
         }
     }
 
@@ -201,7 +213,7 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
     /// </summary>
     public async Task<int> ApplyConfirmedAsync(CancellationToken ct = default)
     {
-        IsApplying = true;
+        await dispatcherService.RunOnUiThread(() => IsApplying = true).ConfigureAwait(false);
         var applied = 0;
         try
         {
@@ -215,7 +227,7 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
         }
         finally
         {
-            IsApplying = false;
+            await dispatcherService.RunOnUiThread(() => IsApplying = false).ConfigureAwait(false);
         }
         return applied;
     }
@@ -227,9 +239,12 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
     /// </summary>
     public async Task OpenCandidatePickerAsync(WorldResolveItem item, CancellationToken ct = default)
     {
-        ActivePickerItem = item;
-        IsCandidateLoading = true;
-        IsCandidatePickerOpen = true;
+        await dispatcherService.RunOnUiThread(() =>
+        {
+            ActivePickerItem = item;
+            IsCandidateLoading = true;
+            IsCandidatePickerOpen = true;
+        }).ConfigureAwait(false);
 
         try
         {
@@ -244,8 +259,11 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
                 r.Row.PhotoPath, r.Row.PhotoFilename, r.Row.WorldName, r.Row.WorldId,
                 r.Distance, r.Row.SourceSlot)).ToList();
 
-            CandidateList.ReplaceAll(entries);
-            IsCandidateLoading = false;
+            await dispatcherService.RunOnUiThread(() =>
+            {
+                CandidateList.ReplaceAll(entries);
+                IsCandidateLoading = false;
+            }).ConfigureAwait(false);
 
             var thumbTargets = entries.Select(e => (e.PhotoPath, e.SourceSlot)).ToList();
             _ = Task.Run(async () =>
@@ -261,11 +279,14 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
                 catch (Exception ex) { AppLogger.Warn($"Candidate thumb generation: {ex.Message}"); }
             });
         }
-        catch (OperationCanceledException) { CloseCandidatePicker(); }
+        catch (OperationCanceledException)
+        {
+            await dispatcherService.RunOnUiThread(CloseCandidatePicker).ConfigureAwait(false);
+        }
         catch (Exception ex)
         {
             AppLogger.Error($"WorldResolveViewModel.OpenCandidatePickerAsync: {ex}");
-            CloseCandidatePicker();
+            await dispatcherService.RunOnUiThread(CloseCandidatePicker).ConfigureAwait(false);
         }
     }
 
@@ -290,7 +311,10 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
             {
                 await thumbnailWorker.GenerateGridAsync(
                     [(entry.PhotoPath, entry.SourceSlot)],
-                    result => { item.MatchThumbPath = result.ThumbPath; }).ConfigureAwait(false);
+                    result =>
+                    {
+                        _ = dispatcherService.RunOnUiThread(() => item.MatchThumbPath = result.ThumbPath);
+                    }).ConfigureAwait(false);
             }
             catch (Exception ex) { AppLogger.Warn($"SelectCandidate thumb: {ex.Message}"); }
         });

@@ -341,6 +341,7 @@ public sealed class ShellViewModelBehaviorTests
                 worldService,
                 phashService,
                 ToastService,
+                dispatcherService,
                 photosState,
                 filtersState,
                 selectionState,

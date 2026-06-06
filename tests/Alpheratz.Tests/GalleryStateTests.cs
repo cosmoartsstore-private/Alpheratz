@@ -113,6 +113,22 @@ public sealed class GalleryStateTests
         Assert.Empty(state.TagFilterCounts);
     }
 
+    /// <summary>日付範囲の適用は BatchCompleted 1 回で reload 経路へ渡る。</summary>
+    [Fact]
+    public void ApplyDateRange_RaisesSingleBatchCompleted()
+    {
+        var state = new GalleryFiltersState();
+        var changed = new List<string>();
+        state.PropertyChanged += (_, e) => changed.Add(e.PropertyName ?? string.Empty);
+
+        state.applyDateRange(DatePreset.custom, "2026-06-01", "2026-06-05");
+
+        Assert.Equal(DatePreset.custom, state.DatePreset);
+        Assert.Equal("2026-06-01", state.DateFrom);
+        Assert.Equal("2026-06-05", state.DateTo);
+        Assert.Single(changed.Where(name => name == "BatchCompleted"));
+    }
+
     /// <summary>
     /// PhotoThumbnailItem のパス優先順位とDTO変換を確認する。
     ///

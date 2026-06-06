@@ -112,7 +112,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
 
     /// <summary>ワールド解決モーダル用の ViewModel を現在のサービス構成から作成する。</summary>
     public WorldResolve.WorldResolveViewModel CreateWorldResolveViewModel()
-        => new(db, thumbnailWorker, toastService);
+        => new(db, thumbnailWorker, toastService, dispatcherService);
 
     /// <summary>単一写真を対象にした PhotoModalViewModel を作成する。写真が null なら null。</summary>
     public PhotoModalViewModel? createPhotoModalViewModel(PhotoThumbnailItem? photo)

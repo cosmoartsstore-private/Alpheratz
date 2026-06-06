@@ -217,7 +217,7 @@ public sealed partial class ShellPage : Page
         {
             if (galleryPage is null)
             {
-                // FilterPanel は ShellPage の XAML (FilterRailHost 内) で生成済みのインスタンスを
+                // FilterPanel は ShellPage の XAML (FilterOverlay 内) で生成済みのインスタンスを
                 // 引き渡す。所有を ShellPage 側に置くことで、UserControl の再 parent に伴う
                 // ContentControl 例外を回避している。
                 galleryPage = new GalleryPage(viewModel.galleryViewModel, FilterPanel)

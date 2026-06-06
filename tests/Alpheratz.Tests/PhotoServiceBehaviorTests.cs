@@ -123,6 +123,26 @@ public sealed class PhotoServiceBehaviorTests : IDisposable
         Assert.All(groupPhotos, photo => Assert.Equal("Alpha", photo.world_name));
     }
 
+    [Fact]
+    public async Task GetWorldGroupPhotosAsync_TreatsSlashContainingGroupKeyAsWorldName()
+    {
+        await db.UpsertPhotoAsync(Photo("/photo/slash.jpg", "slash.jpg", "2026-06-05 10:00:00", worldName: "VR/Chat"));
+        await db.UpsertPhotoAsync(Photo("/photo/other.jpg", "other.jpg", "2026-06-05 11:00:00", worldName: "Other"));
+
+        var groupPhotos = await service.GetWorldGroupPhotosAsync(
+            "VR/Chat",
+            startDate: null,
+            endDate: null,
+            sourceSlot: null,
+            orientation: null,
+            favoritesOnly: null,
+            tagFilters: null);
+
+        var photo = Assert.Single(groupPhotos);
+        Assert.Equal("/photo/slash.jpg", photo.photo_path);
+        Assert.Equal("VR/Chat", photo.world_name);
+    }
+
     /// <summary>
     /// 未解決ワールドの groupKey が null・空文字・空白だけの world_name を同じ一覧として返すことを確認する。
     ///
@@ -139,7 +159,7 @@ public sealed class PhotoServiceBehaviorTests : IDisposable
         await db.UpsertPhotoAsync(Photo("/photo/world.jpg", "world.jpg", "2026-06-05 13:00:00", worldName: "Alpha"));
 
         var groupPhotos = await service.GetWorldGroupPhotosAsync(
-            "unknown",
+            WorldFilterValues.Unknown,
             startDate: null,
             endDate: null,
             sourceSlot: null,

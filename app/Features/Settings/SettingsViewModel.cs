@@ -20,6 +20,7 @@ public partial class SettingsViewModel : UiThreadSafeObservableObject
 {
     private readonly SettingsService settingsService;
     private readonly DialogService dialogService;
+    private readonly DispatcherService dispatcherService;
 
     [ObservableProperty] private string photoFolderPath = string.Empty;
     [ObservableProperty] private string secondaryPhotoFolderPath = string.Empty;
@@ -29,11 +30,12 @@ public partial class SettingsViewModel : UiThreadSafeObservableObject
     public UiObservableCollection<string> tweetTemplates { get; } = [];
     [ObservableProperty] private string activeTweetTemplate = string.Empty;
 
-    public SettingsViewModel(SettingsService settingsService, DialogService dialogService)
+    public SettingsViewModel(SettingsService settingsService, DialogService dialogService, DispatcherService? dispatcherService = null)
     {
         AppLogger.Trace("SettingsViewModel.ctor: enter");
         this.settingsService = settingsService;
         this.dialogService = dialogService;
+        this.dispatcherService = dispatcherService ?? new DispatcherService();
         AppLogger.Trace("SettingsViewModel.ctor: exit");
     }
 
@@ -69,13 +71,16 @@ public partial class SettingsViewModel : UiThreadSafeObservableObject
         try
         {
             var setting = await settingsService.GetSettingAsync().ConfigureAwait(false);
-            PhotoFolderPath = setting.photoFolderPath ?? string.Empty;
-            SecondaryPhotoFolderPath = setting.secondaryPhotoFolderPath ?? string.Empty;
-            StartupEnabled = setting.enableStartup ?? false;
-            ThemeMode = setting.themeMode ?? ThemeMode.light;
-            ViewMode = setting.viewMode ?? ViewMode.standard;
-            ActiveTweetTemplate = setting.activeTweetTemplate ?? string.Empty;
-            tweetTemplates.ReplaceAll(setting.tweetTemplates ?? Array.Empty<string>());
+            await dispatcherService.RunOnUiThread(() =>
+            {
+                PhotoFolderPath = setting.photoFolderPath ?? string.Empty;
+                SecondaryPhotoFolderPath = setting.secondaryPhotoFolderPath ?? string.Empty;
+                StartupEnabled = setting.enableStartup ?? false;
+                ThemeMode = setting.themeMode ?? ThemeMode.light;
+                ViewMode = setting.viewMode ?? ViewMode.standard;
+                ActiveTweetTemplate = setting.activeTweetTemplate ?? string.Empty;
+                tweetTemplates.ReplaceAll(setting.tweetTemplates ?? Array.Empty<string>());
+            }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

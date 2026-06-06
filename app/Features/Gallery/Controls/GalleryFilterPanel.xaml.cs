@@ -502,9 +502,7 @@ public sealed partial class GalleryFilterPanel : UserControl
             var request = GalleryFilterPanelLogic.ResolveDateApplyRequest(draftPreset, draftFrom, draftTo);
             if (request.Kind == DateApplyKind.CustomRange)
             {
-                boundFiltersState.DateFrom = request.From;
-                boundFiltersState.DateTo = request.To;
-                boundFiltersState.DatePreset = DatePreset.custom;
+                boundFiltersState.applyDateRange(DatePreset.custom, request.From, request.To);
             }
             else
             {

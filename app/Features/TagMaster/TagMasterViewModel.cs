@@ -21,17 +21,19 @@ public partial class TagMasterViewModel : UiThreadSafeObservableObject
     private const int MAX_TAG_LENGTH = 40;
     private readonly AlpheratzDb db;
     private readonly ToastService toastService;
+    private readonly DispatcherService dispatcherService;
 
     /// <summary>タグマスタの全タグ。フィルタ UI 等が直接バインドする共有コレクション。</summary>
     public UiObservableCollection<string> masterTags { get; } = [];
     /// <summary>追加フォームの入力中文字列。</summary>
     [ObservableProperty] private string tagDraft = string.Empty;
 
-    public TagMasterViewModel(AlpheratzDb db, ToastService toastService)
+    public TagMasterViewModel(AlpheratzDb db, ToastService toastService, DispatcherService? dispatcherService = null)
     {
         AppLogger.Trace("TagMasterViewModel.ctor: enter");
         this.db = db;
         this.toastService = toastService;
+        this.dispatcherService = dispatcherService ?? new DispatcherService();
         AppLogger.Trace("TagMasterViewModel.ctor: exit");
     }
 
@@ -44,8 +46,9 @@ public partial class TagMasterViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("TagMasterViewModel.loadTags: enter");
         try
         {
-            var tags = await db.GetAllTagsAsync();
-            masterTags.ReplaceAll(tags.OrderBy(tag => tag).ToArray());
+            var tags = await db.GetAllTagsAsync().ConfigureAwait(false);
+            await dispatcherService.RunOnUiThread(() =>
+                masterTags.ReplaceAll(tags.OrderBy(tag => tag).ToArray())).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -79,8 +82,8 @@ public partial class TagMasterViewModel : UiThreadSafeObservableObject
 
         try
         {
-            await db.CreateTagMasterAsync(normalized);
-            TagDraft = string.Empty;
+            await db.CreateTagMasterAsync(normalized).ConfigureAwait(false);
+            await dispatcherService.RunOnUiThread(() => TagDraft = string.Empty).ConfigureAwait(false);
             await loadTags();
             toastService.addToast("タグを追加しました。");
         }

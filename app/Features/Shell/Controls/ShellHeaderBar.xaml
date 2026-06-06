@@ -29,8 +29,8 @@
                     Style="{StaticResource HeaderPillButtonStyle}"
                     Click="FilterButton_Click"
                     VerticalAlignment="Center"
-                    AutomationProperties.Name="検索条件レーン開閉"
-                    AutomationProperties.HelpText="左レーンの検索条件パネルを開閉します">
+                    AutomationProperties.Name="検索条件パネル開閉"
+                    AutomationProperties.HelpText="検索条件パネルを開閉します">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <shared:AppIcon IconName="search" IconSize="16" Foreground="{ThemeResource ATextDim}"/>
                     <TextBlock Text="検索条件" FontSize="{StaticResource AFontSizeSm}" FontWeight="ExtraBold"/>

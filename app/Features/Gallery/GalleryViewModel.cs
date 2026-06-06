@@ -27,6 +27,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
     private readonly WorldService worldService;
     private readonly PhashService phashService;
     private readonly ToastService toastService;
+    private readonly DispatcherService dispatcherService;
 
     public GalleryPhotosState photosState { get; }
     public GalleryFiltersState filtersState { get; }
@@ -48,6 +49,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         WorldService worldService,
         PhashService phashService,
         ToastService toastService,
+        DispatcherService dispatcherService,
         GalleryPhotosState photosState,
         GalleryFiltersState filtersState,
         GallerySelectionState selectionState,
@@ -59,6 +61,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         this.worldService = worldService;
         this.phashService = phashService;
         this.toastService = toastService;
+        this.dispatcherService = dispatcherService;
         this.photosState = photosState;
         this.filtersState = filtersState;
         this.selectionState = selectionState;
@@ -177,9 +180,11 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
 
         try
         {
+            var querySnapshot = filtersState.SearchQuery;
             await Task.Delay(400, token).ConfigureAwait(false);
-            var parsed = SearchCommandParser.Parse(filtersState.SearchQuery);
-            filtersState.DebouncedQuery = parsed.PlainText;
+            var parsed = SearchCommandParser.Parse(querySnapshot);
+            await dispatcherService.RunOnUiThread(() =>
+                filtersState.DebouncedQuery = parsed.PlainText).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -284,7 +289,8 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         try
         {
             var options = await photoService.GetWorldFilterOptionsAsync().ConfigureAwait(false);
-            filtersState.worldFilterOptions.ReplaceAll(options);
+            await dispatcherService.RunOnUiThread(() =>
+                filtersState.worldFilterOptions.ReplaceAll(options)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -300,7 +306,8 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         try
         {
             var counts = await photoService.GetTagFilterCountsAsync().ConfigureAwait(false);
-            filtersState.setTagFilterCounts(counts);
+            await dispatcherService.RunOnUiThread(() =>
+                filtersState.setTagFilterCounts(counts)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -318,7 +325,8 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         {
             var nextIsFavorite = !currentIsFavorite;
             await photoService.SetPhotoFavoriteAsync(photoPath, nextIsFavorite, currentPhoto?.SourceSlot ?? 1).ConfigureAwait(false);
-            updatePhoto(photoPath, photo => photo.IsFavorite = nextIsFavorite);
+            await dispatcherService.RunOnUiThread(() =>
+                updatePhoto(photoPath, photo => photo.IsFavorite = nextIsFavorite)).ConfigureAwait(false);
         }
         catch (Exception err)
         {
@@ -356,10 +364,11 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         try
         {
             await photoService.AddPhotoTagAsync(photoPath, normalized, currentPhoto?.SourceSlot ?? 1).ConfigureAwait(false);
-            updatePhoto(photoPath, photo => photo.Tags = photo.Tags
-                .Concat([normalized])
-                .OrderBy(item => item, StringComparer.Create(new CultureInfo("ja-JP"), false))
-                .ToArray());
+            await dispatcherService.RunOnUiThread(() =>
+                updatePhoto(photoPath, photo => photo.Tags = photo.Tags
+                    .Concat([normalized])
+                    .OrderBy(item => item, StringComparer.Create(new CultureInfo("ja-JP"), false))
+                    .ToArray())).ConfigureAwait(false);
             await loadTagFilterCounts().ConfigureAwait(false);
             toastService.addToast("タグを追加しました。");
         }
@@ -379,7 +388,8 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         try
         {
             await photoService.RemovePhotoTagAsync(photoPath, tag, currentPhoto?.SourceSlot ?? 1).ConfigureAwait(false);
-            updatePhoto(photoPath, photo => photo.Tags = photo.Tags.Where(item => item != tag).ToArray());
+            await dispatcherService.RunOnUiThread(() =>
+                updatePhoto(photoPath, photo => photo.Tags = photo.Tags.Where(item => item != tag).ToArray())).ConfigureAwait(false);
             await loadTagFilterCounts().ConfigureAwait(false);
             toastService.addToast("タグを削除しました。");
         }
@@ -416,18 +426,21 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
                 photo.MatchSource = "phash";
             }
 
-            updatePhoto(selectedPhotoView.PhotoPath, Apply);
-
-            if (updateSelectedPhoto is not null)
+            await dispatcherService.RunOnUiThread(() =>
             {
-                Apply(selectedPhotoView);
-                updateSelectedPhoto(selectedPhotoView);
-            }
+                updatePhoto(selectedPhotoView.PhotoPath, Apply);
 
-            if (filtersState.GroupingMode == GroupingMode.world)
-            {
-                photosState.rebuildDisplayItems(filtersState.GroupingMode);
-            }
+                if (updateSelectedPhoto is not null)
+                {
+                    Apply(selectedPhotoView);
+                    updateSelectedPhoto(selectedPhotoView);
+                }
+
+                if (filtersState.GroupingMode == GroupingMode.world)
+                {
+                    photosState.rebuildDisplayItems(filtersState.GroupingMode);
+                }
+            }).ConfigureAwait(false);
             await loadWorldFilterOptions().ConfigureAwait(false);
 
             toastService.addToast("ワールド情報を反映しました。");
@@ -496,8 +509,11 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         try
         {
             await photoService.BulkSetPhotoFavoriteAsync(refs, isFavorite).ConfigureAwait(false);
-            foreach (var r in refs)
-                updatePhoto(r.photo_path, p => p.IsFavorite = isFavorite);
+            await dispatcherService.RunOnUiThread(() =>
+            {
+                foreach (var r in refs)
+                    updatePhoto(r.photo_path, p => p.IsFavorite = isFavorite);
+            }).ConfigureAwait(false);
             toastService.addToast(isFavorite ? "お気に入りに追加しました" : "お気に入りを解除しました");
         }
         catch (Exception err)
@@ -531,17 +547,20 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         try
         {
             await photoService.BulkAddPhotoTagAsync(refs, normalized).ConfigureAwait(false);
-            foreach (var r in refs)
+            await dispatcherService.RunOnUiThread(() =>
             {
-                updatePhoto(r.photo_path, photo =>
+                foreach (var r in refs)
                 {
-                    if (photo.Tags.Contains(normalized)) return;
-                    photo.Tags = photo.Tags
-                        .Concat([normalized])
-                        .OrderBy(item => item, StringComparer.Create(new CultureInfo("ja-JP"), false))
-                        .ToArray();
-                });
-            }
+                    updatePhoto(r.photo_path, photo =>
+                    {
+                        if (photo.Tags.Contains(normalized)) return;
+                        photo.Tags = photo.Tags
+                            .Concat([normalized])
+                            .OrderBy(item => item, StringComparer.Create(new CultureInfo("ja-JP"), false))
+                            .ToArray();
+                    });
+                }
+            }).ConfigureAwait(false);
             await loadTagFilterCounts().ConfigureAwait(false);
             toastService.addToast($"タグ \"{normalized}\" を {refs.Count} 枚に追加しました");
         }

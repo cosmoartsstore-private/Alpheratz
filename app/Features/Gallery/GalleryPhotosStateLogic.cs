@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Alpheratz.Models;
 
 namespace Alpheratz.Features.Gallery;
 
@@ -10,7 +11,7 @@ namespace Alpheratz.Features.Gallery;
 /// </summary>
 internal static class GalleryPhotosStateLogic
 {
-    public const string UnknownWorldGroupKey = "unknown";
+    public const string UnknownWorldGroupKey = WorldFilterValues.Unknown;
 
     /// <summary>ワールド名をグループキーへ正規化する。空白だけの値は未解決ワールドとして扱う。</summary>
     public static string BuildWorldGroupKey(string? worldName)

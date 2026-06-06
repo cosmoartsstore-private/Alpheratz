@@ -32,6 +32,7 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
 
     private readonly PhotoService photoService;
     private readonly ToastService toastService;
+    private readonly DispatcherService dispatcherService;
     private CancellationTokenSource? selectedPhotoRefsCancellation;
 
     [ObservableProperty] private bool isMultiSelectMode;
@@ -42,11 +43,12 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
     public UiObservableCollection<SelectedPhotoRefDto> selectedPhotoRefs { get; } = [];
 
     /// <summary>写真サービスと通知サービスを受け取り、選択変更の監視を開始する。</summary>
-    public GallerySelectionState(PhotoService photoService, ToastService toastService)
+    public GallerySelectionState(PhotoService photoService, ToastService toastService, DispatcherService? dispatcherService = null)
     {
         AppLogger.Trace("GallerySelectionState.ctor: enter");
         this.photoService = photoService;
         this.toastService = toastService;
+        this.dispatcherService = dispatcherService ?? new DispatcherService();
         selectedPhotoPaths.CollectionChanged += selectedPhotoPathsChanged;
         AppLogger.Trace("GallerySelectionState.ctor: exit");
     }
@@ -219,7 +221,7 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
                 return;
             }
 
-            setSelectedPhotoRefs(refs);
+            await dispatcherService.RunOnUiThread(() => setSelectedPhotoRefs(refs)).ConfigureAwait(false);
         }
         catch (Exception err)
         {

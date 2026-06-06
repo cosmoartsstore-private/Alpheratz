@@ -20,7 +20,7 @@ public sealed partial class GalleryPage : Page
     private readonly GalleryViewModel viewModel;
 
     /// <summary>
-    /// 検索条件パネル。ShellPage 側の XAML (FilterRailHost) で生成されたインスタンスを
+    /// 検索条件パネル。ShellPage 側の XAML (FilterOverlay) で生成されたインスタンスを
     /// constructor で受け取って結線する。XAML の中に直接置くと再 parent で COM 例外が
     /// 出るケースがあったため、所有を ShellPage に持たせて参照だけ受け取る形にした。
     /// </summary>

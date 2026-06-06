@@ -7,7 +7,7 @@
     IsTabStop="True"
     KeyDown="Page_KeyDown">
     <Grid Background="Transparent" Tapped="Backdrop_Tapped">
-        <Border MaxWidth="1680" MaxHeight="1040" MinWidth="1040" Margin="24"
+        <Border MaxWidth="1680" MaxHeight="1040" MinWidth="0" Margin="24"
                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                 CornerRadius="{StaticResource ARadiusModal}"
                 Background="{ThemeResource ASurface}"
@@ -40,8 +40,8 @@
                               HorizontalScrollBarVisibility="Disabled">
                     <Grid ColumnSpacing="28">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="0.95*" MinWidth="420"/>
-                            <ColumnDefinition Width="1.35*" MinWidth="560"/>
+                            <ColumnDefinition Width="0.95*" MinWidth="320"/>
+                            <ColumnDefinition Width="1.35*" MinWidth="380"/>
                         </Grid.ColumnDefinitions>
 
                         <!-- ============ 全般設定 ============ -->
@@ -248,8 +248,8 @@
 
                             <Grid ColumnSpacing="18">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="1.1*" MinWidth="280"/>
-                                    <ColumnDefinition Width="0.9*" MinWidth="280"/>
+                                    <ColumnDefinition Width="1.1*" MinWidth="220"/>
+                                    <ColumnDefinition Width="0.9*" MinWidth="220"/>
                                 </Grid.ColumnDefinitions>
 
                                 <!-- Editor -->

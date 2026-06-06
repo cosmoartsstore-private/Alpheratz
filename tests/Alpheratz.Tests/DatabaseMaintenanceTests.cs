@@ -223,6 +223,7 @@ public sealed class DatabaseMaintenanceTests : IDisposable
     public async Task GetUnknownWorldPhotosAsync_FiltersByTargetSlot()
     {
         await db.UpsertPhotoAsync(Photo("/slot1/unknown.jpg", "unknown.jpg", "2026-06-05 10:00:00", sourceSlot: 1));
+        await db.UpsertPhotoAsync(Photo("/slot1/blank.jpg", "blank.jpg", "2026-06-05 10:30:00", worldName: "   ", sourceSlot: 1));
         await db.UpsertPhotoAsync(Photo("/slot2/unknown.jpg", "unknown.jpg", "2026-06-05 11:00:00", sourceSlot: 2));
         await db.UpsertPhotoAsync(Photo("/slot1/known.jpg", "known.jpg", "2026-06-05 12:00:00", worldName: "Known", sourceSlot: 1));
 
@@ -230,9 +231,30 @@ public sealed class DatabaseMaintenanceTests : IDisposable
         var primary = await db.GetUnknownWorldPhotosAsync("primary");
         var secondary = await db.GetUnknownWorldPhotosAsync("secondary");
 
-        Assert.Equal(["/slot1/unknown.jpg", "/slot2/unknown.jpg"], all.Select(item => item.photoPath).ToArray());
-        Assert.Equal(["/slot1/unknown.jpg"], primary.Select(item => item.photoPath).ToArray());
+        Assert.Equal(["/slot1/unknown.jpg", "/slot1/blank.jpg", "/slot2/unknown.jpg"], all.Select(item => item.photoPath).ToArray());
+        Assert.Equal(["/slot1/unknown.jpg", "/slot1/blank.jpg"], primary.Select(item => item.photoPath).ToArray());
         Assert.Equal(["/slot2/unknown.jpg"], secondary.Select(item => item.photoPath).ToArray());
+    }
+
+    [Fact]
+    public async Task GetUnknownWorldPhotosWithPhashAsync_FiltersByTargetSlotAndBlankWorldNames()
+    {
+        var hash = new string('a', 64);
+        await db.UpsertPhotoAsync(Photo("/slot1/unknown.jpg", "unknown.jpg", "2026-06-05 10:00:00", sourceSlot: 1));
+        await db.UpsertPhotoAsync(Photo("/slot2/blank.jpg", "blank.jpg", "2026-06-05 11:00:00", worldName: "   ", sourceSlot: 2));
+        await db.UpsertPhotoAsync(Photo("/slot2/literal-unknown.jpg", "literal-unknown.jpg", "2026-06-05 12:00:00", worldName: "unknown", sourceSlot: 2));
+        await db.UpsertPhotoAsync(Photo("/slot1/no-hash.jpg", "no-hash.jpg", "2026-06-05 13:00:00", sourceSlot: 1));
+        await db.UpdatePhotoPhashAsync("/slot1/unknown.jpg", hash);
+        await db.UpdatePhotoPhashAsync("/slot2/blank.jpg", hash);
+        await db.UpdatePhotoPhashAsync("/slot2/literal-unknown.jpg", hash);
+
+        var all = await db.GetUnknownWorldPhotosWithPhashAsync();
+        var primary = await db.GetUnknownWorldPhotosWithPhashAsync("primary", CancellationToken.None);
+        var secondary = await db.GetUnknownWorldPhotosWithPhashAsync("secondary", CancellationToken.None);
+
+        Assert.Equal(["/slot1/unknown.jpg", "/slot2/blank.jpg"], all.Select(item => item.PhotoPath).Order().ToArray());
+        Assert.Equal(["/slot1/unknown.jpg"], primary.Select(item => item.PhotoPath).ToArray());
+        Assert.Equal(["/slot2/blank.jpg"], secondary.Select(item => item.PhotoPath).ToArray());
     }
 
     /// <summary>

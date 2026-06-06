@@ -59,6 +59,7 @@ public sealed class GalleryViewModelBehaviorTests : IDisposable
             worldService,
             phashService,
             toastService,
+            new DispatcherService(),
             photosState,
             filtersState,
             selectionState,

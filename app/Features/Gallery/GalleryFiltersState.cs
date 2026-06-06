@@ -241,25 +241,39 @@ public partial class GalleryFiltersState : UiThreadSafeObservableObject
         AppLogger.Trace($"GalleryFiltersState.handleDatePresetSelect: enter preset={preset}");
         try
         {
-            DatePreset = preset;
-
             var range = GalleryDisplayState.getDateRangeFromPreset(preset);
-            DateFrom = range.from;
-            DateTo = range.to;
-
-            if (preset == DatePreset.none)
-            {
-                DateFrom = string.Empty;
-                DateTo = string.Empty;
-            }
-
-            OnPropertyChanged(nameof(ActiveFilterCount));
+            applyDateRange(
+                preset,
+                preset == DatePreset.none ? string.Empty : range.from,
+                preset == DatePreset.none ? string.Empty : range.to);
         }
         catch (Exception ex)
         {
             AppLogger.Error($"GalleryFiltersState.handleDatePresetSelect: threw: {ex}");
         }
         AppLogger.Trace("GalleryFiltersState.handleDatePresetSelect: exit");
+    }
+
+    /// <summary>日付範囲を一括更新し、フィルタ再読込通知を 1 回だけ発火する。</summary>
+    public void applyDateRange(DatePreset preset, string from, string to)
+    {
+        AppLogger.Trace($"GalleryFiltersState.applyDateRange: enter preset={preset} from={from} to={to}");
+        try
+        {
+            isBatchUpdating = true;
+            DatePreset = preset;
+            DateFrom = from;
+            DateTo = to;
+            isBatchUpdating = false;
+            OnPropertyChanged(nameof(ActiveFilterCount));
+            OnPropertyChanged("BatchCompleted");
+        }
+        catch (Exception ex)
+        {
+            isBatchUpdating = false;
+            AppLogger.Error($"GalleryFiltersState.applyDateRange: threw: {ex}");
+        }
+        AppLogger.Trace("GalleryFiltersState.applyDateRange: exit");
     }
 
     /// <summary>タグ候補ごとの件数を差し替え、バインディングへ通知する。</summary>

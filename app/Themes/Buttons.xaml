@@ -284,55 +284,6 @@
         <Setter Property="Template" Value="{StaticResource DangerControlTemplate}"/>
     </Style>
 
-    <!-- Left rail nav button (default / inactive) -->
-    <Style x:Key="RailButtonStyle" TargetType="Button">
-        <Setter Property="HorizontalAlignment" Value="Stretch"/>
-        <Setter Property="HorizontalContentAlignment" Value="Left"/>
-        <Setter Property="VerticalContentAlignment" Value="Center"/>
-        <Setter Property="MinHeight" Value="44"/>
-        <Setter Property="Padding" Value="12,10"/>
-        <Setter Property="CornerRadius" Value="{StaticResource ARadiusMd}"/>
-        <Setter Property="Background" Value="Transparent"/>
-        <Setter Property="BorderBrush" Value="Transparent"/>
-        <Setter Property="BorderThickness" Value="0"/>
-        <Setter Property="Foreground" Value="{ThemeResource ATextDim}"/>
-        <Setter Property="FontWeight" Value="Bold"/>
-        <Setter Property="Template" Value="{StaticResource NeutralControlTemplate}"/>
-    </Style>
-
-    <!-- 左レーンの選択中ナビボタン。code-behind から適用する。 -->
-    <Style x:Key="RailButtonActiveStyle" TargetType="Button">
-        <Setter Property="HorizontalAlignment" Value="Stretch"/>
-        <Setter Property="HorizontalContentAlignment" Value="Left"/>
-        <Setter Property="VerticalContentAlignment" Value="Center"/>
-        <Setter Property="MinHeight" Value="44"/>
-        <Setter Property="Padding" Value="12,10"/>
-        <Setter Property="CornerRadius" Value="{StaticResource ARadiusMd}"/>
-        <Setter Property="Background" Value="{ThemeResource APrimarySoft}"/>
-        <Setter Property="BorderBrush" Value="{ThemeResource ABorderStrong}"/>
-        <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="Foreground" Value="{ThemeResource APrimary}"/>
-        <Setter Property="FontWeight" Value="Bold"/>
-        <Setter Property="Template" Value="{StaticResource NeutralControlTemplate}"/>
-    </Style>
-
-    <!-- 左レーンの無効ナビボタン。code-behind から適用する。 -->
-    <Style x:Key="RailButtonDisabledStyle" TargetType="Button">
-        <Setter Property="HorizontalAlignment" Value="Stretch"/>
-        <Setter Property="HorizontalContentAlignment" Value="Left"/>
-        <Setter Property="VerticalContentAlignment" Value="Center"/>
-        <Setter Property="MinHeight" Value="44"/>
-        <Setter Property="Padding" Value="12,10"/>
-        <Setter Property="CornerRadius" Value="{StaticResource ARadiusMd}"/>
-        <Setter Property="Background" Value="Transparent"/>
-        <Setter Property="BorderBrush" Value="Transparent"/>
-        <Setter Property="BorderThickness" Value="0"/>
-        <Setter Property="Foreground" Value="{ThemeResource ATextDisabled}"/>
-        <Setter Property="FontWeight" Value="Bold"/>
-        <Setter Property="IsEnabled" Value="False"/>
-        <Setter Property="Template" Value="{StaticResource NeutralControlTemplate}"/>
-    </Style>
-
     <!--
         Chip (タグチップ等)。半透明っぽく見えるソフトティントをやめ、
         solid サーフェス + 実線ボーダーのぱっきりしたタグに統一する。

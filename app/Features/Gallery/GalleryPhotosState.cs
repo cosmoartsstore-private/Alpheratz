@@ -84,8 +84,11 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
         try
         {
             var groups = await fetchMonthSummary(filters).ConfigureAwait(false);
-            monthGroups = groups;
-            OnMonthGroupsChanged?.Invoke(groups);
+            await dispatcherService.RunOnUiThread(() =>
+            {
+                monthGroups = groups;
+                OnMonthGroupsChanged?.Invoke(groups);
+            }).ConfigureAwait(false);
             AppLogger.Trace($"GalleryPhotosState.loadMonthSummary: exit groups={groups.Count}");
         }
         catch (Exception ex)
@@ -298,7 +301,7 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
                 {
                     if (ct.IsCancellationRequested) return;
                     if (!photoMap.TryGetValue(result.PhotoPath, out var item)) return;
-                    UiThread.Run(() => item.GridThumbPath = result.ThumbPath);
+                    _ = dispatcherService.RunOnUiThread(() => item.GridThumbPath = result.ThumbPath);
                 }, ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException) { }

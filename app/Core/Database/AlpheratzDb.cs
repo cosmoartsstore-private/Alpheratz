@@ -207,6 +207,17 @@ CREATE INDEX IF NOT EXISTS idx_archive_world_visits_source_log_name ON archive_w
         return endDate;
     }
 
+    private static string UnknownWorldNameCondition(string tableAlias)
+        => $"({tableAlias}.world_name IS NULL OR TRIM({tableAlias}.world_name) = '')";
+
+    private static string SourceSlotFilterForTarget(string target, string tableAlias = "photos")
+        => target switch
+        {
+            "primary"   => $" AND COALESCE({tableAlias}.source_slot, 1) = 1",
+            "secondary" => $" AND COALESCE({tableAlias}.source_slot, 1) = 2",
+            _           => string.Empty,
+        };
+
     // -----------------------------------------------------------------------
     // Tag helpers (used by multiple operations)
     // -----------------------------------------------------------------------
@@ -332,9 +343,9 @@ WHERE pt.photo_path IN (");
         }
         if (q.WorldExacts is { Count: > 0 } exacts)
         {
-            if (exacts.Count == 1 && exacts[0] == "unknown")
+            if (exacts.Count == 1 && WorldFilterValues.IsUnknown(exacts[0]))
             {
-                sb.Append($" AND ({tableAlias}.world_name IS NULL OR TRIM({tableAlias}.world_name) = '')");
+                sb.Append($" AND {UnknownWorldNameCondition(tableAlias)}");
             }
             else
             {
@@ -344,18 +355,18 @@ WHERE pt.photo_path IN (");
                 int wIdx = 0;
                 foreach (var w in exacts)
                 {
-                    if (w == "unknown") { hasUnknown = true; continue; }
+                    if (WorldFilterValues.IsUnknown(w)) { hasUnknown = true; continue; }
                     if (!first) sb.Append(" OR ");
                     var pn = $"@wex{wIdx}";
-                    sb.Append($"{tableAlias}.world_name = {pn}");
-                    cmd.Parameters.AddWithValue(pn, w);
+                    sb.Append($"TRIM({tableAlias}.world_name) = {pn}");
+                    cmd.Parameters.AddWithValue(pn, w.Trim());
                     first = false;
                     wIdx++;
                 }
                 if (hasUnknown)
                 {
                     if (!first) sb.Append(" OR ");
-                    sb.Append($"({tableAlias}.world_name IS NULL OR TRIM({tableAlias}.world_name) = '')");
+                    sb.Append(UnknownWorldNameCondition(tableAlias));
                 }
                 sb.Append(")");
             }
@@ -1119,14 +1130,8 @@ WHERE photo_path = @p";
         {
             ct.ThrowIfCancellationRequested();
 
-            // primary / secondary 指定時は並び順だけでなく WHERE でも対象 slot を絞る。
-            // 片方のフォルダだけを自動解決するときに、もう片方の写真へ触れないため。
-            var (slotFilter, orderBy) = target switch
-            {
-                "primary"   => (" AND COALESCE(source_slot, 1) = 1", "timestamp"),
-                "secondary" => (" AND COALESCE(source_slot, 1) = 2", "timestamp"),
-                _           => ("", "timestamp"),
-            };
+            // primary / secondary 指定時は WHERE で対象 slot を絞る。
+            var slotFilter = SourceSlotFilterForTarget(target);
 
             using var conn = OpenConnection();
             using var cmd = conn.CreateCommand();
@@ -1134,9 +1139,9 @@ WHERE photo_path = @p";
 SELECT photo_path, timestamp
 FROM photos
 WHERE is_missing = 0
-  AND world_name IS NULL
+  AND {UnknownWorldNameCondition("photos")}
   AND world_id IS NULL{slotFilter}
-ORDER BY {orderBy}";
+ORDER BY timestamp";
 
             var list = new List<(string, string)>();
             using var r = cmd.ExecuteReader();
@@ -1307,11 +1312,17 @@ WHERE photo_path = @tgt";
             using var conn = OpenConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-SELECT world_name, COUNT(*) AS cnt
-FROM photos
-WHERE is_missing = 0
-GROUP BY world_name
-ORDER BY cnt DESC, world_name COLLATE NOCASE ASC";
+SELECT normalized_world_name, COUNT(*) AS cnt
+FROM (
+    SELECT CASE
+        WHEN world_name IS NULL OR TRIM(world_name) = '' THEN NULL
+        ELSE TRIM(world_name)
+    END AS normalized_world_name
+    FROM photos
+    WHERE is_missing = 0
+)
+GROUP BY normalized_world_name
+ORDER BY cnt DESC, normalized_world_name COLLATE NOCASE ASC";
 
             var list = new List<WorldFilterOptionDto>();
             using var r = cmd.ExecuteReader();
@@ -1392,7 +1403,7 @@ GROUP BY t.name";
             ct.ThrowIfCancellationRequested();
             using var conn = OpenConnection();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"SELECT photo_path, photo_filename, world_name, world_id, phash, source_slot FROM photos
+            cmd.CommandText = @"SELECT photo_path, photo_filename, TRIM(world_name), world_id, phash, source_slot FROM photos
                                  WHERE is_missing = 0
                                    AND source_slot = @source_slot
                                    AND world_name IS NOT NULL AND TRIM(world_name) <> ''
@@ -1428,17 +1439,21 @@ GROUP BY t.name";
     /// このセットを KnownWorldRow と総当たりして最小 Hamming 距離のワールドを推定する。
     /// </summary>
     public Task<IReadOnlyList<UnknownPhashRow>> GetUnknownWorldPhotosWithPhashAsync(CancellationToken ct = default)
+        => GetUnknownWorldPhotosWithPhashAsync("all", ct);
+
+    public Task<IReadOnlyList<UnknownPhashRow>> GetUnknownWorldPhotosWithPhashAsync(string target, CancellationToken ct)
     {
-        AppLogger.Trace("AlpheratzDb.GetUnknownWorldPhotosWithPhashAsync: enter");
+        AppLogger.Trace($"AlpheratzDb.GetUnknownWorldPhotosWithPhashAsync: enter target={target}");
         try
         {
             ct.ThrowIfCancellationRequested();
+            var slotFilter = SourceSlotFilterForTarget(target);
             using var conn = OpenConnection();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"SELECT photo_path, photo_filename, phash, source_slot FROM photos
+            cmd.CommandText = $@"SELECT photo_path, photo_filename, phash, source_slot FROM photos
                                  WHERE is_missing = 0
-                                   AND world_name IS NULL
-                                   AND world_id IS NULL
+                                   AND {UnknownWorldNameCondition("photos")}
+                                   AND world_id IS NULL{slotFilter}
                                    AND phash IS NOT NULL AND phash <> '' AND phash <> 'unreadable'";
             var rows = new List<UnknownPhashRow>();
             using var r = cmd.ExecuteReader();

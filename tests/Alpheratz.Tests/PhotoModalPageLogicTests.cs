@@ -1,3 +1,4 @@
+using Alpheratz.Features.Gallery;
 using Alpheratz.Features.PhotoModal;
 using Windows.System;
 
@@ -13,18 +14,34 @@ namespace Alpheratz.Tests;
 public sealed class PhotoModalPageLogicTests
 {
     /// <summary>
-    /// SelectedPhoto の変更だけがモーダル表示全体の再同期対象になることを確認する。
+    /// PhotoModalState 側は SelectedPhoto の差し替えだけをモーダル全体の再同期対象にする。
     ///
     /// PhotoModalPage は選択写真が差し替わったときだけ、ワールド名、match_source、タグ追加欄、
     /// 表示画像をまとめて更新する。その他の通知で毎回画像を作り直すと不要なデコードが増えるため、
     /// property name の判定を helper に閉じ込めている。
     /// </summary>
     [Fact]
-    public void ShouldSyncForPropertyChanged_ReturnsTrueOnlyForSelectedPhoto()
+    public void ShouldSyncForPropertyChanged_ReturnsTrueForSelectedPhoto()
     {
         Assert.True(PhotoModalPageLogic.ShouldSyncForPropertyChanged(nameof(PhotoModalState.SelectedPhoto)));
         Assert.False(PhotoModalPageLogic.ShouldSyncForPropertyChanged(nameof(PhotoModalState.CanGoBack)));
         Assert.False(PhotoModalPageLogic.ShouldSyncForPropertyChanged(null));
+    }
+
+    /// <summary>
+    /// 選択済み写真の内部変更は SelectedPhoto 差し替えではないため、
+    /// PhotoThumbnailItem 側の PropertyChanged を別途拾って派生表示を同期する。
+    /// </summary>
+    [Theory]
+    [InlineData(nameof(PhotoThumbnailItem.Tags), true)]
+    [InlineData(nameof(PhotoThumbnailItem.WorldName), true)]
+    [InlineData(nameof(PhotoThumbnailItem.MatchSource), true)]
+    [InlineData(nameof(PhotoThumbnailItem.EffectiveDisplayPath), true)]
+    [InlineData(nameof(PhotoThumbnailItem.IsFavorite), false)]
+    [InlineData(null, false)]
+    public void ShouldSyncForSelectedPhotoProperty_ReturnsExpectedTargets(string? propertyName, bool expected)
+    {
+        Assert.Equal(expected, PhotoModalPageLogic.ShouldSyncForSelectedPhotoProperty(propertyName));
     }
 
     /// <summary>

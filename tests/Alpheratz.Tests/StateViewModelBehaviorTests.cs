@@ -458,8 +458,8 @@ public sealed class StateViewModelBehaviorTests : IDisposable
     /// <summary>
     /// ToastService が duration 後に DispatcherQueue なしでも toast を削除することを確認する。
     ///
-    /// テスト環境や MainWindow 破棄後は App.MainWindowInstance が null になる。
-    /// その場合でも ToastService は UiObservableCollection を直接更新して古い通知を消すため、
+    /// テスト環境では DispatcherQueue が無いため、DispatcherService は同期実行にフォールバックする。
+    /// その場合でも ToastService は dispatcherService 経由で古い通知を消すため、
     /// 短い duration で追加し、一定時間内にコレクションから取り除かれることを検証する。
     /// </summary>
     [Fact]

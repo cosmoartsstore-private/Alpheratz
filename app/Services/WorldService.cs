@@ -150,7 +150,7 @@ public sealed class WorldService
     public async Task<int> ResolveUnknownWorldsFromSimilarPhotosAsync(string target, CancellationToken ct = default)
     {
         AppLogger.Trace($"WorldService.ResolveUnknownWorldsFromSimilarPhotosAsync: enter target={target}");
-        var unknowns = await _db.GetUnknownWorldPhotosWithPhashAsync(ct).ConfigureAwait(false);
+        var unknowns = await _db.GetUnknownWorldPhotosWithPhashAsync(target, ct).ConfigureAwait(false);
         if (unknowns.Count == 0)
         {
             AppLogger.Trace("WorldService.ResolveUnknownWorldsFromSimilarPhotosAsync: no unknowns");

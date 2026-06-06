@@ -156,6 +156,70 @@ public sealed class WorldServiceBehaviorTests
         }
     }
 
+    [Fact]
+    public async Task ResolveUnknownWorldsFromSimilarPhotosAsync_FiltersByTargetSlot()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "Alpheratz.WorldService.Target.Tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var db = new AlpheratzDb(Path.Combine(tempDir, "Alpheratz.db"));
+            db.Initialize();
+            var scanner = new PhotoScanner(new AppConfig(Path.Combine(tempDir, "settings")), db, new LocalEventBus());
+            var service = new WorldService(db, scanner);
+
+            await db.UpsertPhotoAsync(new PhotoUpsertData
+            {
+                PhotoPath = "/slot1/known.jpg",
+                PhotoFilename = "known.jpg",
+                Timestamp = "2026-06-05 10:00:00",
+                WorldName = "Primary World",
+                WorldId = "wrld_primary",
+                SourceSlot = 1,
+            });
+            await db.UpsertPhotoAsync(new PhotoUpsertData
+            {
+                PhotoPath = "/slot2/known.jpg",
+                PhotoFilename = "known.jpg",
+                Timestamp = "2026-06-05 10:00:00",
+                WorldName = "Secondary World",
+                WorldId = "wrld_secondary",
+                SourceSlot = 2,
+            });
+            await db.UpsertPhotoAsync(new PhotoUpsertData
+            {
+                PhotoPath = "/slot1/unknown.jpg",
+                PhotoFilename = "unknown.jpg",
+                Timestamp = "2026-06-05 10:05:00",
+                SourceSlot = 1,
+            });
+            await db.UpsertPhotoAsync(new PhotoUpsertData
+            {
+                PhotoPath = "/slot2/unknown.jpg",
+                PhotoFilename = "unknown.jpg",
+                Timestamp = "2026-06-05 10:05:00",
+                SourceSlot = 2,
+            });
+            foreach (var path in new[] { "/slot1/known.jpg", "/slot2/known.jpg", "/slot1/unknown.jpg", "/slot2/unknown.jpg" })
+                await db.UpdatePhotoPhashAsync(path, Hash(0x00));
+
+            var resolved = await service.ResolveUnknownWorldsFromSimilarPhotosAsync("primary");
+            var primary = await db.GetPhotoRecordAsync("/slot1/unknown.jpg", includePhash: true);
+            var secondary = await db.GetPhotoRecordAsync("/slot2/unknown.jpg", includePhash: true);
+
+            Assert.Equal(1, resolved);
+            Assert.Equal("Primary World", primary?.world_name);
+            Assert.Equal("wrld_primary", primary?.world_id);
+            Assert.Null(secondary?.world_name);
+            Assert.Null(secondary?.world_id);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, recursive: true); }
+            catch { }
+        }
+    }
+
     /// <summary>
     /// 外部起動系メソッドが不正入力を Launcher 呼び出し前に拒否することを確認する。
     ///

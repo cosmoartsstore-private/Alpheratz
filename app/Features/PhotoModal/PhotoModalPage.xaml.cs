@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Threading.Tasks;
 using Alpheratz.Core;
+using Alpheratz.Features.Gallery;
 using Alpheratz.Shared.Animations;
 using Alpheratz.Shared.Services;
 using Microsoft.UI.Xaml;
@@ -24,6 +25,7 @@ public sealed partial class PhotoModalPage : Page
 {
     private PhotoModalViewModel viewModel;
     private UiObservableCollection<string>? masterTags;
+    private PhotoThumbnailItem? subscribedPhoto;
 
     /// <summary>モーダルを閉じる操作のフック (× ボタン、背景クリック、ESC キー)。</summary>
     public Action? OnClose { get; set; }
@@ -88,9 +90,11 @@ public sealed partial class PhotoModalPage : Page
     public void UpdateViewModel(PhotoModalViewModel next)
     {
         viewModel.state.PropertyChanged -= OnStatePropertyChanged;
+        detachSelectedPhotoSubscription();
         viewModel = next;
         DataContext = next;
         next.state.PropertyChanged += OnStatePropertyChanged;
+        syncSelectedPhotoSubscription();
         syncWorldName();
         syncMatchSource();
         syncEmptyTagNote();
@@ -102,11 +106,53 @@ public sealed partial class PhotoModalPage : Page
     {
         if (PhotoModalPageLogic.ShouldSyncForPropertyChanged(e.PropertyName))
         {
+            syncSelectedPhotoSubscription();
             syncWorldName();
             syncMatchSource();
             syncEmptyTagNote();
             syncModalImage();
         }
+    }
+
+    /// <summary>現在の SelectedPhoto へ PropertyChanged 購読を張り替える。</summary>
+    private void syncSelectedPhotoSubscription()
+    {
+        var nextPhoto = viewModel.state.SelectedPhoto;
+        if (ReferenceEquals(subscribedPhoto, nextPhoto)) return;
+
+        detachSelectedPhotoSubscription();
+        subscribedPhoto = nextPhoto;
+        if (subscribedPhoto is not null)
+        {
+            subscribedPhoto.PropertyChanged += OnSelectedPhotoPropertyChanged;
+        }
+    }
+
+    /// <summary>現在購読している SelectedPhoto から PropertyChanged を解除する。</summary>
+    private void detachSelectedPhotoSubscription()
+    {
+        if (subscribedPhoto is not null)
+        {
+            subscribedPhoto.PropertyChanged -= OnSelectedPhotoPropertyChanged;
+            subscribedPhoto = null;
+        }
+    }
+
+    /// <summary>選択写真のタグ・ワールド・画像パス変更に合わせて派生 UI を再同期する。</summary>
+    private void OnSelectedPhotoPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (!PhotoModalPageLogic.ShouldSyncForSelectedPhotoProperty(e.PropertyName)) return;
+
+        DispatcherQueue?.TryEnqueue(() =>
+        {
+            syncWorldName();
+            syncMatchSource();
+            syncEmptyTagNote();
+            if (e.PropertyName == nameof(PhotoThumbnailItem.EffectiveDisplayPath))
+            {
+                syncModalImage();
+            }
+        });
     }
 
     /// <summary>選択写真に合わせて表示画像の source とサイズ表記を更新する。</summary>
@@ -196,6 +242,7 @@ public sealed partial class PhotoModalPage : Page
     private void Page_Unloaded(object sender, RoutedEventArgs e)
     {
         viewModel.state.PropertyChanged -= OnStatePropertyChanged;
+        detachSelectedPhotoSubscription();
     }
 
     /// <summary>ページ表示時に初期フォーカスと表示同期を行う。</summary>
@@ -204,6 +251,9 @@ public sealed partial class PhotoModalPage : Page
         try
         {
             _ = Focus(FocusState.Programmatic);
+            viewModel.state.PropertyChanged -= OnStatePropertyChanged;
+            viewModel.state.PropertyChanged += OnStatePropertyChanged;
+            syncSelectedPhotoSubscription();
             syncWorldName();
             syncMatchSource();
             syncEmptyTagNote();
