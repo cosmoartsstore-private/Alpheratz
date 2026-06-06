@@ -43,6 +43,23 @@ public sealed class ProjectPackagingTests
             NormalizeProjectPath(document.Descendants("ApplicationIcon").Single().Value));
     }
 
+    [Fact]
+    public void FrontendProject_DoesNotRecursivelyCopyGeneratedXbfSubfolder()
+    {
+        var projectPath = Path.Combine(FindRepositoryRoot(), "app", "Alpheratz.Frontend.csproj");
+        var document = XDocument.Load(projectPath);
+        var xbfFilesItem = document.Descendants("_XbfFiles").Single();
+        var removeDir = document.Descendants("RemoveDir").Single();
+
+        Assert.Equal("$(OutDir)**/*.xbf", NormalizeProjectPath(xbfFilesItem.Attribute("Include")?.Value ?? string.Empty));
+        Assert.Equal(
+            "$(OutDir)$(AssemblyName)/**/*.xbf",
+            NormalizeProjectPath(xbfFilesItem.Attribute("Exclude")?.Value ?? string.Empty));
+        Assert.Equal(
+            "$(OutDir)$(AssemblyName)/$(AssemblyName)",
+            NormalizeProjectPath(removeDir.Attribute("Directories")?.Value ?? string.Empty));
+    }
+
     /// <summary>
     /// テスト実行ディレクトリからリポジトリルートを探す。
     ///

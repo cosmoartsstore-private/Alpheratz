@@ -31,7 +31,7 @@ public sealed partial class ShellHeaderBar : UserControl
     /// <summary>複数選択トグル押下時に発火。</summary>
     public Action? OnToggleMultiSelect { get; set; }
     /// <summary>グループ化モード変更時に発火 (none / world のトグル)。</summary>
-    public Action<GroupingMode>? OnGroupingChange { get; set; }
+    public Func<GroupingMode, Task>? OnGroupingChange { get; set; }
     /// <summary>ビューモード切替時に発火 ("gallery" / "standard")。</summary>
     public Func<string, Task>? OnViewModeChange { get; set; }
     /// <summary>検索ボックスで Enter が押されたとき発火。</summary>
@@ -177,12 +177,13 @@ public sealed partial class ShellHeaderBar : UserControl
     }
 
     // グループ化ボタンを none/world のトグルとして処理する。
-    private void GroupingBtn_Click(object sender, RoutedEventArgs e)
+    private async void GroupingBtn_Click(object sender, RoutedEventArgs e)
     {
         try
         {
             // 現在 world なら none、none なら world に切り替える。
-            OnGroupingChange?.Invoke(ShellHeaderBarLogic.NextGroupingMode(currentGroupingMode));
+            if (OnGroupingChange is not null)
+                await OnGroupingChange(ShellHeaderBarLogic.NextGroupingMode(currentGroupingMode)).ConfigureAwait(false);
         }
         catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.GroupingBtn_Click: threw: {ex}"); }
     }

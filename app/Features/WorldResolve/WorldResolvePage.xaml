@@ -13,7 +13,7 @@
     </Page.Resources>
 
     <Grid Background="Transparent" Tapped="Backdrop_Tapped">
-        <Border MaxWidth="1200" MinWidth="600" Margin="32"
+        <Border MaxWidth="1200" MinWidth="0" Margin="20"
                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                 CornerRadius="{StaticResource ARadiusModal}"
                 Background="{ThemeResource ASurface}"

@@ -487,7 +487,7 @@ public sealed partial class ShellPage : Page
     /// 設定モーダルから呼ばれる場合 (OnStartWorldAnalysis) は Settings の中身を
     /// ワールド解析に差し替える形になる。
     /// </summary>
-    private async Task ShowWorldResolveModalAsync()
+    private Task ShowWorldResolveModalAsync()
     {
         AppLogger.Trace("ShellPage.ShowWorldResolveModalAsync: enter");
         try
@@ -507,10 +507,23 @@ public sealed partial class ShellPage : Page
             isMiddleModalOpen = true;
             lastModalOpenTick = Environment.TickCount64;
             syncHeaderInteractivity();
-            await vm.InitializeAsync().ConfigureAwait(false);
+            _ = InitializeWorldResolveAsync(vm);
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowWorldResolveModalAsync: threw: {ex}"); }
         AppLogger.Trace("ShellPage.ShowWorldResolveModalAsync: exit");
+        return Task.CompletedTask;
+    }
+
+    private static async Task InitializeWorldResolveAsync(WorldResolveViewModel vm)
+    {
+        try
+        {
+            await vm.InitializeAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"ShellPage.InitializeWorldResolveAsync: threw: {ex}");
+        }
     }
 
 

@@ -95,8 +95,11 @@
        subdirectory. The XAML compiler outputs them to $(OutDir) flat; mirror
        them into the subfolder so LoadComponent succeeds at runtime. -->
   <Target Name="CopyXbfToSubfolder" AfterTargets="Build">
+    <RemoveDir Directories="$(OutDir)$(AssemblyName)\$(AssemblyName)"
+               Condition="Exists('$(OutDir)$(AssemblyName)\$(AssemblyName)')" />
     <ItemGroup>
-      <_XbfFiles Include="$(OutDir)**\*.xbf" />
+      <_XbfFiles Include="$(OutDir)**\*.xbf"
+                 Exclude="$(OutDir)$(AssemblyName)\**\*.xbf" />
     </ItemGroup>
     <Copy SourceFiles="@(_XbfFiles)"
           DestinationFiles="@(_XbfFiles->'$(OutDir)$(AssemblyName)\%(RecursiveDir)%(Filename)%(Extension)')"

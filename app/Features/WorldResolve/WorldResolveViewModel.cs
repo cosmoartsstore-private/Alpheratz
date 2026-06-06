@@ -92,6 +92,9 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
         await dispatcherService.RunOnUiThread(() => IsLoading = true).ConfigureAwait(false);
         try
         {
+            // Leave the UI thread before DB scans and PDQ matching; some async calls can complete synchronously.
+            await Task.Run(static () => { }, ct).ConfigureAwait(false);
+
             var unknowns = await db.GetUnknownWorldPhotosWithPhashAsync(ct).ConfigureAwait(false);
             if (unknowns.Count == 0)
             {

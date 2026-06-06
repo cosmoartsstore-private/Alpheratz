@@ -29,7 +29,10 @@ These notes prevent future sessions from redoing already-audited recovery work.
   - Fixed in the follow-up pass: `WorldResolveViewModel` thumbnail callbacks dispatch item property updates back to the UI thread.
   - Fixed in the follow-up pass: date preset/custom date apply paths use a batched `applyDateRange` path and raise one `BatchCompleted`.
   - Still true by design: `UiObservableCollection` and `UiThreadSafeObservableObject` only marshal notifications; they do not make mutation itself UI-thread-owned. Continue to prefer explicit `DispatcherService.RunOnUiThread(...)` for UI-bound state mutations.
-  - Still pending: narrow-window layout remains a separate UI pass. Current fixed modal/filter/settings widths are intentional enough for desktop, but not robust for snapped/narrow windows.
+  - Fixed in the 2026-06-06 visual pass: narrow-window layout for Settings, PhotoModal, GroupDrillDown, WorldResolve, and the Gallery bulk bar. Keep future changes compatible with 640px snapped-window captures.
+  - Fixed in the 2026-06-06 visual pass: Settings -> "確認付きで解決" no longer awaits WorldResolve initialization on the UI path. The modal is shown first; DB/PDQ initialization runs asynchronously and starts by leaving the UI thread.
+  - Fixed in the 2026-06-06 visual pass: `CopyXbfToSubfolder` excludes the generated assembly-named subfolder and removes stale direct recursion, preventing repeated `Alpheratz.Frontend\Alpheratz.Frontend\...` output growth.
+  - Visual comparison report for that pass is generated at `artifacts/visual-regression/report.html` with embedded screenshots.
   - Still pending: Shell overlay state is split across local flags and `ShellStage`; current guards are tested, but a single overlay state model would reduce future drift.
 - Rechecked non-issues:
   - `ShellStage` already clears modal content with version guards after close animations. Do not re-fix modal content cleanup unless new evidence appears.

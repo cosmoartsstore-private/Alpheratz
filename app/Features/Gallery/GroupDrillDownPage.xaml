@@ -6,7 +6,7 @@
     IsTabStop="True"
     KeyDown="UserControl_KeyDown">
     <Grid Background="Transparent" Tapped="Backdrop_Tapped">
-        <Border MaxWidth="1400" MaxHeight="900" MinWidth="640" Margin="40"
+        <Border MaxWidth="1400" MaxHeight="900" MinWidth="0" Margin="24"
                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                 CornerRadius="{StaticResource ARadiusModal}"
                 Background="{ThemeResource ASurface}"

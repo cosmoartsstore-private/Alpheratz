@@ -38,14 +38,10 @@
                 <ScrollViewer Grid.Row="1" Padding="36,6,36,36"
                               VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled">
-                    <Grid ColumnSpacing="28">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="0.95*" MinWidth="320"/>
-                            <ColumnDefinition Width="1.35*" MinWidth="380"/>
-                        </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="28">
 
                         <!-- ============ 全般設定 ============ -->
-                        <StackPanel Grid.Column="0" Spacing="22">
+                        <StackPanel Spacing="22">
                             <TextBlock Text="全般" Style="{StaticResource SectionTitleStyle}"/>
 
                             <StackPanel Spacing="14">
@@ -157,7 +153,7 @@
                             </Border>
                         </StackPanel>
 
-                        <StackPanel Grid.Column="1" Spacing="24">
+                        <StackPanel Spacing="24">
 
                             <!-- ============ タグマスタ ============ -->
                             <StackPanel Spacing="18">
@@ -246,14 +242,10 @@
                             <StackPanel Spacing="18">
                                 <TextBlock Text="投稿テンプレート" Style="{StaticResource SectionTitleStyle}"/>
 
-                            <Grid ColumnSpacing="18">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="1.1*" MinWidth="220"/>
-                                    <ColumnDefinition Width="0.9*" MinWidth="220"/>
-                                </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="18">
 
                                 <!-- Editor -->
-                                <Border Grid.Column="0" Style="{StaticResource SectionCardBorderStyle}">
+                                <Border Style="{StaticResource SectionCardBorderStyle}">
                                     <StackPanel Spacing="12">
                                         <TextBlock x:Name="EditorModeLabel"
                                                    Text="新規テンプレート"
@@ -284,7 +276,7 @@
                                 </Border>
 
                                 <!-- Template list -->
-                                <Border Grid.Column="1" Style="{StaticResource SectionCardBorderStyle}">
+                                <Border Style="{StaticResource SectionCardBorderStyle}">
                                     <StackPanel Spacing="12">
                                         <TextBlock Text="登録済みテンプレート" Style="{StaticResource SubHeadingTextStyle}"/>
                                         <ItemsControl x:Name="TemplateList" ItemsSource="{Binding Template.tweetTemplates}">
@@ -345,10 +337,10 @@
                                         </ItemsControl>
                                     </StackPanel>
                                 </Border>
-                            </Grid>
+                            </StackPanel>
                         </StackPanel>
                     </StackPanel>
-                    </Grid>
+                    </StackPanel>
                 </ScrollViewer>
             </Grid>
         </Border>
