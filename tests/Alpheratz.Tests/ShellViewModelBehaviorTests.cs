@@ -44,6 +44,7 @@ public sealed class ShellViewModelBehaviorTests
             ThemeMode = "dark",
             ViewMode = "gallery",
             EnableStartup = true,
+            OpenWorldLinkOnPost = true,
             TweetTemplates = ["A", "B"],
             ActiveTweetTemplate = "B",
         });
@@ -69,17 +70,44 @@ public sealed class ShellViewModelBehaviorTests
         Assert.Equal(ViewMode.gallery, harness.ViewModel.ViewMode);
         Assert.Equal(ViewMode.gallery, harness.ViewModel.galleryViewModel.displayState.ViewMode);
         Assert.True(harness.ViewModel.StartupEnabled);
+        Assert.True(harness.ViewModel.OpenWorldLinkOnPost);
         Assert.Equal(["A", "B"], harness.ViewModel.tweetTemplates.ToArray());
         Assert.Equal(["A", "B"], harness.ViewModel.templatePageViewModel.tweetTemplates.ToArray());
         Assert.Equal("B", harness.ViewModel.ActiveTweetTemplate);
         Assert.Equal("B", harness.ViewModel.templatePageViewModel.ActiveTweetTemplate);
+        Assert.True(harness.ViewModel.templatePageViewModel.OpenWorldLinkOnPost);
         Assert.Equal(3, harness.ViewModel.ScanProgress.processed);
         Assert.Equal(7, harness.ViewModel.ScanProgress.total);
         Assert.False(harness.ViewModel.IsPdqRunning);
+        Assert.True(harness.ViewModel.CanStartWorldResolve);
         Assert.Equal(5, harness.ViewModel.PdqProgress.done);
         Assert.Contains(harness.ToastService.toasts, toast => toast.Msg.Contains("写真フォルダが未設定です"));
         Assert.Contains(harness.ToastService.toasts, toast => toast.Msg.Contains("類似画像の解析が完了しました"));
         Assert.Contains(harness.ToastService.toasts, toast => toast.Msg.Contains("broken"));
+    }
+
+    /// <summary>
+    /// 未計算 phash が残っている間は、手動ワールド解決を開始できないことを確認する。
+    /// </summary>
+    [Fact]
+    public async Task WorldResolveAvailability_RequiresCompletedPhashAnalysis()
+    {
+        await using var harness = ShellTestHarness.Create();
+        await harness.Db.UpsertPhotoAsync(new PhotoUpsertData
+        {
+            PhotoPath = "/photo/pending.jpg",
+            PhotoFilename = "pending.jpg",
+            Timestamp = "2026-06-05 10:00:00",
+            SourceSlot = 1,
+        });
+
+        await harness.ViewModel.initialize();
+        Assert.False(harness.ViewModel.CanStartWorldResolve);
+
+        await harness.Db.UpdatePhotoPhashAsync("/photo/pending.jpg", new string('0', 64));
+        await harness.EventBus.PublishAsync(EventNames.PhashComplete, new object());
+
+        Assert.True(harness.ViewModel.CanStartWorldResolve);
     }
 
     /// <summary>
@@ -97,6 +125,7 @@ public sealed class ShellViewModelBehaviorTests
         harness.ViewModel.SecondaryPhotoFolderPath = "F:/photos/secondary";
         harness.ViewModel.StartupEnabled = true;
         harness.ViewModel.ViewMode = ViewMode.standard;
+        harness.ViewModel.OpenWorldLinkOnPost = true;
         harness.ViewModel.templatePageViewModel.tweetTemplates.ReplaceAll(["{world}", "{tags}"]);
         harness.ViewModel.templatePageViewModel.ActiveTweetTemplate = "{tags}";
 
@@ -114,6 +143,7 @@ public sealed class ShellViewModelBehaviorTests
         Assert.Equal("F:/photos/secondary", payload.secondaryPhotoFolderPath);
         Assert.Equal(ThemeMode.dark, payload.themeMode);
         Assert.Equal(ViewMode.standard, payload.viewMode);
+        Assert.True(payload.openWorldLinkOnPost);
         Assert.Equal(["{world}", "{tags}"], payload.tweetTemplates);
         Assert.Equal("{tags}", payload.activeTweetTemplate);
         Assert.Equal(GroupingMode.none, harness.ViewModel.galleryViewModel.filtersState.GroupingMode);
@@ -121,6 +151,7 @@ public sealed class ShellViewModelBehaviorTests
         Assert.Equal(ViewMode.standard, harness.ViewModel.galleryViewModel.displayState.ViewMode);
         Assert.Equal("dark", saved.ThemeMode);
         Assert.Equal("standard", saved.ViewMode);
+        Assert.True(saved.OpenWorldLinkOnPost);
     }
 
     /// <summary>

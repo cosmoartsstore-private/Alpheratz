@@ -8,32 +8,37 @@ namespace Alpheratz.Shared.Controls;
 /// </summary>
 internal static class PhotoGridItemsLayoutLogic
 {
-    public const int FixedColumns = 5;
-    public const double ImageAspectHeight = 3.0 / 4.0;
+    public const int MaxColumns = 6;
+    public const double MinImageWidth = 100;
+    public const double ImageAspectHeight = 9.0 / 16.0;
     public const double InfoHeight = 56;
     public const double CardMarginHorizontal = 8;
     public const double CardMarginVertical = 12;
     public const double GridPadding = 24;
-    public const int FallbackColumnCount = 5;
+    public const int FallbackColumnCount = MaxColumns;
     public const double NearBottomThreshold = 600;
     public const double ShimmerWidthRatio = 0.4;
     public const double DefaultShimmerCardWidth = 300;
     public const int ShimmerDurationMilliseconds = 1500;
     public const int ImageFadeInDurationMilliseconds = 200;
 
-    /// <summary>利用可能幅から 5 列固定のカード寸法を計算する。幅不足時は null。</summary>
+    /// <summary>利用可能幅から通常 6 列のカード寸法を計算する。幅不足時は列数を減らして潰れを防ぐ。</summary>
     public static PhotoGridCardLayout? CalculateCardLayout(double availableWidth)
     {
         if (availableWidth <= 0) return null;
         var usable = availableWidth - GridPadding;
         if (usable <= 0) return null;
-        var cardWidth = Math.Floor(usable / FixedColumns - CardMarginHorizontal);
-        if (cardWidth < 100) return null;
+        var columns = Math.Clamp(
+            (int)Math.Floor(usable / (MinImageWidth + CardMarginHorizontal)),
+            1,
+            MaxColumns);
+        var itemWidth = Math.Max(1, Math.Floor(usable / columns));
+        var cardWidth = Math.Max(1, itemWidth - CardMarginHorizontal);
         return new PhotoGridCardLayout(
             cardWidth,
-            cardWidth + CardMarginHorizontal,
+            itemWidth,
             Math.Floor(cardWidth * ImageAspectHeight + InfoHeight) + CardMarginVertical,
-            FixedColumns);
+            columns);
     }
 
     /// <summary>スクロール位置が追加読み込みを促す終端近くかを返す。</summary>

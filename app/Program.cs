@@ -29,7 +29,7 @@ partial class Program
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"Program.Main: Bootstrap.Initialize failed: {ex}");
+            AppLogger.Fatal($"Program.Main: Bootstrap.Initialize failed: {ex}");
             return;
         }
 #endif
@@ -52,7 +52,7 @@ partial class Program
                 catch (Exception ex)
                 {
                     // App を構築できない状態では起動を継続できないため、ログ後に停止させる。
-                    AppLogger.Error($"Program.Main.AppStart: fatal: {ex}");
+                    AppLogger.Fatal($"Program.Main.AppStart: fatal: {ex}");
                     throw;
                 }
                 AppLogger.Trace("Program.Main.AppStart: exit");
@@ -61,7 +61,7 @@ partial class Program
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"Program.Main: Application.Start threw: {ex}");
+            AppLogger.Fatal($"Program.Main: Application.Start threw: {ex}");
             throw;
         }
 

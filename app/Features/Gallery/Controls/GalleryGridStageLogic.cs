@@ -9,22 +9,23 @@ internal static class GalleryGridStageLogic
     public const double MonthNavVisibleWidth = 56;
 
     /// <summary>表示モード切替時の標準グリッド、Masonry、MonthNav の表示状態を返す。</summary>
-    public static GridStageDisplayState ViewModeDisplay(bool masonryActive)
+    public static GridStageDisplayState ViewModeDisplay(bool masonryActive, bool monthNavAvailable = true)
         => new GridStageDisplayState(
             PhotoGridVisible: !masonryActive,
             MasonryVisible: masonryActive,
-            MonthNavVisible: true,
-            MonthNavWidth: MonthNavVisibleWidth);
+            MonthNavVisible: monthNavAvailable,
+            MonthNavWidth: monthNavAvailable ? MonthNavVisibleWidth : 0);
 
     /// <summary>ロード中・空状態から loading veil、empty、MonthNav の表示状態を返す。</summary>
-    public static GridStageLoadingDisplay LoadingDisplay(bool isLoading, int totalCount)
+    public static GridStageLoadingDisplay LoadingDisplay(bool isLoading, int totalCount, bool monthNavAvailable = true)
     {
         var showEmpty = ShouldShowEmpty(isLoading, totalCount);
+        var showMonthNav = monthNavAvailable && !showEmpty;
         return new GridStageLoadingDisplay(
             LoadingVisible: isLoading,
             EmptyVisible: showEmpty,
-            MonthNavVisible: !showEmpty,
-            MonthNavWidth: showEmpty ? 0 : MonthNavVisibleWidth);
+            MonthNavVisible: showMonthNav,
+            MonthNavWidth: showMonthNav ? MonthNavVisibleWidth : 0);
     }
 
     /// <summary>ロード完了後に写真が 0 件なら empty state を表示する。</summary>

@@ -30,6 +30,9 @@ public partial class PhotoModalState : UiThreadSafeObservableObject
     private readonly ToastService toastService;
     private readonly DispatcherService dispatcherService;
     private CancellationTokenSource? selectedPhotoCancellation;
+    private long lastNavigationAcceptedTicks;
+    private long navigationBurstStartedTicks;
+    private PhotoModalNavigationDirection? lastNavigationDirection;
 
     [ObservableProperty] private PhotoThumbnailItem? selectedPhoto;
     /// <summary>類似ワールド検索時の戻り先スタック。</summary>
@@ -129,7 +132,7 @@ public partial class PhotoModalState : UiThreadSafeObservableObject
     }
 
     /// <summary>写真リスト上の前の写真に移動する。</summary>
-    public void goPrevPhoto()
+    public void goPrevPhoto(bool throttleRepeatedInput = false)
     {
         AppLogger.Trace("PhotoModalState.goPrevPhoto: enter");
         if (SelectedPhoto is null)
@@ -145,12 +148,18 @@ public partial class PhotoModalState : UiThreadSafeObservableObject
             return;
         }
 
+        if (throttleRepeatedInput && !TryAcceptNavigation(PhotoModalNavigationDirection.Previous))
+        {
+            AppLogger.Trace("PhotoModalState.goPrevPhoto: skip (throttled)");
+            return;
+        }
+
         onSelectPhoto(photoList[idx - 1]);
         AppLogger.Trace("PhotoModalState.goPrevPhoto: exit");
     }
 
     /// <summary>写真リスト上の次の写真に移動する。</summary>
-    public void goNextPhoto()
+    public void goNextPhoto(bool throttleRepeatedInput = false)
     {
         AppLogger.Trace("PhotoModalState.goNextPhoto: enter");
         if (SelectedPhoto is null)
@@ -166,6 +175,12 @@ public partial class PhotoModalState : UiThreadSafeObservableObject
             return;
         }
 
+        if (throttleRepeatedInput && !TryAcceptNavigation(PhotoModalNavigationDirection.Next))
+        {
+            AppLogger.Trace("PhotoModalState.goNextPhoto: skip (throttled)");
+            return;
+        }
+
         onSelectPhoto(photoList[idx + 1]);
         AppLogger.Trace("PhotoModalState.goNextPhoto: exit");
     }
@@ -176,6 +191,23 @@ public partial class PhotoModalState : UiThreadSafeObservableObject
         OnPropertyChanged(nameof(CanGoBack));
         OnPropertyChanged(nameof(CanGoPrev));
         OnPropertyChanged(nameof(CanGoNext));
+    }
+
+    /// <summary>キーボード長押しによる連続画像差し替えを一定間隔に抑える。</summary>
+    private bool TryAcceptNavigation(PhotoModalNavigationDirection direction)
+    {
+        var decision = PhotoModalPageLogic.NavigationGate(
+            Environment.TickCount64,
+            lastNavigationAcceptedTicks,
+            navigationBurstStartedTicks,
+            lastNavigationDirection == direction);
+        navigationBurstStartedTicks = decision.BurstStartedTicks;
+        lastNavigationAcceptedTicks = decision.LastAcceptedTicks;
+        if (decision.Allowed)
+        {
+            lastNavigationDirection = direction;
+        }
+        return decision.Allowed;
     }
 
     /// <summary>モーダルを閉じて選択状態・履歴をクリアする。</summary>
@@ -194,6 +226,9 @@ public partial class PhotoModalState : UiThreadSafeObservableObject
             }
             SelectedPhoto = null;
             photoHistory.Clear();
+            lastNavigationAcceptedTicks = 0;
+            navigationBurstStartedTicks = 0;
+            lastNavigationDirection = null;
         }
         catch (Exception ex)
         {

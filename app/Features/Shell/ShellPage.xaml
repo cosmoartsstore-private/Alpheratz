@@ -65,7 +65,7 @@
                     Background="{ThemeResource AOverlay}"
                     Tapped="FilterBackdrop_Tapped"/>
             <Border x:Name="FilterPanelContainer" HorizontalAlignment="Left"
-                    Width="360" MinWidth="360" MaxWidth="360"
+                    Width="612" MinWidth="612" MaxWidth="612"
                     Background="{ThemeResource ASurface}">
                 <galleryControls:GalleryFilterPanel x:Name="FilterPanel"/>
             </Border>

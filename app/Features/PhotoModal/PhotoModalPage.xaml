@@ -8,7 +8,20 @@
     Loaded="Page_Loaded"
     Unloaded="Page_Unloaded"
     KeyDown="Page_KeyDown">
-    <Page.Resources/>
+    <Page.Resources>
+        <ControlTemplate x:Key="PhotoEdgeButtonTemplate" TargetType="Button">
+            <Border Background="{TemplateBinding Background}">
+                <ContentPresenter
+                    Content="{TemplateBinding Content}"
+                    ContentTemplate="{TemplateBinding ContentTemplate}"
+                    Foreground="{TemplateBinding Foreground}"
+                    Padding="{TemplateBinding Padding}"
+                    HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                    VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                    AutomationProperties.AccessibilityView="Raw"/>
+            </Border>
+        </ControlTemplate>
+    </Page.Resources>
     <Grid Background="Transparent" Tapped="Backdrop_Tapped">
         <Border MaxWidth="1560" MaxHeight="920" MinWidth="0" Margin="16"
                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
@@ -23,23 +36,50 @@
                     <ColumnDefinition Width="300"/>
                 </Grid.ColumnDefinitions>
                 <Grid x:Name="ImagePanel" Grid.Column="0" Background="{ThemeResource AMediaBg}"
-                      CornerRadius="{StaticResource ARadiusModalRight}">
+                      CornerRadius="{StaticResource ARadiusModalRight}"
+                      PointerMoved="ImagePanel_PointerMoved"
+                      PointerExited="ImagePanel_PointerExited">
                     <Image x:Name="ModalImage" Stretch="Uniform"/>
-                    <Button x:Name="BackButton" HorizontalAlignment="Left" VerticalAlignment="Top"
-                            Margin="14" Width="34" Height="34"
-                            CornerRadius="{StaticResource ARadiusButton}"
-                            AutomationProperties.Name="戻る"
-                            ToolTipService.ToolTip="前に表示していた写真へ戻る"
-                            Background="#80000000"
-                            BorderBrush="#40FFFFFF"
-                            BorderThickness="1"
-                            IsEnabled="{Binding state.CanGoBack}"
-                            Click="BackButton_Click">
-                        <shared:AppIcon IconName="back" IconSize="14" Foreground="#F0F2F3"/>
+                    <Button x:Name="PrevPhotoButton" HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                            Width="148"
+                            Padding="22,0,0,0"
+                            CornerRadius="0"
+                            HorizontalContentAlignment="Left"
+                            VerticalContentAlignment="Center"
+                            AutomationProperties.Name="前の写真"
+                            Background="Transparent"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
+                            Template="{StaticResource PhotoEdgeButtonTemplate}"
+                            IsEnabled="{Binding state.CanGoPrev}"
+                            PointerEntered="PhotoEdgeButton_PointerEntered"
+                            PointerExited="PhotoEdgeButton_PointerExited"
+                            Click="PrevPhoto_Click">
+                        <TextBlock x:Name="PrevPhotoChevron" Text="&lt;" Opacity="0" FontSize="46" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/>
+                    </Button>
+                    <Button x:Name="NextPhotoButton" HorizontalAlignment="Right" VerticalAlignment="Stretch"
+                            Width="148"
+                            Padding="0,0,22,0"
+                            CornerRadius="0"
+                            HorizontalContentAlignment="Right"
+                            VerticalContentAlignment="Center"
+                            AutomationProperties.Name="次の写真"
+                            Background="Transparent"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
+                            Template="{StaticResource PhotoEdgeButtonTemplate}"
+                            IsEnabled="{Binding state.CanGoNext}"
+                            PointerEntered="PhotoEdgeButton_PointerEntered"
+                            PointerExited="PhotoEdgeButton_PointerExited"
+                            Click="NextPhoto_Click">
+                        <TextBlock x:Name="NextPhotoChevron" Text="&gt;" Opacity="0" FontSize="46" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/>
                     </Button>
                     <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="14" MaxWidth="500"
-                            Padding="10,6" CornerRadius="{StaticResource ARadiusMd}" Background="{ThemeResource ADarkOverlay}">
-                        <TextBlock Text="{Binding state.SelectedPhoto.PhotoFilename}" Foreground="{ThemeResource ATextOnMedia}" FontSize="{StaticResource AFontSizeXs}" TextWrapping="Wrap"/>
+                            Padding="10,6" CornerRadius="{StaticResource ARadiusMd}"
+                            Background="{ThemeResource ASurface}"
+                            BorderBrush="{ThemeResource ABorderMid}"
+                            BorderThickness="1">
+                        <TextBlock Text="{Binding state.SelectedPhoto.PhotoFilename}" Foreground="{ThemeResource ATextDim}" FontSize="{StaticResource AFontSizeXs}" TextWrapping="Wrap"/>
                     </Border>
                 </Grid>
                 <Grid Grid.Column="1" Background="{ThemeResource ASurface}" CornerRadius="0,28,28,0"

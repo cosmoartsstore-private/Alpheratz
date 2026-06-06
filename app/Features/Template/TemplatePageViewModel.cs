@@ -28,6 +28,7 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
     public UiObservableCollection<string> tweetTemplates { get; } = [];
     /// <summary>現在「投稿時に使う」として選ばれているテンプレート（空文字なら未選択）。</summary>
     [ObservableProperty] private string activeTweetTemplate = string.Empty;
+    [ObservableProperty] private bool openWorldLinkOnPost;
     /// <summary>編集中フォームの入力文字列。</summary>
     [ObservableProperty] private string tweetTemplateDraft = string.Empty;
     /// <summary>編集対象の旧テンプレート文字列（新規モードでは null）。差分更新の判定に使う。</summary>
@@ -47,12 +48,13 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
     /// Shell / Settings と状態が分岐すると、別設定の保存時に古いテンプレートで
     /// 上書きされるため、投稿テンプレートの真実源はこの VM に寄せる。
     /// </summary>
-    public void applySettings(IReadOnlyList<string>? templates, string? activeTemplate)
+    public void applySettings(IReadOnlyList<string>? templates, string? activeTemplate, bool openWorldLinkOnPost = false)
     {
         var nextTemplates = templates?
             .Where(template => !string.IsNullOrWhiteSpace(template))
             .ToArray()
             ?? Array.Empty<string>();
+        OpenWorldLinkOnPost = openWorldLinkOnPost;
         tweetTemplates.ReplaceAll(nextTemplates);
         ActiveTweetTemplate = !string.IsNullOrWhiteSpace(activeTemplate) && nextTemplates.Contains(activeTemplate)
             ? activeTemplate
@@ -125,6 +127,10 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
             var intentUrl = $"https://twitter.com/intent/tweet?text={text}";
             await worldService.CopyImageToClipboardAsync(photo.PhotoPath).ConfigureAwait(false);
             await worldService.OpenTweetIntentAsync(intentUrl).ConfigureAwait(false);
+            if (OpenWorldLinkOnPost && !string.IsNullOrWhiteSpace(photo.WorldId))
+            {
+                await worldService.OpenWorldUrlAsync(photo.WorldId).ConfigureAwait(false);
+            }
         }
         catch (Exception ex)
         {

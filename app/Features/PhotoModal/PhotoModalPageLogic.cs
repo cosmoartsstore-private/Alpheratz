@@ -12,6 +12,10 @@ namespace Alpheratz.Features.PhotoModal;
 internal static class PhotoModalPageLogic
 {
     public const int ModalDecodePixelWidth = 1920;
+    public const long NavigationInitialIntervalMs = 80;
+    public const long NavigationLongHoldThresholdMs = 900;
+    public const long NavigationLongHoldIntervalMs = 180;
+    public const long NavigationBurstResetMs = 450;
     public const string UnknownWorldName = "ワールド不明";
     public const string BottomActionHoverBrushKey = "ASurfaceHover";
 
@@ -73,6 +77,37 @@ internal static class PhotoModalPageLogic
         };
     }
 
+    /// <summary>矢印キー長押し中の連続ナビゲーションを間引くための判定を返す。</summary>
+    public static PhotoModalNavigationGateDecision NavigationGate(
+        long nowTicks,
+        long lastAcceptedTicks,
+        long burstStartedTicks,
+        bool sameDirection)
+    {
+        var elapsedSinceLast = lastAcceptedTicks <= 0
+            ? long.MaxValue
+            : System.Math.Max(0, nowTicks - lastAcceptedTicks);
+        var resetBurst = !sameDirection
+            || burstStartedTicks <= 0
+            || elapsedSinceLast >= NavigationBurstResetMs;
+        var effectiveBurstStart = resetBurst ? nowTicks : burstStartedTicks;
+
+        if (lastAcceptedTicks <= 0 || resetBurst)
+        {
+            return new PhotoModalNavigationGateDecision(true, effectiveBurstStart, nowTicks);
+        }
+
+        var burstDuration = System.Math.Max(0, nowTicks - effectiveBurstStart);
+        var minInterval = burstDuration >= NavigationLongHoldThresholdMs
+            ? NavigationLongHoldIntervalMs
+            : NavigationInitialIntervalMs;
+        var allowed = elapsedSinceLast >= minInterval;
+        return new PhotoModalNavigationGateDecision(
+            allowed,
+            effectiveBurstStart,
+            allowed ? nowTicks : lastAcceptedTicks);
+    }
+
     /// <summary>既存タグコンボボックスからタグ追加 callback へ渡す request を作る。</summary>
     public static PhotoModalTagMutationRequest? AddExistingTagRequest(object? selectedItem, string? photoPath, bool canAddTag)
     {
@@ -92,6 +127,16 @@ internal static class PhotoModalPageLogic
 
 /// <summary>PhotoModal の表示画像に渡す正規化済みパスとデコード幅。</summary>
 internal sealed record PhotoModalImageRequest(string NormalizedPath, int DecodePixelWidth);
+
+/// <summary>矢印キー長押しナビゲーションの受理可否と次回判定用タイミング。</summary>
+internal sealed record PhotoModalNavigationGateDecision(bool Allowed, long BurstStartedTicks, long LastAcceptedTicks);
+
+/// <summary>写真モーダルの前後ナビゲーション方向。</summary>
+internal enum PhotoModalNavigationDirection
+{
+    Previous,
+    Next,
+}
 
 /// <summary>match_source 補完元チップの表示状態。</summary>
 internal sealed record MatchSourceDisplay(bool Visible, string? Label);

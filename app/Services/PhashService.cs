@@ -36,6 +36,10 @@ public sealed class PhashService
     public Task<PhashProgressEvent> GetPhashProgressAsync(CancellationToken ct = default)
         => Task.FromResult(currentProgress);
 
+    /// <summary>現在 DB に残っている未計算 phash 件数を返す。</summary>
+    public Task<int> GetPendingPhashCountAsync(CancellationToken ct = default)
+        => db.GetPendingPhashCountAsync(ct);
+
     /// <summary>未計算 phash を新しい写真から順に補完する。多重起動中は何もせず戻る。</summary>
     public async Task StartPdqAnalysisAsync(CancellationToken ct = default)
     {

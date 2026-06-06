@@ -8,7 +8,7 @@ namespace Alpheratz.Tests;
 /// ShellHeaderBar の表示専用ロジックを検証するテスト。
 ///
 /// ShellHeaderBar 本体は Button、AppIcon、ThemeResource を直接操作するが、
-/// トグル押下後の次モード、PDQ 進捗のラベル、検索枠のテーマキーは UI 要素なしで決まる。
+    /// トグル押下後の次モード、検索枠のテーマキーは UI 要素なしで決まる。
 /// ここではそれらの小さな規則を固定し、HeaderBar の code-behind が表示反映だけを担えるようにする。
 /// </summary>
 public sealed class ShellHeaderBarLogicTests
@@ -57,19 +57,6 @@ public sealed class ShellHeaderBarLogicTests
             ShellHeaderBarLogic.ViewModeToggleState(ViewMode.standard));
         Assert.Equal(new HeaderToggleState(true, true, 1.0, "gallery"),
             ShellHeaderBarLogic.ViewModeToggleState(ViewMode.gallery));
-    }
-
-    /// <summary>
-    /// PDQ 進捗チップが停止中は非表示、実行中は total の有無でラベルを切り替えることを確認する。
-    ///
-    /// total がまだ分からない起動直後でも "PDQ" だけを出し、進行数が取れたら "done / total" 形式にする。
-    /// </summary>
-    [Fact]
-    public void PdqProgress_ReturnsVisibilityAndLabel()
-    {
-        Assert.Equal(new PdqProgressDisplay(false, ""), ShellHeaderBarLogic.PdqProgress(false, 0, 0));
-        Assert.Equal(new PdqProgressDisplay(true, "PDQ"), ShellHeaderBarLogic.PdqProgress(true, 0, 0));
-        Assert.Equal(new PdqProgressDisplay(true, "PDQ 3 / 10"), ShellHeaderBarLogic.PdqProgress(true, 3, 10));
     }
 
     /// <summary>

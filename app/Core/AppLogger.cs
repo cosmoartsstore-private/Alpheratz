@@ -4,24 +4,25 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Text;
 using System.Threading;
 
 namespace Alpheratz.Core;
 
-/// <summary>
-/// 単一プロセス内のアプリケーションログを ConcurrentQueue にためて、別スレッドで
-/// ファイルに flush する非同期ロガー。
-/// Trace は [Conditional("TRACE_LOGGING")] により、TRACE_LOGGING シンボルが定義されていない
-/// ビルドでは呼び出しごと（引数の文字列補間も含めて）C# コンパイラレベルで消える。
-/// このため高頻度経路に Trace を置いても Release ビルドでは GC 負荷を生まない。
-/// </summary>
 public static class AppLogger
 {
+    private const int MaxQueuedLines = 512;
+    private const int MaxMessageChars = 8000;
+    private const long MaxLogBytes = 1024 * 1024;
     private static readonly string _fallbackLogPath = GetFallbackLogPath();
     private static readonly ConcurrentQueue<string> _queue = new();
-    private static int _flushing;
+    private static readonly bool _verboseLogs =
+        string.Equals(Environment.GetEnvironmentVariable("ALPHERATZ_VERBOSE_LOGS"), "1", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>TRACE_LOGGING シンボルの有無を実行時に取得（呼出側ガード用）。</summary>
+    private static int _flushing;
+    private static int _queuedLines;
+    private static long _suppressFlushUntilUtcTicks;
+
     public static bool IsTraceEnabled =>
 #if TRACE_LOGGING
         true;
@@ -29,24 +30,29 @@ public static class AppLogger
         false;
 #endif
 
-    /// <summary>警告レベルのログを非同期書き込みキューへ追加する。</summary>
-    public static void Warn(string message) => Enqueue("WARN", message);
+    public static void Warn(string message)
+    {
+        if (_verboseLogs) Enqueue("WARN", message);
+    }
 
-    /// <summary>エラーレベルのログを非同期書き込みキューへ追加する。</summary>
-    public static void Error(string message) => Enqueue("ERROR", message);
+    public static void Error(string message)
+    {
+        if (_verboseLogs) Enqueue("ERROR", message);
+    }
 
-    /// <summary>情報レベルのログを非同期書き込みキューへ追加する。</summary>
-    public static void Info(string message) => Enqueue("INFO", message);
+    public static void Fatal(string message) => Enqueue("FATAL", message);
 
-    /// <summary>
-    /// 詳細トレース。TRACE_LOGGING シンボルが定義されたビルドのみで実行される
-    /// （引数の評価も含めてコンパイラが call site を消す）。Release ビルドではコストゼロ。
-    /// </summary>
+    public static void Info(string message)
+    {
+        if (_verboseLogs) Enqueue("INFO", message);
+    }
+
     [Conditional("TRACE_LOGGING")]
-    // TRACE_LOGGING 有効時だけ、詳細トレースを非同期書き込みキューへ追加する。
-    public static void Trace(string message) => Enqueue("TRACE", message);
+    public static void Trace(string message)
+    {
+        if (_verboseLogs) Enqueue("TRACE", message);
+    }
 
-    /// <summary>AppPaths が使えない場合でもログを書ける既定の保存先を返す。</summary>
     private static string GetFallbackLogPath()
     {
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -55,12 +61,26 @@ public static class AppLogger
         return Path.Combine(dir, "info.log");
     }
 
-    /// <summary>ログ行をキューへ積み、未実行ならバックグラウンド flush を開始する。</summary>
     private static void Enqueue(string level, string message)
     {
-        // 地域設定で format 解釈が揺れないよう InvariantCulture で固定する。
-        var line = $"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture)}] [{level}] {message}";
+        if (Interlocked.Increment(ref _queuedLines) > MaxQueuedLines)
+        {
+            Interlocked.Decrement(ref _queuedLines);
+            return;
+        }
+
+        var rawMessage = message ?? string.Empty;
+        var safeMessage = rawMessage.Length <= MaxMessageChars
+            ? rawMessage
+            : string.Concat(rawMessage.AsSpan(0, MaxMessageChars), "...<truncated>");
+        var line = $"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture)}] [{level}] {safeMessage}";
         _queue.Enqueue(line);
+        TryScheduleFlush();
+    }
+
+    private static void TryScheduleFlush()
+    {
+        if (DateTime.UtcNow.Ticks < Volatile.Read(ref _suppressFlushUntilUtcTicks)) return;
 
         if (Interlocked.CompareExchange(ref _flushing, 1, 0) == 0)
         {
@@ -68,40 +88,86 @@ public static class AppLogger
         }
     }
 
-    /// <summary>キュー内のログ行をファイルへ追記し、失敗した行は再試行用に戻す。</summary>
     private static void Flush()
     {
-        // dequeue したログ行は writer の Dispose 直前まで保持しておく。
-        // ファイル I/O 例外で writer が落ちたとき、キューから消えたまま捨てられないように
-        // pending に積んでおき、失敗時には ConcurrentQueue へ戻す。
         var pending = new List<string>();
+        var writeFailed = false;
+
         try
         {
             var logDir = AppPaths.GetLogDir();
             var path = logDir is not null ? Path.Combine(logDir, "info.log") : _fallbackLogPath;
+            EnsureDirectoryFor(path);
+            RotateIfOverBudget(path);
 
-            // 同一プロセス内のリーダー（外部ツールでの tail 等）が握っていてもログを書き続けたい。
             using var fs = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
-            using var writer = new StreamWriter(fs, System.Text.Encoding.UTF8);
+            using var writer = new StreamWriter(fs, Encoding.UTF8);
             while (_queue.TryDequeue(out var line))
             {
+                Interlocked.Decrement(ref _queuedLines);
                 pending.Add(line);
                 writer.WriteLine(line);
             }
         }
         catch
         {
-            // 書き込みに失敗した分はキューへ戻して次回 Flush に再挑戦する。
-            // 失敗時にここで握りつぶしていた行が永久に失われていたのを修正。
-            foreach (var line in pending) _queue.Enqueue(line);
+            writeFailed = true;
+            Volatile.Write(ref _suppressFlushUntilUtcTicks, DateTime.UtcNow.AddSeconds(30).Ticks);
+            foreach (var line in pending) Requeue(line);
         }
         finally
         {
             Interlocked.Exchange(ref _flushing, 0);
-            if (!_queue.IsEmpty && Interlocked.CompareExchange(ref _flushing, 1, 0) == 0)
+            if (!writeFailed && !_queue.IsEmpty)
             {
-                ThreadPool.QueueUserWorkItem(_ => Flush());
+                TryScheduleFlush();
             }
+        }
+    }
+
+    private static void Requeue(string line)
+    {
+        if (Interlocked.Increment(ref _queuedLines) > MaxQueuedLines)
+        {
+            Interlocked.Decrement(ref _queuedLines);
+            return;
+        }
+
+        _queue.Enqueue(line);
+    }
+
+    private static void EnsureDirectoryFor(string path)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(dir)) Directory.CreateDirectory(dir);
+        }
+        catch
+        {
+        }
+    }
+
+    private static void RotateIfOverBudget(string path)
+    {
+        try
+        {
+            var info = new FileInfo(path);
+            if (!info.Exists || info.Length <= MaxLogBytes) return;
+
+            var rotatedPath = path + ".1";
+            try
+            {
+                if (File.Exists(rotatedPath)) File.Delete(rotatedPath);
+                File.Move(path, rotatedPath);
+            }
+            catch
+            {
+                File.WriteAllText(path, string.Empty, Encoding.UTF8);
+            }
+        }
+        catch
+        {
         }
     }
 }

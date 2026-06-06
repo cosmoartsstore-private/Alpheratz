@@ -171,7 +171,7 @@ public sealed partial class PhotoGridItemsView : UserControl
     /// </summary>
     private double currentImageWidth;
 
-    // 利用可能幅から 5 列固定のカード寸法を再計算する。
+    // 利用可能幅から通常 6 列のカード寸法を再計算する。
     private void RecalculateCardSize(double availableWidth)
     {
         if (availableWidth <= 0 || wrapGrid is null) return;

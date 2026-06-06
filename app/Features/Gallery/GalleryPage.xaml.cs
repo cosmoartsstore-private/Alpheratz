@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Threading.Tasks;
 using Alpheratz.Core;
 using Alpheratz.Features.Gallery.Controls;
+using Alpheratz.Shared.Models;
 using Alpheratz.Shared.Animations;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -57,7 +58,11 @@ public sealed partial class GalleryPage : Page
             FilterPanel.OnResetFilters = () => OnResetFilters?.Invoke();
             FilterPanel.OnDatePresetSelect = preset => OnDatePresetSelect?.Invoke(preset);
             FilterPanel.OnOrientationSelect = orientation => viewModel.filtersState.OrientationFilter = orientation;
-            FilterPanel.OnSortSelect = sort => viewModel.filtersState.SortMode = sort;
+            FilterPanel.OnSortSelect = sort =>
+            {
+                viewModel.filtersState.SortMode = sort;
+                SyncMonthNavAvailability();
+            };
             FilterPanel.OnDisplayFolderSelect = mode => viewModel.displayState.prepareDisplayFolderModeChange(
                 viewModel.filtersState.DisplayFolderMode, mode, m => viewModel.filtersState.DisplayFolderMode = m);
             FilterPanel.OnGroupingSelect = mode =>
@@ -114,6 +119,7 @@ public sealed partial class GalleryPage : Page
             viewModel.selectionState.PropertyChanged += OnSelectionStateChanged;
             viewModel.selectionState.selectedPhotoPaths.CollectionChanged += OnSelectedPathsChanged;
             viewModel.photosState.PropertyChanged += OnPhotosStateChanged;
+            viewModel.filtersState.PropertyChanged += OnFiltersStateChanged;
 
             // MasonryView のコールバック結線。x:Load=False で遅延生成されるため、
             // 最初に SetMasonryActive(true) が呼ばれて実体化された瞬間に結線する。
@@ -123,6 +129,7 @@ public sealed partial class GalleryPage : Page
             {
                 monthNav.OnJumpToMonth = group =>
                 {
+                    if (!IsMonthNavAvailableForCurrentSort()) return;
                     if (viewModel.displayState.ViewMode == Alpheratz.Shared.Models.ViewMode.gallery)
                         GridStage.MasonryViewControlRef?.ScrollToPhotoIndex(group.FirstIndex);
                     else
@@ -130,6 +137,7 @@ public sealed partial class GalleryPage : Page
                 };
             }
             GridStage.SetMasonryActive(viewModel.displayState.ViewMode == Alpheratz.Shared.Models.ViewMode.gallery);
+            SyncMonthNavAvailability();
             FilterPanel.SetGroupingEnabled(viewModel.displayState.ViewMode != Alpheratz.Shared.Models.ViewMode.gallery);
 
             viewModel.photosState.OnMonthGroupsChanged = groups =>
@@ -171,6 +179,22 @@ public sealed partial class GalleryPage : Page
         }
 
         AppLogger.Trace("GalleryPage.ctor: exit");
+    }
+
+    /// <summary>ソート条件変更時に、日付順専用の MonthNav 表示を同期する。</summary>
+    private void OnFiltersStateChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        try
+        {
+            if (e.PropertyName == nameof(GalleryFiltersState.SortMode))
+            {
+                SyncMonthNavAvailability();
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"GalleryPage.OnFiltersStateChanged: threw: {ex}");
+        }
     }
 
     /// <summary>タグマスタのドロップダウン候補をフィルタパネルとバルク操作バーに設定する。</summary>
@@ -318,7 +342,7 @@ public sealed partial class GalleryPage : Page
         AppLogger.Trace("GalleryPage.ExitMultiSelect_Click: enter");
         try
         {
-            viewModel.selectionState.handleToggleMultiSelectMode();
+            viewModel.selectionState.exitMultiSelectMode();
         }
         catch (Exception ex)
         {
@@ -382,6 +406,7 @@ public sealed partial class GalleryPage : Page
         try
         {
             var groups = viewModel.photosState.monthGroups;
+            if (!IsMonthNavAvailableForCurrentSort()) return;
             if (groups.Count == 0 || GridStage.MonthNavControlRef is not { } nav) return;
 
             if (GalleryPageLogic.FindActiveMonthGroupIndex(groups, firstVisibleIndex) is { } matchedGroupIdx)
@@ -401,6 +426,7 @@ public sealed partial class GalleryPage : Page
         var isGallery = viewModel.displayState.ViewMode == Shared.Models.ViewMode.gallery;
         GridStage.SetMasonryActive(isGallery);
         FilterPanel.SetGroupingEnabled(!isGallery);
+        SyncMonthNavAvailability();
         GridStage.UpdateLoadingState(viewModel.photosState.IsLoading, viewModel.photosState.TotalCount);
     }
 
@@ -411,6 +437,7 @@ public sealed partial class GalleryPage : Page
         viewModel.selectionState.selectedPhotoPaths.CollectionChanged -= OnSelectedPathsChanged;
         viewModel.displayState.PropertyChanged -= OnDisplayStateChanged;
         viewModel.photosState.PropertyChanged -= OnPhotosStateChanged;
+        viewModel.filtersState.PropertyChanged -= OnFiltersStateChanged;
 
         viewModel.photosState.OnMonthGroupsChanged = null;
         viewModel.photosState.OnPhotosReplaced = null;
@@ -450,4 +477,10 @@ public sealed partial class GalleryPage : Page
         }
         AppLogger.Trace("GalleryPage.BulkCopy_Click: exit");
     }
+
+    private bool IsMonthNavAvailableForCurrentSort()
+        => viewModel.filtersState.SortMode == SortMode.dateDesc;
+
+    private void SyncMonthNavAvailability()
+        => GridStage.SetMonthNavAvailable(IsMonthNavAvailableForCurrentSort());
 }

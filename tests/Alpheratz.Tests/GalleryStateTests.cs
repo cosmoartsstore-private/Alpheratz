@@ -18,33 +18,6 @@ namespace Alpheratz.Tests;
 public sealed class GalleryStateTests
 {
     /// <summary>
-    /// 検索コマンドをフィルタ状態へ反映したとき、各フィルタ値と件数が更新されることを確認する。
-    ///
-    /// SearchCommandParser は文字列を構造化するだけであり、実際の画面フィルタ値へ反映する責務は
-    /// GalleryFiltersState.applySearchCommands にある。このテストは、日付、向き、お気に入り、
-    /// タグ、フォルダ、ソートが一括更新され、BatchCompleted 通知が任意に抑制できる仕様を確認する。
-    /// </summary>
-    [Fact]
-    public void ApplySearchCommands_UpdatesFilterValuesAndActiveCount()
-    {
-        var state = new GalleryFiltersState();
-        var commands = SearchCommandParser.Parse(
-            "tag:night since:2026-06-01 until:2026-06-05 orientation:portrait is:fav folder:secondary sort:world");
-
-        state.applySearchCommands(commands, raiseBatchCompleted: false);
-
-        Assert.Equal("2026-06-01", state.DateFrom);
-        Assert.Equal("2026-06-05", state.DateTo);
-        Assert.Equal(DatePreset.custom, state.DatePreset);
-        Assert.Equal("portrait", state.OrientationFilter);
-        Assert.True(state.FavoritesOnly);
-        Assert.Equal(["night"], state.tagFilters);
-        Assert.Equal(DisplayFolderMode.secondary, state.DisplayFolderMode);
-        Assert.Equal(SortMode.worldAsc, state.SortMode);
-        Assert.Equal(5, state.ActiveFilterCount);
-    }
-
-    /// <summary>
     /// resetFilters が全フィルタを初期値へ戻すことを確認する。
     ///
     /// フィルタ状態は複数のコレクションと単体プロパティで構成されている。
@@ -86,6 +59,19 @@ public sealed class GalleryStateTests
         Assert.Equal(DisplayFolderMode.all, state.DisplayFolderMode);
         Assert.Equal(SortMode.dateDesc, state.SortMode);
         Assert.Equal(0, state.ActiveFilterCount);
+    }
+
+    [Fact]
+    public void ActiveFilterCount_CountsCommandLikeSearchTextAsPlainQuery()
+    {
+        var state = new GalleryFiltersState
+        {
+            SearchQuery = "tag:night world:Moon",
+        };
+        state.tagFilters.Add("night");
+        state.worldFilters.Add("Moon");
+
+        Assert.Equal(3, state.ActiveFilterCount);
     }
 
     /// <summary>

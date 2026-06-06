@@ -18,6 +18,9 @@ public sealed partial class GalleryGridStage : UserControl
     /// </summary>
     public Action<GalleryMasonryView>? OnMasonryRealized { get; set; }
     private bool masonryRealized;
+    private bool monthNavAvailable = true;
+    private bool lastIsLoading;
+    private int lastTotalCount;
 
     // ギャラリー表示領域を初期化する。MasonryView は必要時まで実体化しない。
     public GalleryGridStage()
@@ -97,7 +100,8 @@ public sealed partial class GalleryGridStage : UserControl
         AppLogger.Trace($"GalleryGridStage.SetMasonryActive: enter active={active}");
         try
         {
-            var state = GalleryGridStageLogic.ViewModeDisplay(active);
+            var monthNavAllowed = monthNavAvailable && !GalleryGridStageLogic.ShouldShowEmpty(lastIsLoading, lastTotalCount);
+            var state = GalleryGridStageLogic.ViewModeDisplay(active, monthNavAllowed);
             if (active)
             {
                 var masonry = EnsureMasonryRealized();
@@ -128,7 +132,9 @@ public sealed partial class GalleryGridStage : UserControl
     {
         try
         {
-            var state = GalleryGridStageLogic.LoadingDisplay(isLoading, totalCount);
+            lastIsLoading = isLoading;
+            lastTotalCount = totalCount;
+            var state = GalleryGridStageLogic.LoadingDisplay(isLoading, totalCount, monthNavAvailable);
             LoadingVeil.Visibility = ToVisibility(state.LoadingVisible);
             EmptyStateControl.Visibility = ToVisibility(state.EmptyVisible);
             ApplyMonthNav(state.MonthNavVisible, state.MonthNavWidth);
@@ -136,6 +142,25 @@ public sealed partial class GalleryGridStage : UserControl
         catch (Exception ex)
         {
             AppLogger.Error($"GalleryGridStage.UpdateLoadingState: threw: {ex}");
+        }
+    }
+
+    /// <summary>日付順でない表示では MonthNav の日付ジャンプを隠す。</summary>
+    public void SetMonthNavAvailable(bool available)
+    {
+        try
+        {
+            monthNavAvailable = available;
+            if (!available)
+            {
+                MonthNavControl.SetActiveIndex(-1);
+            }
+            var state = GalleryGridStageLogic.LoadingDisplay(lastIsLoading, lastTotalCount, monthNavAvailable);
+            ApplyMonthNav(state.MonthNavVisible, state.MonthNavWidth);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"GalleryGridStage.SetMonthNavAvailable: threw: {ex}");
         }
     }
 

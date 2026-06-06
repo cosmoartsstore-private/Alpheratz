@@ -64,7 +64,7 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <Button x:Name="DateTriggerBtn" Style="{StaticResource GhostButtonStyle}"
-                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                                     Padding="10,8" CornerRadius="{StaticResource ARadiusMd}" Click="DateTrigger_Click">
                                 <StackPanel Orientation="Horizontal" Spacing="10">
                                     <Border Width="24" Height="24" CornerRadius="{StaticResource ARadiusSm}"
@@ -235,7 +235,7 @@
                     <StackPanel Spacing="8" Padding="14,12" BorderBrush="{ThemeResource ABorder}" BorderThickness="0,0,0,1">
                         <TextBlock Text="タグ" Style="{StaticResource SectionTitleStyle}"/>
                         <Button x:Name="TagTriggerBtn" Style="{StaticResource GhostButtonStyle}"
-                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                                 Padding="10,8" CornerRadius="{StaticResource ARadiusMd}" Click="TagTrigger_Click">
                             <Grid HorizontalAlignment="Stretch">
                                 <Grid.ColumnDefinitions>
@@ -262,13 +262,17 @@
                                 BorderBrush="{ThemeResource ABorder}" BorderThickness="1">
                             <StackPanel>
                                 <Border Padding="10,8" BorderBrush="{ThemeResource ABorder}" BorderThickness="0,0,0,1">
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
                                         <TextBlock Text="&#x2315;" FontSize="14" VerticalAlignment="Center" Foreground="{ThemeResource ATextFaint}"/>
-                                        <TextBox x:Name="TagSearchBox" PlaceholderText="タグ名で絞り込む..."
+                                        <TextBox x:Name="TagSearchBox" Grid.Column="1" PlaceholderText="タグ名で絞り込む..."
                                                  BorderThickness="0" Background="Transparent" Padding="0"
                                                  FontSize="{StaticResource AFontSizeMd}" HorizontalAlignment="Stretch"
                                                  TextChanged="TagSearch_TextChanged"/>
-                                    </StackPanel>
+                                    </Grid>
                                 </Border>
                                 <ScrollViewer MaxHeight="300" VerticalScrollBarVisibility="Auto">
                                     <StackPanel x:Name="TagCheckboxList" Spacing="2" Padding="4"/>
@@ -285,7 +289,7 @@
                     <StackPanel Spacing="8" Padding="14,12" BorderBrush="{ThemeResource ABorder}" BorderThickness="0,0,0,1">
                         <TextBlock Text="ワールド" Style="{StaticResource SectionTitleStyle}"/>
                         <Button x:Name="WorldTriggerBtn" Style="{StaticResource GhostButtonStyle}"
-                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                                 Padding="10,8" CornerRadius="{StaticResource ARadiusMd}" Click="WorldTrigger_Click">
                             <Grid HorizontalAlignment="Stretch">
                                 <Grid.ColumnDefinitions>
@@ -312,13 +316,17 @@
                                 BorderBrush="{ThemeResource ABorder}" BorderThickness="1">
                             <StackPanel>
                                 <Border Padding="10,8" BorderBrush="{ThemeResource ABorder}" BorderThickness="0,0,0,1">
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
                                         <TextBlock Text="&#x2315;" FontSize="14" VerticalAlignment="Center" Foreground="{ThemeResource ATextFaint}"/>
-                                        <TextBox x:Name="WorldSearchBox" PlaceholderText="ワールド名で絞り込む..."
+                                        <TextBox x:Name="WorldSearchBox" Grid.Column="1" PlaceholderText="ワールド名で絞り込む..."
                                                  BorderThickness="0" Background="Transparent" Padding="0"
                                                  FontSize="{StaticResource AFontSizeMd}" HorizontalAlignment="Stretch"
                                                  TextChanged="WorldSearch_TextChanged"/>
-                                    </StackPanel>
+                                    </Grid>
                                 </Border>
                                 <ScrollViewer MaxHeight="440" VerticalScrollBarVisibility="Auto">
                                     <StackPanel x:Name="WorldCheckboxList" Spacing="2" Padding="4"/>

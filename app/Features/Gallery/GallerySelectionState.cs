@@ -108,6 +108,12 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
             {
                 AppLogger.Trace("GallerySelectionState.toggleSelectedPhoto: branch=remove");
                 selectedPhotoPaths.Remove(photoPath);
+                if (selectedPhotoPaths.Count == 0)
+                {
+                    SelectionAnchorPhotoPath = null;
+                    AppLogger.Trace("GallerySelectionState.toggleSelectedPhoto: exit (last selection removed, mode retained)");
+                    return;
+                }
             }
             else
             {
@@ -146,12 +152,7 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
         AppLogger.Trace($"GallerySelectionState.handleToggleMultiSelectMode: enter IsMultiSelectMode={IsMultiSelectMode}");
         try
         {
-            if (IsMultiSelectMode)
-            {
-                clearSelectedPhotos();
-            }
-
-            IsMultiSelectMode = !IsMultiSelectMode;
+            setMultiSelectMode(!IsMultiSelectMode);
         }
         catch (Exception ex)
         {
@@ -159,6 +160,29 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
         }
         AppLogger.Trace($"GallerySelectionState.handleToggleMultiSelectMode: exit IsMultiSelectMode={IsMultiSelectMode}");
     }
+
+    /// <summary>マルチセレクトモードを明示的に設定する。終了時は残った選択をクリアする。</summary>
+    public void setMultiSelectMode(bool enabled)
+    {
+        AppLogger.Trace($"GallerySelectionState.setMultiSelectMode: enter enabled={enabled} IsMultiSelectMode={IsMultiSelectMode}");
+        try
+        {
+            if (!enabled)
+            {
+                clearSelectedPhotos();
+            }
+
+            IsMultiSelectMode = enabled;
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"GallerySelectionState.setMultiSelectMode: threw: {ex}");
+        }
+        AppLogger.Trace($"GallerySelectionState.setMultiSelectMode: exit IsMultiSelectMode={IsMultiSelectMode}");
+    }
+
+    /// <summary>マルチセレクトモードを終了する。既に終了済みなら選択クリアだけを保証する。</summary>
+    public void exitMultiSelectMode() => setMultiSelectMode(false);
 
     /// <summary>一括操作に使う写真参照リストを現在の選択内容で置き換える。</summary>
     public void setSelectedPhotoRefs(IEnumerable<SelectedPhotoRefDto> refsToSet)

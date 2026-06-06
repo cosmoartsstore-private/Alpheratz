@@ -50,10 +50,9 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     // やや遅いが、ユーザは UI 操作可能なので体感問題にはなりにくい。
     private readonly SemaphoreSlim postScanGate = new(1, 1);
 
-    // phash 計算進捗の UI 更新スロットリング。生ハンドラは数十 ms ごとに発火するが、
-    // UI の TextBlock 更新を毎回マーシャリングすると CPU が無駄になるため、最小間隔を 1 秒に絞る。
-    private const long PhashUiUpdateMinIntervalMs = 1000;
-    private long lastPhashUiUpdateTicks;
+    // phash 計算進捗イベントは数十 ms ごとに発火するため、状態更新の最小間隔を 1 秒に絞る。
+    private const long PhashProgressUpdateMinIntervalMs = 1000;
+    private long lastPhashProgressUpdateTicks;
 
     public GalleryViewModel galleryViewModel { get; }
     public SettingsViewModel settingsViewModel { get; }
@@ -66,6 +65,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     private string secondaryPhotoFolderPath = "";
     private PhashProgressEvent pdqProgress = PhashProgressEvent.Empty;
     private bool isPdqRunning;
+    private bool canStartWorldResolve;
     private string? pendingFolderPath;
     private int pendingFolderSlot = 1;
     private PendingResetRequest? pendingResetRequest;
@@ -73,6 +73,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     private bool startupEnabled;
     private ThemeMode themeMode = ThemeMode.light;
     private ViewMode viewMode = ViewMode.standard;
+    private bool openWorldLinkOnPost;
     public UiObservableCollection<string> tweetTemplates { get; } = [];
     private string activeTweetTemplate = "";
 
@@ -82,6 +83,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     public string SecondaryPhotoFolderPath { get => secondaryPhotoFolderPath; set => SetProperty(ref secondaryPhotoFolderPath, value); }
     public PhashProgressEvent PdqProgress { get => pdqProgress; set => SetProperty(ref pdqProgress, value); }
     public bool IsPdqRunning { get => isPdqRunning; set => SetProperty(ref isPdqRunning, value); }
+    public bool CanStartWorldResolve { get => canStartWorldResolve; private set => SetProperty(ref canStartWorldResolve, value); }
     public string? PendingFolderPath { get => pendingFolderPath; set => SetProperty(ref pendingFolderPath, value); }
     public int PendingFolderSlot { get => pendingFolderSlot; set => SetProperty(ref pendingFolderSlot, value); }
     public PendingResetRequest? PendingResetRequest { get => pendingResetRequest; set => SetProperty(ref pendingResetRequest, value); }
@@ -89,6 +91,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     public bool StartupEnabled { get => startupEnabled; set => SetProperty(ref startupEnabled, value); }
     public ThemeMode ThemeMode { get => themeMode; set => SetProperty(ref themeMode, value); }
     public ViewMode ViewMode { get => viewMode; set => SetProperty(ref viewMode, value); }
+    public bool OpenWorldLinkOnPost { get => openWorldLinkOnPost; set => SetProperty(ref openWorldLinkOnPost, value); }
     public string ActiveTweetTemplate { get => activeTweetTemplate; set => SetProperty(ref activeTweetTemplate, value); }
 
     public ShellViewModel(
@@ -253,9 +256,10 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
                 var nextViewMode = setting.viewMode ?? ViewMode.standard;
                 ViewMode = nextViewMode;
                 galleryViewModel.displayState.ViewMode = nextViewMode;
+                OpenWorldLinkOnPost = setting.openWorldLinkOnPost ?? false;
                 ActiveTweetTemplate = setting.activeTweetTemplate ?? "";
                 tweetTemplates.ReplaceAll(setting.tweetTemplates ?? Array.Empty<string>());
-                templatePageViewModel.applySettings(setting.tweetTemplates, setting.activeTweetTemplate);
+                templatePageViewModel.applySettings(setting.tweetTemplates, setting.activeTweetTemplate, setting.openWorldLinkOnPost ?? false);
             }).ConfigureAwait(false);
             await settingsViewModel.refreshSettings().ConfigureAwait(false);
         }
@@ -380,29 +384,32 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         AppLogger.Trace("ShellViewModel.registerPhashWorker: enter");
         if (DETACH_RUNTIME_DATA || DETACH_AUXILIARY_RUNTIME_DATA)
         {
-            PdqProgress = PhashProgressEvent.Empty; IsPdqRunning = false;
+            PdqProgress = PhashProgressEvent.Empty; IsPdqRunning = false; CanStartWorldResolve = true;
             return;
         }
         try
         {
             var initial = await phashService.GetPhashProgressAsync().ConfigureAwait(false);
+            var pending = await phashService.GetPendingPhashCountAsync().ConfigureAwait(false);
             PdqProgress = initial;
             IsPdqRunning = initial.total > 0 && initial.done < initial.total;
+            CanStartWorldResolve = !IsPdqRunning && pending == 0;
         }
-        catch (Exception ex) { AppLogger.Warn($"ShellViewModel.registerPhashWorker: initial probe failed: {ex}"); PdqProgress = PhashProgressEvent.Empty; }
+        catch (Exception ex) { AppLogger.Warn($"ShellViewModel.registerPhashWorker: initial probe failed: {ex}"); PdqProgress = PhashProgressEvent.Empty; CanStartWorldResolve = false; }
         try
         {
             phashUnlistenFns.Add(eventBus.Subscribe<PhashProgressEvent>(EventNames.PhashProgress, payload =>
             {
                 IsPdqRunning = true;
+                CanStartWorldResolve = false;
                 var nowTicks = Environment.TickCount64;
-                if (payload.done >= payload.total || nowTicks - lastPhashUiUpdateTicks >= PhashUiUpdateMinIntervalMs)
+                if (payload.done >= payload.total || nowTicks - lastPhashProgressUpdateTicks >= PhashProgressUpdateMinIntervalMs)
                 {
-                    lastPhashUiUpdateTicks = nowTicks; PdqProgress = payload;
+                    lastPhashProgressUpdateTicks = nowTicks; PdqProgress = payload;
                 }
                 return Task.CompletedTask;
             }));
-            phashUnlistenFns.Add(eventBus.Subscribe(EventNames.PhashComplete, () =>
+            phashUnlistenFns.Add(eventBus.Subscribe(EventNames.PhashComplete, async () =>
             {
                 IsPdqRunning = false;
                 // 完了トーストは「実際に処理対象があったとき」だけ出す。total==0 (保留ゼロで即完了)
@@ -415,16 +422,17 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
                 // PDQ ハッシュ計算完了の通知のみを行う。ワールドの自動確定 (緩い閾値での最近接
                 // 1 件の勝手採用) は誤割り当ての発生源になるため撤去した。PDQ 解決は手動の
                 // WorldResolve ランキング UI (phash_confirmed) を唯一の経路とする。
-                return Task.CompletedTask;
+                await RefreshWorldResolveAvailabilityAsync().ConfigureAwait(false);
             }));
             // phash_error は従来購読者が無く silent だった。中断 (payload="中断されました") は info、
             // それ以外の失敗は error でトースト化する。購読解除は phashUnlistenFns 経由で
             // DisposeAsync が確実に行う。
-            phashUnlistenFns.Add(eventBus.Subscribe<string>(EventNames.PhashError, payload =>
+            phashUnlistenFns.Add(eventBus.Subscribe<string>(EventNames.PhashError, async payload =>
             {
                 try
                 {
                     IsPdqRunning = false;
+                    await RefreshWorldResolveAvailabilityAsync().ConfigureAwait(false);
                     var isCancelled = payload == "中断されました";
                     var message = isCancelled
                         ? "類似画像の解析を中断しました"
@@ -432,10 +440,30 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
                     toastService.addToast(message, isCancelled ? ToastType.info : ToastType.error);
                 }
                 catch (Exception ex) { AppLogger.Error($"ShellViewModel.phash_error: threw: {ex}"); }
-                return Task.CompletedTask;
             }));
         }
         catch (Exception ex) { AppLogger.Error($"ShellViewModel.registerPhashWorker: subscription failed: {ex}"); throw; }
+    }
+
+    /// <summary>PDQ 未計算が残っていないときだけ、手動ワールド解決を有効化する。</summary>
+    private async Task RefreshWorldResolveAvailabilityAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            if (DETACH_RUNTIME_DATA || DETACH_AUXILIARY_RUNTIME_DATA)
+            {
+                CanStartWorldResolve = true;
+                return;
+            }
+
+            var pending = await phashService.GetPendingPhashCountAsync(ct).ConfigureAwait(false);
+            CanStartWorldResolve = !IsPdqRunning && pending == 0;
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Warn($"ShellViewModel.RefreshWorldResolveAvailabilityAsync: failed: {ex.Message}");
+            CanStartWorldResolve = false;
+        }
     }
 
     /// <summary>Shell が保持する現在設定から保存用 DTO を作る。overrides は指定項目だけ優先する。</summary>
@@ -450,6 +478,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
             enableStartup = overrides?.enableStartup ?? StartupEnabled,
             themeMode = overrides?.themeMode ?? ThemeMode,
             viewMode = overrides?.viewMode ?? ViewMode,
+            openWorldLinkOnPost = overrides?.openWorldLinkOnPost ?? OpenWorldLinkOnPost,
             tweetTemplates = overrides?.tweetTemplates ?? currentTweetTemplates,
             activeTweetTemplate = overrides?.activeTweetTemplate ?? templatePageViewModel.ActiveTweetTemplate,
         };
@@ -584,6 +613,23 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     }
 
     /// <summary>自動起動の希望値を更新し、設定ファイルと OS 側へ保存する。</summary>
+    public async Task handleOpenWorldOnPostPreference(bool enabled)
+    {
+        AppLogger.Trace($"ShellViewModel.handleOpenWorldOnPostPreference: enter enabled={enabled}");
+        try
+        {
+            await settingsService.SaveSettingAsync(buildSettingPayload(new AlpheratzSettingDto { openWorldLinkOnPost = enabled })).ConfigureAwait(false);
+            OpenWorldLinkOnPost = enabled;
+            templatePageViewModel.OpenWorldLinkOnPost = enabled;
+        }
+        catch (Exception err)
+        {
+            AppLogger.Error($"ShellViewModel.handleOpenWorldOnPostPreference: threw: {err}");
+            toastService.addToast($"謚慕ｨｿ譎ゅ・繝ｯ繝ｼ繝ｫ繝峨Μ繝ｳ繧ｯ險ｭ螳壹・譖ｴ譁ｰ縺ｫ螟ｱ謨励＠縺ｾ縺励◆: {err}", ToastType.error);
+        }
+        AppLogger.Trace("ShellViewModel.handleOpenWorldOnPostPreference: exit");
+    }
+
     public async Task handleStartupPreference(bool enabled)
     {
         AppLogger.Trace($"ShellViewModel.handleStartupPreference: enter enabled={enabled}");

@@ -58,6 +58,7 @@ public sealed partial class AppIcon : UserControl
             AppLogger.Error($"AppIcon.ctor: InitializeComponent failed: {ex}");
             throw;
         }
+        UpdateGeometry();
         AppLogger.Trace("AppIcon.ctor: exit");
     }
 
@@ -67,17 +68,19 @@ public sealed partial class AppIcon : UserControl
         try
         {
             if (d is not AppIcon ctrl) return;
-            var iconName = (string)e.NewValue ?? string.Empty;
-            if (string.IsNullOrEmpty(iconName))
-            {
-                ctrl.IconPath.Data = null;
-                return;
-            }
-            ctrl.IconPath.Data = AppIcons.GetGeometry(iconName);
+            ctrl.UpdateGeometry();
         }
         catch (Exception ex)
         {
             AppLogger.Error($"AppIcon.OnNameChanged: threw: {ex}");
         }
+    }
+
+    private void UpdateGeometry()
+    {
+        var iconName = IconName ?? string.Empty;
+        IconPath.Data = string.IsNullOrEmpty(iconName)
+            ? null
+            : AppIcons.GetGeometry(iconName);
     }
 }

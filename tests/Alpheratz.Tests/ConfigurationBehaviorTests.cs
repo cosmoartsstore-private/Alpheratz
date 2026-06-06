@@ -78,6 +78,7 @@ public sealed class ConfigurationBehaviorTests : IDisposable
             SecondaryPhotoFolderPath = "F:/photos/secondary",
             ThemeMode = "dark",
             ViewMode = "gallery",
+            OpenWorldLinkOnPost = true,
             TweetTemplates = ["one", "two"],
             ActiveTweetTemplate = "two",
         });
@@ -88,6 +89,7 @@ public sealed class ConfigurationBehaviorTests : IDisposable
         Assert.Equal("F:/photos/secondary", reloaded.SecondaryPhotoFolderPath);
         Assert.Equal("dark", reloaded.ThemeMode);
         Assert.Equal("gallery", reloaded.ViewMode);
+        Assert.True(reloaded.OpenWorldLinkOnPost);
         Assert.Equal(["one", "two"], reloaded.TweetTemplates);
         Assert.Equal("two", reloaded.ActiveTweetTemplate);
     }
@@ -109,6 +111,7 @@ public sealed class ConfigurationBehaviorTests : IDisposable
             ThemeMode = "dark",
             ViewMode = "gallery",
             EnableStartup = true,
+            OpenWorldLinkOnPost = true,
             TweetTemplates = ["alpha", "beta"],
             ActiveTweetTemplate = "beta",
         });
@@ -120,6 +123,7 @@ public sealed class ConfigurationBehaviorTests : IDisposable
         Assert.Equal(ThemeMode.dark, dto.themeMode);
         Assert.Equal(ViewMode.gallery, dto.viewMode);
         Assert.True(dto.enableStartup);
+        Assert.True(dto.openWorldLinkOnPost);
         Assert.Equal(["alpha", "beta"], dto.tweetTemplates);
         Assert.Equal("beta", dto.activeTweetTemplate);
     }
@@ -143,6 +147,7 @@ public sealed class ConfigurationBehaviorTests : IDisposable
             SecondaryPhotoFolderPath = "F:/old-secondary",
             ThemeMode = "dark",
             ViewMode = "gallery",
+            OpenWorldLinkOnPost = true,
             TweetTemplates = ["before"],
             ActiveTweetTemplate = "before",
         });
@@ -153,6 +158,7 @@ public sealed class ConfigurationBehaviorTests : IDisposable
         {
             photoFolderPath = "F:/new-primary",
             themeMode = ThemeMode.light,
+            openWorldLinkOnPost = false,
             tweetTemplates = mutableTemplates,
             activeTweetTemplate = "after-2",
         });
@@ -163,6 +169,7 @@ public sealed class ConfigurationBehaviorTests : IDisposable
         Assert.Equal("F:/old-secondary", saved.SecondaryPhotoFolderPath);
         Assert.Equal("light", saved.ThemeMode);
         Assert.Equal("gallery", saved.ViewMode);
+        Assert.False(saved.OpenWorldLinkOnPost);
         Assert.Equal(["after-1", "after-2"], saved.TweetTemplates);
         Assert.Equal("after-2", saved.ActiveTweetTemplate);
     }

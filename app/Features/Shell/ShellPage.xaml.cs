@@ -74,6 +74,7 @@ public sealed partial class ShellPage : Page
             HeaderBar.OnSearchSubmit = () => viewModel.galleryViewModel.applySearchNow();
 
             viewModel.galleryViewModel.selectionState.PropertyChanged += OnSelectionStateChanged;
+            viewModel.galleryViewModel.filtersState.PropertyChanged += OnShellFiltersStateChanged;
             viewModel.PropertyChanged += OnShellViewModelChanged;
 
             // drill-down 中の写真コレクションを GalleryViewModel.updatePhoto に
@@ -94,8 +95,7 @@ public sealed partial class ShellPage : Page
         ShowGallery();
         HeaderBar.SetViewMode(viewModel.ViewMode);
         HeaderBar.SetGroupingMode(viewModel.galleryViewModel.filtersState.GroupingMode);
-        HeaderBar.SetPdqProgress(viewModel.IsPdqRunning, viewModel.PdqProgress?.done ?? 0, viewModel.PdqProgress?.total ?? 0);
-        AppLogger.Trace("ShellPage.ctor: exit");
+            AppLogger.Trace("ShellPage.ctor: exit");
     }
 
     // 複数選択モードの変更をヘッダーのトグル状態へ反映する。
@@ -112,6 +112,25 @@ public sealed partial class ShellPage : Page
     }
 
     // ShellViewModel の主要な状態変化を画面表示と確認モーダルへ反映する。
+    private void OnShellFiltersStateChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        AppLogger.Trace($"ShellPage.OnShellFiltersStateChanged: enter property={e.PropertyName}");
+        try
+        {
+            if (e.PropertyName != nameof(viewModel.galleryViewModel.filtersState.GroupingMode)) return;
+
+            if (viewModel.galleryViewModel.filtersState.GroupingMode != GroupingMode.none
+                && viewModel.ViewMode == ViewMode.gallery)
+            {
+                _ = viewModel.handleSetViewMode(ViewMode.standard);
+            }
+
+            HeaderBar.SetGroupingMode(viewModel.galleryViewModel.filtersState.GroupingMode);
+        }
+        catch (Exception ex) { AppLogger.Error($"ShellPage.OnShellFiltersStateChanged: threw: {ex}"); }
+        AppLogger.Trace("ShellPage.OnShellFiltersStateChanged: exit");
+    }
+
     private void OnShellViewModelChanged(object? sender, PropertyChangedEventArgs e)
     {
         AppLogger.Trace($"ShellPage.OnShellViewModelChanged: enter property={e.PropertyName}");
@@ -126,8 +145,8 @@ public sealed partial class ShellPage : Page
             else if (e.PropertyName == nameof(viewModel.PendingFolderPath) && viewModel.PendingFolderPath is not null) _ = ShowFolderChangeConfirmAsync();
             else if (e.PropertyName == nameof(viewModel.PendingResetRequest) && viewModel.PendingResetRequest is not null) _ = ShowResetConfirmAsync();
             else if (e.PropertyName == nameof(viewModel.ThemeMode)) ApplyTheme(viewModel.ThemeMode);
-            else if (e.PropertyName == nameof(viewModel.IsPdqRunning) || e.PropertyName == nameof(viewModel.PdqProgress))
-                HeaderBar.SetPdqProgress(viewModel.IsPdqRunning, viewModel.PdqProgress?.done ?? 0, viewModel.PdqProgress?.total ?? 0);
+            else if (e.PropertyName == nameof(viewModel.CanStartWorldResolve))
+                settingsPage?.SetWorldAnalysisEnabled(viewModel.CanStartWorldResolve);
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.OnShellViewModelChanged: threw: {ex}"); }
         AppLogger.Trace("ShellPage.OnShellViewModelChanged: exit");
@@ -391,6 +410,9 @@ public sealed partial class ShellPage : Page
                     OnStartupPreferenceChanged = enabled => enabled == viewModel.StartupEnabled
                         ? Task.CompletedTask
                         : viewModel.handleStartupPreference(enabled),
+                    OnOpenWorldOnPostChanged = enabled => enabled == viewModel.OpenWorldLinkOnPost
+                        ? Task.CompletedTask
+                        : viewModel.handleOpenWorldOnPostPreference(enabled),
                     OnThemeChanged = isDark => viewModel.handleThemeChange(isDark ? Alpheratz.Shared.Models.ThemeMode.dark : Alpheratz.Shared.Models.ThemeMode.light),
                     // ワールド解析モーダルは Settings モーダルと同じ ModalContent スロットを使う。
                     // CloseModal を経由するとフェードアウト中に新コンテンツを差し込むため、
@@ -413,6 +435,7 @@ public sealed partial class ShellPage : Page
                     },
                 };
             }
+            settingsPage.SetWorldAnalysisEnabled(viewModel.CanStartWorldResolve);
             Stage.ModalContent = settingsPage;
             Stage.ModalVisibility = Visibility.Visible;
             isMiddleModalOpen = true;
@@ -467,8 +490,8 @@ public sealed partial class ShellPage : Page
                     await viewModel.templatePageViewModel.openTweetIntent(selectedPhoto).ConfigureAwait(false);
             };
             page.OnGoBack = () => modalViewModel.goBackPhoto();
-            page.OnGoPrev = () => modalViewModel.state.goPrevPhoto();
-            page.OnGoNext = () => modalViewModel.state.goNextPhoto();
+            page.OnGoPrev = () => modalViewModel.state.goPrevPhoto(throttleRepeatedInput: true);
+            page.OnGoNext = () => modalViewModel.state.goNextPhoto(throttleRepeatedInput: true);
             page.SetMasterTags(viewModel.tagMasterViewModel.masterTags);
             Stage.TopModalContent = page;
             Stage.TopModalVisibility = Visibility.Visible;
@@ -677,7 +700,7 @@ public sealed partial class ShellPage : Page
                     e.Handled = true;
                     return;
                 case ShellKeyAction.ExitMultiSelect:
-                    viewModel.galleryViewModel.selectionState.handleToggleMultiSelectMode();
+                    viewModel.galleryViewModel.selectionState.exitMultiSelectMode();
                     e.Handled = true;
                     return;
                 case ShellKeyAction.OpenFilter:

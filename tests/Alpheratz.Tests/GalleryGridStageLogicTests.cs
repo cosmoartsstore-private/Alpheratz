@@ -16,7 +16,7 @@ public sealed class GalleryGridStageLogicTests
     ///
     /// 標準表示では PhotoGrid を表示して Masonry を隠す。
     /// Masonry 表示では PhotoGrid を隠し、遅延実体化済みの MasonryView を表示する。
-    /// MonthNav はどちらの表示モードでも使うため、表示幅 56px を維持する。
+    /// MonthNav は日付順で使うため、表示幅 56px を維持する。
     /// </summary>
     [Fact]
     public void ViewModeDisplay_TogglesPhotoGridAndMasonry()
@@ -36,6 +36,29 @@ public sealed class GalleryGridStageLogicTests
                 MonthNavVisible: true,
                 MonthNavWidth: GalleryGridStageLogic.MonthNavVisibleWidth),
             GalleryGridStageLogic.ViewModeDisplay(masonryActive: true));
+    }
+
+    /// <summary>
+    /// ワールド順など日付順ではない表示では、MonthNav の日付ジャンプを隠すことを確認する。
+    /// </summary>
+    [Fact]
+    public void MonthNavCanBeHiddenWhenDateOrderIsUnavailable()
+    {
+        Assert.Equal(
+            new GridStageDisplayState(
+                PhotoGridVisible: true,
+                MasonryVisible: false,
+                MonthNavVisible: false,
+                MonthNavWidth: 0),
+            GalleryGridStageLogic.ViewModeDisplay(masonryActive: false, monthNavAvailable: false));
+
+        Assert.Equal(
+            new GridStageLoadingDisplay(
+                LoadingVisible: false,
+                EmptyVisible: false,
+                MonthNavVisible: false,
+                MonthNavWidth: 0),
+            GalleryGridStageLogic.LoadingDisplay(isLoading: false, totalCount: 3, monthNavAvailable: false));
     }
 
     /// <summary>

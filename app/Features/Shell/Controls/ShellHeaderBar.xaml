@@ -21,7 +21,6 @@
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
             <!-- 左側: 検索条件ボタン -->
@@ -47,8 +46,12 @@
             </Button>
 
             <!-- 中央: 検索ボックス -->
-            <Border x:Name="SearchBoxBorder" Grid.Column="1"
-                    MaxWidth="472"
+            <Grid Grid.Column="1"
+                  HorizontalAlignment="Center"
+                  Width="640"
+                  MaxWidth="640">
+
+            <Border x:Name="SearchBoxBorder"
                     HorizontalAlignment="Stretch"
                     MinHeight="34"
                     CornerRadius="{StaticResource ARadiusMd}"
@@ -77,34 +80,7 @@
                              KeyDown="SearchTextBox_KeyDown"/>
                 </Grid>
             </Border>
-
-            <!--
-                PDQ 進捗表示。
-                ハッシュ計算中だけ表示され、完了数 / 全体数をコンパクトに示す。
-                visibility は SetPdqProgress 経由でコード側からセットする。
-            -->
-            <Border x:Name="PdqProgressChip" Grid.Column="2"
-                    Visibility="Collapsed"
-                    MinHeight="24"
-                    Padding="10,2"
-                    CornerRadius="{StaticResource ARadiusPill}"
-                    BorderBrush="{ThemeResource ABorderStrong}"
-                    BorderThickness="1"
-                    Background="{ThemeResource APrimarySoft}"
-                    VerticalAlignment="Center"
-                    ToolTipService.ToolTip="類似画像 (PDQ) ハッシュの計算進捗"
-                    AutomationProperties.Name="PDQ 進捗">
-                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                    <ProgressRing IsActive="True" Width="12" Height="12"
-                                  Foreground="{ThemeResource APrimary}"
-                                  VerticalAlignment="Center"/>
-                    <TextBlock x:Name="PdqProgressText"
-                               FontSize="{StaticResource AFontSizeXs}"
-                               FontWeight="Bold"
-                               Foreground="{ThemeResource APrimary}"
-                               VerticalAlignment="Center"/>
-                </StackPanel>
-            </Border>
+            </Grid>
 
             <!--
                 右側: ギャラリー表示操作と設定。
@@ -115,7 +91,7 @@
             -->
 
             <!-- 表示モード切替 (標準グリッド / マソンリー) -->
-            <Button x:Name="ViewModeBtn" Grid.Column="3"
+            <Button x:Name="ViewModeBtn" Grid.Column="2"
                     Style="{StaticResource HeaderIconButtonStyle}"
                     AutomationProperties.Name="表示モード切替"
                     ToolTipService.ToolTip="表示モード切替 (標準グリッド / マソンリー)"
@@ -125,7 +101,7 @@
             </Button>
 
             <!-- グループ化切替 (なし / ワールド)。Masonry 表示中は無効化される。 -->
-            <Button x:Name="GroupingBtn" Grid.Column="4"
+            <Button x:Name="GroupingBtn" Grid.Column="3"
                     Style="{StaticResource HeaderIconButtonStyle}"
                     AutomationProperties.Name="グループ化切替"
                     ToolTipService.ToolTip="ワールド単位でグループ化"
@@ -135,7 +111,7 @@
             </Button>
 
             <!-- 複数選択モード切替 -->
-            <Button x:Name="MultiSelectBtn" Grid.Column="5"
+            <Button x:Name="MultiSelectBtn" Grid.Column="4"
                     Style="{StaticResource HeaderIconButtonStyle}"
                     AutomationProperties.Name="複数選択モード切替"
                     ToolTipService.ToolTip="複数選択モードを切り替える"
@@ -145,7 +121,7 @@
             </Button>
 
             <!-- 右端: 設定ボタン -->
-            <Button x:Name="SettingsGearBtn" Grid.Column="6"
+            <Button x:Name="SettingsGearBtn" Grid.Column="5"
                     Style="{StaticResource HeaderIconButtonStyle}"
                     ToolTipService.ToolTip="設定"
                     AutomationProperties.Name="設定"

@@ -39,13 +39,6 @@ internal static class ShellHeaderBarLogic
             IconName: galleryActive ? "gallery" : "grid");
     }
 
-    /// <summary>PDQ 進捗チップの表示可否とラベルを返す。</summary>
-    public static PdqProgressDisplay PdqProgress(bool running, int done, int total)
-    {
-        if (!running) return new PdqProgressDisplay(false, string.Empty);
-        return new PdqProgressDisplay(true, total > 0 ? $"PDQ {done} / {total}" : "PDQ");
-    }
-
     /// <summary>検索ボックス枠のテーマリソースキーをフォーカス状態から返す。</summary>
     public static SearchBoxVisualKeys SearchBoxKeys(bool focused)
         => focused
@@ -58,9 +51,6 @@ internal static class ShellHeaderBarLogic
 
 /// <summary>ヘッダーのトグルボタン表示状態。</summary>
 internal sealed record HeaderToggleState(bool Active, bool Enabled, double Opacity, string? IconName);
-
-/// <summary>PDQ 進捗チップ表示状態。</summary>
-internal sealed record PdqProgressDisplay(bool Visible, string Text);
 
 /// <summary>検索ボックスの枠線と背景に使うテーマリソースキー。</summary>
 internal sealed record SearchBoxVisualKeys(string BorderKey, string FillKey);

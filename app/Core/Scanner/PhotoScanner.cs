@@ -48,7 +48,7 @@ public sealed partial class PhotoScanner
     {
         AppLogger.Trace("PhotoScanner.RequestCancel: enter");
         try { _cancelSource?.Cancel(); }
-        catch (Exception ex) { AppLogger.Error($"PhotoScanner.RequestCancel: threw: {ex}"); }
+        catch (Exception ex) { AppLogger.Warn($"PhotoScanner.RequestCancel: threw: {ex}"); }
         AppLogger.Trace("PhotoScanner.RequestCancel: exit");
     }
 
@@ -427,7 +427,7 @@ public sealed partial class PhotoScanner
         }
         catch (IOException ex)
         {
-            AppLogger.Error($"PNG メタデータ読み取り失敗 (I/O) [{path}]: {ex.Message}");
+            AppLogger.Warn($"PNG メタデータ読み取り失敗 (I/O) [{path}]: {ex.Message}");
         }
         catch (Exception ex)
         {

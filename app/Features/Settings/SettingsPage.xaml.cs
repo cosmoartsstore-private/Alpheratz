@@ -10,12 +10,13 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.System;
 
 namespace Alpheratz.Features.Settings;
 
 /// <summary>
-/// 設定モーダル。3 セクション (全般 / タグマスタ / 投稿テンプレート) をスクロール可能な
-/// 1 画面に統合した。<see cref="SettingsCompositeViewModel"/> をルート DataContext として、
+/// 設定モーダル。左サイドバーで 4 セクション (全般 / タグマスタ / 投稿テンプレート / クレジット) を
+/// 切り替える。<see cref="SettingsCompositeViewModel"/> をルート DataContext として、
 /// 各セクションは <c>{Binding Settings.X}</c> / <c>{Binding TagMaster.X}</c> /
 /// <c>{Binding Template.X}</c> でネストアクセスする。
 ///
@@ -26,6 +27,7 @@ namespace Alpheratz.Features.Settings;
 public sealed partial class SettingsPage : Page
 {
     private readonly SettingsCompositeViewModel viewModel;
+    private string activeSettingsSection = "general";
 
     // ===== 共通 =====
     /// <summary>モーダル閉じる操作 (× ボタン / 背景クリック / ESC)。</summary>
@@ -38,6 +40,7 @@ public sealed partial class SettingsPage : Page
     public Action<int>? OnResetFolder { get; set; }
     /// <summary>起動時自動起動 トグル変更。</summary>
     public Func<bool, Task>? OnStartupPreferenceChanged { get; set; }
+    public Func<bool, Task>? OnOpenWorldOnPostChanged { get; set; }
     /// <summary>テーマ切替 (true=Dark)。</summary>
     public Func<bool, Task>? OnThemeChanged { get; set; }
     /// <summary>「ワールド不明写真を解析する」ボタン押下。WorldResolve モーダルを開く。</summary>
@@ -86,6 +89,44 @@ public sealed partial class SettingsPage : Page
         AppLogger.Trace("SettingsPage.ctor: exit");
     }
 
+    /// <summary>PDQ 解析が完了するまで、ワールド名解決画面への遷移を無効化する。</summary>
+    public void SetWorldAnalysisEnabled(bool enabled)
+    {
+        try
+        {
+            StartWorldAnalysisButton.IsEnabled = enabled;
+            StartWorldAnalysisButton.Opacity = enabled ? 1.0 : 0.55;
+            WorldAnalysisUnavailableHint.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
+        }
+        catch (Exception ex) { AppLogger.Error($"SettingsPage.SetWorldAnalysisEnabled: threw: {ex}"); }
+    }
+
+    /// <summary>設定モーダルの幅に合わせて、2カラム/1カラム配置を切り替える。</summary>
+    private void SettingsContentGrid_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        try
+        {
+            ApplySettingsLayout(e.NewSize.Width);
+        }
+        catch (Exception ex) { AppLogger.Error($"SettingsPage.SettingsContentGrid_SizeChanged: threw: {ex}"); }
+    }
+
+    private void ApplySettingsLayout(double contentWidth)
+    {
+        RightSettingsColumn.Width = new GridLength(0);
+        SettingsContentGrid.ColumnSpacing = 0;
+        SettingsContentGrid.RowSpacing = 28;
+
+        Grid.SetRow(GeneralSection, 0);
+        Grid.SetColumn(GeneralSection, 0);
+        Grid.SetRow(TagMasterSection, 1);
+        Grid.SetColumn(TagMasterSection, 0);
+        Grid.SetRow(TemplateSection, 2);
+        Grid.SetColumn(TemplateSection, 0);
+        Grid.SetRow(CreditsSection, 3);
+        Grid.SetColumn(CreditsSection, 0);
+    }
+
     /// <summary>設定画面表示時にタグ一覧の空状態とテンプレートカード表示を同期する。</summary>
     private void SettingsPage_Loaded(object sender, RoutedEventArgs e)
     {
@@ -96,6 +137,7 @@ public sealed partial class SettingsPage : Page
             ActualThemeChanged += OnActualThemeChanged;
             UpdateTagEmptyState();
             UpdateEditorState();
+            ShowSettingsSection(activeSettingsSection);
         }
         catch (Exception ex) { AppLogger.Error($"SettingsPage.SettingsPage_Loaded: threw: {ex}"); }
     }
@@ -115,8 +157,65 @@ public sealed partial class SettingsPage : Page
     /// <summary>テーマ切替時に code-behind で着色したテンプレートカードを再描画する。</summary>
     private void OnActualThemeChanged(FrameworkElement sender, object args)
     {
-        try { RefreshTemplateCardVisuals(); }
+        try
+        {
+            RefreshTemplateCardVisuals();
+            RefreshSettingsNavVisuals();
+            DispatcherQueue?.TryEnqueue(RefreshTemplateCardVisuals);
+            DispatcherQueue?.TryEnqueue(RefreshSettingsNavVisuals);
+        }
         catch (Exception ex) { AppLogger.Error($"SettingsPage.OnActualThemeChanged: {ex}"); }
+    }
+
+    /// <summary>左サイドバーから表示する設定セクションを切り替える。</summary>
+    private void SettingsNav_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if ((sender as FrameworkElement)?.Tag is string section)
+                ShowSettingsSection(section);
+        }
+        catch (Exception ex) { AppLogger.Error($"SettingsPage.SettingsNav_Click: threw: {ex}"); }
+    }
+
+    private void ShowSettingsSection(string section)
+    {
+        activeSettingsSection = section;
+        GeneralSection.Visibility = section == "general" ? Visibility.Visible : Visibility.Collapsed;
+        TagMasterSection.Visibility = section == "tags" ? Visibility.Visible : Visibility.Collapsed;
+        TemplateSection.Visibility = section == "templates" ? Visibility.Visible : Visibility.Collapsed;
+        CreditsSection.Visibility = section == "credits" ? Visibility.Visible : Visibility.Collapsed;
+        RefreshSettingsNavVisuals();
+    }
+
+    private void RefreshSettingsNavVisuals()
+    {
+        ApplySettingsNavButtonStyle(GeneralNavButton, activeSettingsSection == "general");
+        ApplySettingsNavButtonStyle(TagMasterNavButton, activeSettingsSection == "tags");
+        ApplySettingsNavButtonStyle(TemplateNavButton, activeSettingsSection == "templates");
+        ApplySettingsNavButtonStyle(CreditsNavButton, activeSettingsSection == "credits");
+    }
+
+    private static void ApplySettingsNavButtonStyle(Button button, bool active)
+    {
+        var fg = ThemeHelper.Brush(button, active ? "AText" : "ATextDim")
+            ?? new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        button.Background = active
+            ? ThemeHelper.Brush(button, "ASurfaceHover") ?? new SolidColorBrush(Microsoft.UI.Colors.Transparent)
+            : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        button.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        button.Foreground = fg;
+
+        if (button.Content is StackPanel stack)
+        {
+            foreach (var child in stack.Children)
+            {
+                if (child is Alpheratz.Shared.Controls.AppIcon icon)
+                    icon.Foreground = fg;
+                else if (child is TextBlock text)
+                    text.Foreground = fg;
+            }
+        }
     }
 
     /// <summary>背景タップで設定モーダルのクローズ要求を発行する。</summary>
@@ -198,6 +297,18 @@ public sealed partial class SettingsPage : Page
     }
 
     /// <summary>ライトテーマを選択して保存する。</summary>
+    private async void OpenWorldOnPostToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        AppLogger.Trace("SettingsPage.OpenWorldOnPostToggle_Toggled: enter");
+        try
+        {
+            if (sender is ToggleSwitch toggleSwitch && OnOpenWorldOnPostChanged is not null)
+                await OnOpenWorldOnPostChanged(toggleSwitch.IsOn).ConfigureAwait(false);
+        }
+        catch (Exception ex) { AppLogger.Error($"SettingsPage.OpenWorldOnPostToggle_Toggled: threw: {ex}"); }
+        AppLogger.Trace("SettingsPage.OpenWorldOnPostToggle_Toggled: exit");
+    }
+
     private async void ThemeLight_Click(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("SettingsPage.ThemeLight_Click: enter");
@@ -236,11 +347,28 @@ public sealed partial class SettingsPage : Page
         AppLogger.Trace("SettingsPage.RegisterStellaRecord_Click: exit");
     }
 
+    private async void CreditLink_Click(object sender, RoutedEventArgs e)
+    {
+        AppLogger.Trace("SettingsPage.CreditLink_Click: enter");
+        try
+        {
+            if ((sender as FrameworkElement)?.Tag is not string url) return;
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return;
+            await Launcher.LaunchUriAsync(uri).AsTask().ConfigureAwait(false);
+        }
+        catch (Exception ex) { AppLogger.Error($"SettingsPage.CreditLink_Click: threw: {ex}"); }
+        AppLogger.Trace("SettingsPage.CreditLink_Click: exit");
+    }
+
     /// <summary>未知ワールド解析モーダルの表示を要求する。</summary>
     private async void StartWorldAnalysis_Click(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("SettingsPage.StartWorldAnalysis_Click: enter");
-        try { if (OnStartWorldAnalysis is not null) await OnStartWorldAnalysis().ConfigureAwait(false); }
+        try
+        {
+            if (!StartWorldAnalysisButton.IsEnabled) return;
+            if (OnStartWorldAnalysis is not null) await OnStartWorldAnalysis().ConfigureAwait(false);
+        }
         catch (Exception ex) { AppLogger.Error($"SettingsPage.StartWorldAnalysis_Click: threw: {ex}"); }
         AppLogger.Trace("SettingsPage.StartWorldAnalysis_Click: exit");
     }

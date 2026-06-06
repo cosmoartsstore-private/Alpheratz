@@ -40,7 +40,7 @@ public sealed class ThumbnailService
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"ThumbnailService.EnsureGridThumbAsync: threw: {ex}");
+            AppLogger.Warn($"ThumbnailService.EnsureGridThumbAsync: threw: {ex.Message}");
             throw;
         }
     }
@@ -60,7 +60,7 @@ public sealed class ThumbnailService
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"ThumbnailService.EnsureDisplayThumbAsync: threw: {ex}");
+            AppLogger.Warn($"ThumbnailService.EnsureDisplayThumbAsync: threw: {ex.Message}");
             throw;
         }
     }
@@ -118,7 +118,7 @@ public sealed class ThumbnailService
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"ThumbnailService.EnsureThumbAsync: threw: {ex}");
+            AppLogger.Warn($"ThumbnailService.EnsureThumbAsync: threw: {ex.Message}");
             throw;
         }
     }
@@ -190,7 +190,7 @@ public sealed class ThumbnailService
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"ThumbnailService.GenerateThumbnailAsync: threw: {ex}");
+            AppLogger.Warn($"ThumbnailService.GenerateThumbnailAsync: threw: {ex.Message}");
             throw;
         }
         AppLogger.Trace("ThumbnailService.GenerateThumbnailAsync: exit");

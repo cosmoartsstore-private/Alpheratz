@@ -27,9 +27,9 @@ public partial class MainWindow : Window
         {
             // InnerException を掘り下げてログ出力する。
             // XamlParseException は内部の実例外を InnerException に持つため。
-            AppLogger.Error($"MainWindow.ctor: InitializeComponent failed: {ex}");
+            AppLogger.Fatal($"MainWindow.ctor: InitializeComponent failed: {ex}");
             for (var inner = ex.InnerException; inner != null; inner = inner.InnerException)
-                AppLogger.Error($"MainWindow.ctor: InnerException: {inner}");
+                AppLogger.Fatal($"MainWindow.ctor: InnerException: {inner}");
             throw;
         }
         AppLogger.Trace("MainWindow.ctor: InitializeComponent done");
@@ -57,7 +57,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"MainWindow.ctor(Page): SetRoot failed: {ex}");
+            AppLogger.Fatal($"MainWindow.ctor(Page): SetRoot failed: {ex}");
             throw;
         }
         AppLogger.Trace("MainWindow.ctor(Page): exit");
@@ -81,7 +81,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"MainWindow.SetRoot: failed: {ex}");
+            AppLogger.Fatal($"MainWindow.SetRoot: failed: {ex}");
             throw;
         }
         AppLogger.Trace("MainWindow.SetRoot: exit");

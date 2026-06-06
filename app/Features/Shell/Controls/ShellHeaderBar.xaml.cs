@@ -70,9 +70,8 @@ public sealed partial class ShellHeaderBar : UserControl
     {
         try
         {
-            SyncMultiSelectStyle();
-            SyncGroupingStyle();
-            SyncViewModeStyle();
+            RefreshThemeBoundVisuals();
+            DispatcherQueue?.TryEnqueue(RefreshThemeBoundVisuals);
         }
         catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.OnActualThemeChanged: {ex}"); }
     }
@@ -118,28 +117,6 @@ public sealed partial class ShellHeaderBar : UserControl
             SyncGroupingStyle();
         }
         catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.SetViewMode: threw: {ex}"); }
-    }
-
-    /// <summary>
-    /// PDQ ハッシュ計算の進捗表示を更新する。
-    /// running=false なら非表示にする。進捗情報は HeaderBar に表示し、
-    /// ギャラリー表示中でも常に確認できるようにする。
-    /// done/total が 0 のときも "PDQ" だけ表示するので、計算開始の合図にもなる。
-    /// </summary>
-    public void SetPdqProgress(bool running, int done, int total)
-    {
-        try
-        {
-            if (!running)
-            {
-                PdqProgressChip.Visibility = Visibility.Collapsed;
-                return;
-            }
-            var progress = ShellHeaderBarLogic.PdqProgress(running, done, total);
-            PdqProgressChip.Visibility = progress.Visible ? Visibility.Visible : Visibility.Collapsed;
-            PdqProgressText.Text = progress.Text;
-        }
-        catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.SetPdqProgress: threw: {ex}"); }
     }
 
     /// <summary>オーバーレイ表示中に、ヘッダー内の操作だけを無効化する。</summary>
@@ -240,9 +217,9 @@ public sealed partial class ShellHeaderBar : UserControl
         {
             if (active)
             {
-                if (ResolveThemeBrush("APrimarySoft") is { } bg) button.Background = bg;
-                if (ResolveThemeBrush("ABorderStrong") is { } border) button.BorderBrush = border;
-                if (ResolveThemeBrush("APrimary") is { } fg)
+                button.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+                button.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+                if (ResolveThemeBrush("AHeaderToggleAccent") is { } fg)
                 {
                     button.Foreground = fg;
                     icon.Foreground = fg;
@@ -270,11 +247,7 @@ public sealed partial class ShellHeaderBar : UserControl
     {
         try
         {
-            var keys = ShellHeaderBarLogic.SearchBoxKeys(focused: true);
-            if (ResolveThemeBrush(keys.BorderKey) is { } focusBorder)
-                SearchBoxBorder.BorderBrush = focusBorder;
-            if (ResolveThemeBrush(keys.FillKey) is { } focusFill)
-                SearchBoxBorder.Background = focusFill;
+            SyncSearchBoxChrome(focused: true);
         }
         catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.SearchTextBox_GotFocus: threw: {ex}"); }
     }
@@ -284,13 +257,29 @@ public sealed partial class ShellHeaderBar : UserControl
     {
         try
         {
-            var keys = ShellHeaderBarLogic.SearchBoxKeys(focused: false);
-            if (ResolveThemeBrush(keys.BorderKey) is { } restBorder)
-                SearchBoxBorder.BorderBrush = restBorder;
-            if (ResolveThemeBrush(keys.FillKey) is { } restFill)
-                SearchBoxBorder.Background = restFill;
+            SyncSearchBoxChrome(focused: false);
         }
         catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.SearchTextBox_LostFocus: threw: {ex}"); }
+    }
+
+    private void RefreshThemeBoundVisuals()
+    {
+        SyncMultiSelectStyle();
+        SyncGroupingStyle();
+        SyncViewModeStyle();
+        SyncSearchBoxChrome(IsSearchBoxFocused());
+    }
+
+    private bool IsSearchBoxFocused()
+        => ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), SearchTextBox);
+
+    private void SyncSearchBoxChrome(bool focused)
+    {
+        var keys = ShellHeaderBarLogic.SearchBoxKeys(focused);
+        if (ResolveThemeBrush(keys.BorderKey) is { } border)
+            SearchBoxBorder.BorderBrush = border;
+        if (ResolveThemeBrush(keys.FillKey) is { } fill)
+            SearchBoxBorder.Background = fill;
     }
 
     // Enter キーで検索テキストのバインディングを確定し、即時検索を要求する。
@@ -306,6 +295,5 @@ public sealed partial class ShellHeaderBar : UserControl
         catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.SearchTextBox_KeyDown: threw: {ex}"); }
     }
 
-    /// <summary>ActualTheme に応じた ThemeDictionaries から指定キーのブラシを取り出す。</summary>
     private Brush? ResolveThemeBrush(string key) => ThemeHelper.Brush(this, key);
 }

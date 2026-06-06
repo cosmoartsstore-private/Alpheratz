@@ -126,6 +126,27 @@ public sealed class PhotoModalPageLogicTests
     }
 
     /// <summary>
+    /// 矢印キー長押し中は連続ナビゲーションを間引き、長押しが続いた後はさらに間隔を広げる。
+    /// </summary>
+    [Fact]
+    public void NavigationGate_ThrottlesFastRepeatsAndSlowsLongHolds()
+    {
+        var first = PhotoModalPageLogic.NavigationGate(1000, 0, 0, sameDirection: true);
+        var tooSoon = PhotoModalPageLogic.NavigationGate(1040, first.LastAcceptedTicks, first.BurstStartedTicks, sameDirection: true);
+        var initialAllowed = PhotoModalPageLogic.NavigationGate(1080, first.LastAcceptedTicks, first.BurstStartedTicks, sameDirection: true);
+        var longHoldTooSoon = PhotoModalPageLogic.NavigationGate(2000, 1900, first.BurstStartedTicks, sameDirection: true);
+        var directionChanged = PhotoModalPageLogic.NavigationGate(2020, 2000, first.BurstStartedTicks, sameDirection: false);
+
+        Assert.True(first.Allowed);
+        Assert.False(tooSoon.Allowed);
+        Assert.Equal(first.LastAcceptedTicks, tooSoon.LastAcceptedTicks);
+        Assert.True(initialAllowed.Allowed);
+        Assert.False(longHoldTooSoon.Allowed);
+        Assert.True(directionChanged.Allowed);
+        Assert.Equal(2020, directionChanged.BurstStartedTicks);
+    }
+
+    /// <summary>
     /// タグ追加 request が callback、選択タグ、写真パスのすべてが揃った時だけ作られることを確認する。
     ///
     /// ComboBox の SelectedItem は object として渡るため、string 以外や空文字を拒否する。

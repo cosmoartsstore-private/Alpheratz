@@ -218,6 +218,24 @@ public sealed class StateViewModelBehaviorTests : IDisposable
     }
 
     /// <summary>
+    /// 複数選択中に最後の1枚をもう一度クリックして解除した場合、選択0のままモードを残す。
+    /// </summary>
+    [Fact]
+    public void GallerySelectionState_RemovingLastSelectionKeepsMultiSelectMode()
+    {
+        using var state = new GallerySelectionState(photoService, toastService);
+        var item = GridItem("/photo/a.jpg");
+
+        state.handleToggleMultiSelectMode();
+        state.toggleSelectedPhoto(item, shiftKey: false, [item]);
+        state.toggleSelectedPhoto(item, shiftKey: false, [item]);
+
+        Assert.True(state.IsMultiSelectMode);
+        Assert.Empty(state.selectedPhotoPaths);
+        Assert.Null(state.SelectionAnchorPhotoPath);
+    }
+
+    /// <summary>
     /// 選択パスの変更後に DB から一括操作用の写真参照が読み込まれることを確認する。
     ///
     /// GallerySelectionState は selectedPhotoPaths の CollectionChanged を受けて fire-and-forget で
@@ -492,6 +510,7 @@ public sealed class StateViewModelBehaviorTests : IDisposable
             StartupEnabled = true,
             ThemeMode = ThemeMode.dark,
             ViewMode = ViewMode.gallery,
+            OpenWorldLinkOnPost = true,
             ActiveTweetTemplate = "A",
         };
         viewModel.tweetTemplates.ReplaceAll(["A", "B"]);
@@ -500,6 +519,7 @@ public sealed class StateViewModelBehaviorTests : IDisposable
         {
             photoFolderPath = "D:/override",
             enableStartup = false,
+            openWorldLinkOnPost = false,
         });
 
         Assert.Equal("D:/override", payload.photoFolderPath);
@@ -507,6 +527,7 @@ public sealed class StateViewModelBehaviorTests : IDisposable
         Assert.False(payload.enableStartup);
         Assert.Equal(ThemeMode.dark, payload.themeMode);
         Assert.Equal(ViewMode.gallery, payload.viewMode);
+        Assert.False(payload.openWorldLinkOnPost);
         Assert.Equal(["A", "B"], payload.tweetTemplates);
         Assert.Equal("A", payload.activeTweetTemplate);
     }

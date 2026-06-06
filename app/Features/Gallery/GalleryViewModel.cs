@@ -4,7 +4,6 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using Alpheratz.Core;
 using Alpheratz.Models;
@@ -16,7 +15,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 namespace Alpheratz.Features.Gallery;
 
 /// <summary>
-/// ギャラリー画面の ViewModel。フィルタ変更の検知・デバウンス・写真操作を担当する。
+/// ギャラリー画面の ViewModel。フィルタ変更の検知・Enter確定検索・写真操作を担当する。
 /// 各サブステート（photosState, filtersState, selectionState 等）を束ねる中心的な存在。
 /// </summary>
 public partial class GalleryViewModel : UiThreadSafeObservableObject
@@ -34,8 +33,6 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
     public GallerySelectionState selectionState { get; }
     public GalleryDisplayState displayState { get; }
     public GalleryScrollState scrollState { get; }
-
-    private CancellationTokenSource? searchDebounceCts;
 
     /// <summary>
     /// drill-down 用に外部（ShellPage）で保持される写真リスト。
@@ -116,8 +113,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
                     _ = applyFiltersAndReload();
                     break;
                 case nameof(GalleryFiltersState.SearchQuery):
-                    AppLogger.Trace("GalleryViewModel.onFiltersChanged: branch=SearchQuery debounce");
-                    _ = debounceAndApplySearch();
+                    AppLogger.Trace("GalleryViewModel.onFiltersChanged: branch=SearchQuery pending submit");
                     break;
             }
         }
@@ -149,72 +145,6 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryViewModel.onFiltersCollectionChanged: exit");
     }
 
-    /// <summary>
-    /// 検索クエリ入力を 400ms デバウンスし、確定後に DebouncedQuery を更新する。
-    /// DebouncedQuery の PropertyChanged が onFiltersChanged を再度トリガーし再ロードが走る。
-    /// </summary>
-    private async Task debounceAndApplySearch()
-    {
-        AppLogger.Trace("GalleryViewModel.debounceAndApplySearch: enter");
-        var newCts = new CancellationTokenSource();
-        var oldCts = Interlocked.Exchange(ref searchDebounceCts, newCts);
-        if (oldCts is not null)
-        {
-            try { oldCts.Cancel(); }
-            catch (ObjectDisposedException) { }
-            catch (Exception ex) { AppLogger.Warn($"GalleryViewModel.debounceAndApplySearch: cancel threw: {ex}"); }
-            try { oldCts.Dispose(); }
-            catch (Exception ex) { AppLogger.Warn($"GalleryViewModel.debounceAndApplySearch: dispose threw: {ex}"); }
-        }
-
-        CancellationToken token;
-        try
-        {
-            token = newCts.Token;
-        }
-        catch (ObjectDisposedException)
-        {
-            AppLogger.Trace("GalleryViewModel.debounceAndApplySearch: token disposed, skip");
-            return;
-        }
-
-        try
-        {
-            var querySnapshot = filtersState.SearchQuery;
-            await Task.Delay(400, token).ConfigureAwait(false);
-            var parsed = SearchCommandParser.Parse(querySnapshot);
-            await dispatcherService.RunOnUiThread(() =>
-                filtersState.DebouncedQuery = parsed.PlainText).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            AppLogger.Trace("GalleryViewModel.debounceAndApplySearch: cancelled");
-        }
-        catch (ObjectDisposedException)
-        {
-            AppLogger.Trace("GalleryViewModel.debounceAndApplySearch: token disposed mid-delay");
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Error($"GalleryViewModel.debounceAndApplySearch: threw: {ex}");
-        }
-        AppLogger.Trace("GalleryViewModel.debounceAndApplySearch: exit");
-    }
-
-    // 保留中の検索デバウンスを取り消し、CancellationTokenSource を破棄する。
-    private void cancelSearchDebounce()
-    {
-        var cts = Interlocked.Exchange(ref searchDebounceCts, null);
-        if (cts is null) return;
-
-        try { cts.Cancel(); }
-        catch (ObjectDisposedException) { }
-        catch (Exception ex) { AppLogger.Warn($"GalleryViewModel.cancelSearchDebounce: cancel threw: {ex}"); }
-
-        try { cts.Dispose(); }
-        catch (Exception ex) { AppLogger.Warn($"GalleryViewModel.cancelSearchDebounce: dispose threw: {ex}"); }
-    }
-
     /// <summary>現在のフィルタ条件を photosState に反映し、先頭からロードし直す。</summary>
     public Task applyFiltersAndReload()
     {
@@ -225,26 +155,21 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         return task;
     }
 
-    // 検索欄の現在値を即時解析し、コマンド反映と再ロードを同期して実行する。
+    // 検索欄の現在値を通常テキストとして確定し、再ロードを同期して実行する。
     public void applySearchNow()
     {
         AppLogger.Trace("GalleryViewModel.applySearchNow: enter");
         try
         {
-            cancelSearchDebounce();
-            var parsed = SearchCommandParser.Parse(filtersState.SearchQuery);
-            if (parsed.HasCommands)
-            {
-                filtersState.applySearchCommands(parsed, raiseBatchCompleted: false);
-            }
+            var nextQuery = filtersState.SearchQuery.Trim();
 
-            if (filtersState.DebouncedQuery == parsed.PlainText)
+            if (filtersState.DebouncedQuery == nextQuery)
             {
                 _ = applyFiltersAndReload();
             }
             else
             {
-                filtersState.DebouncedQuery = parsed.PlainText;
+                filtersState.DebouncedQuery = nextQuery;
             }
         }
         catch (Exception ex)

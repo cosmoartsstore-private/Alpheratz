@@ -27,6 +27,7 @@ public partial class SettingsViewModel : UiThreadSafeObservableObject
     [ObservableProperty] private bool startupEnabled;
     [ObservableProperty] private ThemeMode themeMode = ThemeMode.light;
     [ObservableProperty] private ViewMode viewMode = ViewMode.standard;
+    [ObservableProperty] private bool openWorldLinkOnPost;
     public UiObservableCollection<string> tweetTemplates { get; } = [];
     [ObservableProperty] private string activeTweetTemplate = string.Empty;
 
@@ -53,6 +54,7 @@ public partial class SettingsViewModel : UiThreadSafeObservableObject
             enableStartup = overrides?.enableStartup ?? StartupEnabled,
             themeMode = overrides?.themeMode ?? ThemeMode,
             viewMode = overrides?.viewMode ?? ViewMode,
+            openWorldLinkOnPost = overrides?.openWorldLinkOnPost ?? OpenWorldLinkOnPost,
             tweetTemplates = overrides?.tweetTemplates ?? tweetTemplates,
             activeTweetTemplate = overrides?.activeTweetTemplate ?? ActiveTweetTemplate,
         };
@@ -78,6 +80,7 @@ public partial class SettingsViewModel : UiThreadSafeObservableObject
                 StartupEnabled = setting.enableStartup ?? false;
                 ThemeMode = setting.themeMode ?? ThemeMode.light;
                 ViewMode = setting.viewMode ?? ViewMode.standard;
+                OpenWorldLinkOnPost = setting.openWorldLinkOnPost ?? false;
                 ActiveTweetTemplate = setting.activeTweetTemplate ?? string.Empty;
                 tweetTemplates.ReplaceAll(setting.tweetTemplates ?? Array.Empty<string>());
             }).ConfigureAwait(false);

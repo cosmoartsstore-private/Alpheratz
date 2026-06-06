@@ -19,7 +19,7 @@
             <ItemsPanelTemplate>
                 <ItemsWrapGrid Orientation="Horizontal"
                                x:Name="PhotoItemsWrapGrid"
-                               ItemWidth="320" ItemHeight="260"
+                               ItemWidth="166" ItemHeight="156"
                                Loaded="PhotoItemsWrapGrid_Loaded"/>
             </ItemsPanelTemplate>
         </GridView.ItemsPanel>

@@ -19,8 +19,11 @@ namespace Alpheratz.Features.Gallery.Controls;
 [ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public sealed partial class GalleryFilterPanel : UserControl
 {
-    private const double ChoiceRowWidth = 328;
-    private const double ChoiceNameMaxWidth = 218;
+    private const double MinChoiceRowWidth = 328;
+    private const double MaxChoiceRowWidth = 560;
+    private const double ChoicePanelHorizontalReserve = 44;
+    private const double ChoiceNameReserveWithCount = 112;
+    private const double ChoiceNameReserveWithoutCount = 48;
 
     private GalleryFiltersState? boundFiltersState;
     private UiObservableCollection<WorldFilterOptionDto>? boundWorldOptions;
@@ -55,6 +58,7 @@ public sealed partial class GalleryFilterPanel : UserControl
         {
             InitializeComponent();
             buildWeekdayHeaders();
+            SizeChanged += OnPanelSizeChanged;
         }
         catch (Exception ex)
         {
@@ -74,15 +78,33 @@ public sealed partial class GalleryFilterPanel : UserControl
     {
         try
         {
-            syncActiveStates();
-            syncFavoriteToggle();
-            buildWeekdayHeaders();
-            rebuildTagCheckboxList();
-            rebuildWorldCheckboxList();
-            if (DatePickerPopup.Visibility == Visibility.Visible)
-                buildCalendar();
+            RefreshThemeBoundVisuals();
+            DispatcherQueue?.TryEnqueue(RefreshThemeBoundVisuals);
         }
         catch (Exception ex) { AppLogger.Error($"GalleryFilterPanel.OnActualThemeChanged: {ex}"); }
+    }
+
+    private void RefreshThemeBoundVisuals()
+    {
+        syncActiveStates();
+        syncFavoriteToggle();
+        buildWeekdayHeaders();
+        rebuildTagCheckboxList();
+        rebuildWorldCheckboxList();
+        if (DatePickerPopup.Visibility == Visibility.Visible)
+            buildCalendar();
+    }
+
+    private void OnPanelSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        try
+        {
+            if (TagDropdownPanel.Visibility == Visibility.Visible)
+                rebuildTagCheckboxList();
+            if (WorldDropdownPanel.Visibility == Visibility.Visible)
+                rebuildWorldCheckboxList();
+        }
+        catch (Exception ex) { AppLogger.Error($"GalleryFilterPanel.OnPanelSizeChanged: {ex}"); }
     }
 
     /// <summary>
@@ -110,6 +132,7 @@ public sealed partial class GalleryFilterPanel : UserControl
                 boundMasterTags.CollectionChanged -= OnMasterTagsChanged;
                 boundMasterTags = null;
             }
+            SizeChanged -= OnPanelSizeChanged;
             ActualThemeChanged -= OnActualThemeChanged;
         }
         catch (Exception ex)
@@ -774,11 +797,13 @@ public sealed partial class GalleryFilterPanel : UserControl
     // ── Shared checkbox item builder ──
     private void addCheckboxItem(StackPanel parent, string label, string? countText, bool isChecked, Action onToggle)
     {
+        var rowWidth = CurrentChoiceRowWidth();
+        var nameMaxWidth = CurrentChoiceNameMaxWidth(countText is not null, rowWidth);
         var visual = GalleryFilterPanelLogic.CheckboxVisual(isChecked, countText is not null);
         var grid = new Grid
         {
             Padding = new Thickness(10, 8, 10, 8),
-            Width = ChoiceRowWidth,
+            Width = rowWidth,
         };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         if (countText is not null)
@@ -793,7 +818,7 @@ public sealed partial class GalleryFilterPanel : UserControl
             Foreground = ThemeHelper.Brush(parent, visual.NameForegroundKey),
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxWidth = ChoiceNameMaxWidth,
+            MaxWidth = nameMaxWidth,
         };
         Grid.SetColumn(nameBlock, 0);
         grid.Children.Add(nameBlock);
@@ -842,7 +867,7 @@ public sealed partial class GalleryFilterPanel : UserControl
 
         var itemBorder = new Border
         {
-            Width = ChoiceRowWidth,
+            Width = rowWidth,
             CornerRadius = new CornerRadius(8),
             Background = visual.ItemBackgroundKey is null
                 ? new SolidColorBrush(Colors.Transparent)
@@ -863,13 +888,29 @@ public sealed partial class GalleryFilterPanel : UserControl
             BorderThickness = new Thickness(0),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            Width = ChoiceRowWidth,
+            Width = rowWidth,
         };
 
         btn.Content = itemBorder;
         btn.Click += (_, _) => onToggle();
 
         parent.Children.Add(btn);
+    }
+
+    private double CurrentChoiceRowWidth()
+    {
+        if (double.IsNaN(ActualWidth) || ActualWidth <= 0)
+            return MaxChoiceRowWidth;
+
+        return Math.Max(
+            MinChoiceRowWidth,
+            Math.Min(MaxChoiceRowWidth, ActualWidth - ChoicePanelHorizontalReserve));
+    }
+
+    private static double CurrentChoiceNameMaxWidth(bool hasCountText, double rowWidth)
+    {
+        var reserve = hasCountText ? ChoiceNameReserveWithCount : ChoiceNameReserveWithoutCount;
+        return Math.Max(180, rowWidth - reserve);
     }
 
     /// <summary>メニュー内へ区切り線を追加する。</summary>

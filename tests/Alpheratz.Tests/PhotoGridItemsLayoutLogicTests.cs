@@ -8,29 +8,61 @@ namespace Alpheratz.Tests;
 ///
 /// 標準グリッドは WinUI の GridView/ItemsWrapGrid 上で描画されるが、カード寸法や
 /// スクロール位置からの先頭インデックス推定は単純な数値計算で決まる。
-/// ここでは UI コントロールを生成せず、5列固定レイアウト、追加読み込み境界、
+/// ここでは UI コントロールを生成せず、6列基準のレスポンシブレイアウト、追加読み込み境界、
 /// shimmer 幅のフォールバックを純粋関数として固定する。
 /// </summary>
 public sealed class PhotoGridItemsLayoutLogicTests
 {
     /// <summary>
-    /// 利用可能幅から 5 列固定のカード寸法が計算されることを確認する。
+    /// 利用可能幅から 6 列基準のカード寸法が計算されることを確認する。
     ///
-    /// 現在の仕様では利用可能幅から左右余白を引き、5 列で均等割りした値を画像幅にする。
-    /// カードの ItemWidth は横マージン分だけ広くし、ItemHeight は 4:3 の画像高と情報表示領域を足して決める。
-    /// 極端に狭い幅ではカードを作らず、既存レイアウト値を維持するため null を返す。
+    /// 現在の仕様では利用可能幅から左右余白を引き、通常 6 列で均等割りした値を画像幅にする。
+    /// カードの ItemHeight は 16:9 の画像高と情報表示領域を足して決める。
+    /// 幅不足時は列数を減らし、カードが潰れないようにする。
     /// </summary>
     [Fact]
-    public void CalculateCardLayout_UsesFixedFiveColumnsAndRejectsTooNarrowWidths()
+    public void CalculateCardLayout_UsesSixColumnsAndLandscapeSixteenNineThumbnails()
     {
         var layout = GalleryLayout(1024);
 
-        Assert.Equal(192, layout.ImageWidth);
-        Assert.Equal(200, layout.ItemWidth);
-        Assert.Equal(212, layout.ItemHeight);
-        Assert.Equal(5, layout.Columns);
+        Assert.Equal(158, layout.ImageWidth);
+        Assert.Equal(166, layout.ItemWidth);
+        Assert.Equal(156, layout.ItemHeight);
+        Assert.Equal(6, layout.Columns);
         Assert.Null(PhotoGridItemsLayoutLogic.CalculateCardLayout(0));
-        Assert.Null(PhotoGridItemsLayoutLogic.CalculateCardLayout(200));
+
+        var narrow = GalleryLayout(200);
+        Assert.Equal(1, narrow.Columns);
+        Assert.Equal(168, narrow.ImageWidth);
+        Assert.Equal(176, narrow.ItemWidth);
+    }
+
+    /// <summary>
+    /// 代表的な狭幅からワイド幅まで、標準グリッドのセル寸法が破綻しないことを確認する。
+    ///
+    /// 6列を最大値にしつつ、幅不足時は列数を落とす。各セルは利用可能幅を超えず、
+    /// 画像領域は常に 16:9 になる。
+    /// </summary>
+    [Theory]
+    [InlineData(200)]
+    [InlineData(320)]
+    [InlineData(640)]
+    [InlineData(700)]
+    [InlineData(1024)]
+    [InlineData(1920)]
+    public void CalculateCardLayout_KeepsResponsiveCellsInsideAvailableWidth(double availableWidth)
+    {
+        var layout = GalleryLayout(availableWidth);
+        var usable = availableWidth - PhotoGridItemsLayoutLogic.GridPadding;
+
+        Assert.InRange(layout.Columns, 1, PhotoGridItemsLayoutLogic.MaxColumns);
+        Assert.True(layout.ImageWidth > 0);
+        Assert.True(layout.ItemWidth > 0);
+        Assert.True(layout.ItemHeight > PhotoGridItemsLayoutLogic.InfoHeight);
+        Assert.True(layout.ItemWidth * layout.Columns <= usable);
+
+        var imageHeight = layout.ItemHeight - PhotoGridItemsLayoutLogic.InfoHeight - PhotoGridItemsLayoutLogic.CardMarginVertical;
+        Assert.Equal(Math.Floor(layout.ImageWidth * 9.0 / 16.0), imageHeight);
     }
 
     /// <summary>
@@ -50,7 +82,7 @@ public sealed class PhotoGridItemsLayoutLogicTests
     /// <summary>
     /// スクロール位置から行番号を求め、列数を掛けて先頭写真インデックスを概算することを確認する。
     ///
-    /// ItemsWrapGrid の実列数が取得できる場合はその値を使い、未設定または 0 の場合は 5 列固定の
+    /// ItemsWrapGrid の実列数が取得できる場合はその値を使い、未設定または 0 の場合は 6 列基準の
     /// フォールバックを使う。ItemHeight が 0 以下なら計算不能なので null を返す。
     /// </summary>
     [Fact]
@@ -58,7 +90,7 @@ public sealed class PhotoGridItemsLayoutLogicTests
     {
         Assert.Equal(0, PhotoGridItemsLayoutLogic.EstimateFirstVisibleIndex(scrollTop: 0, itemHeight: 200, maximumRowsOrColumns: 5));
         Assert.Equal(10, PhotoGridItemsLayoutLogic.EstimateFirstVisibleIndex(scrollTop: 450, itemHeight: 200, maximumRowsOrColumns: 5));
-        Assert.Equal(15, PhotoGridItemsLayoutLogic.EstimateFirstVisibleIndex(scrollTop: 650, itemHeight: 200, maximumRowsOrColumns: 0));
+        Assert.Equal(18, PhotoGridItemsLayoutLogic.EstimateFirstVisibleIndex(scrollTop: 650, itemHeight: 200, maximumRowsOrColumns: 0));
         Assert.Null(PhotoGridItemsLayoutLogic.EstimateFirstVisibleIndex(scrollTop: 100, itemHeight: 0, maximumRowsOrColumns: 5));
     }
 

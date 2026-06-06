@@ -66,7 +66,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"App.ctor: InitializeComponent failed: {ex}");
+            AppLogger.Fatal($"App.ctor: InitializeComponent failed: {ex}");
             throw;
         }
         AppLogger.Trace("App.ctor: exit");
@@ -78,7 +78,7 @@ public partial class App : Application
 
         UnhandledException += (_, e) =>
         {
-            AppLogger.Error($"App.UnhandledException: {e.Exception}");
+            AppLogger.Fatal($"App.UnhandledException: {e.Exception}");
             e.Handled = true;
         };
 
@@ -89,7 +89,7 @@ public partial class App : Application
         catch (Exception ex)
         {
             // ここまで来るとアプリは部分初期化済みなので、最上位ではログだけ残す。
-            AppLogger.Error($"App.OnLaunched: fatal: {ex}");
+            AppLogger.Fatal($"App.OnLaunched: fatal: {ex}");
         }
 
         AppLogger.Trace("App.OnLaunched: exit");
@@ -146,7 +146,7 @@ public partial class App : Application
         catch (Exception ex)
         {
             // DB が初期化できない状態では画面のデータ操作を安全に開始できない。
-            AppLogger.Error($"App.OnLaunchedCore: DB initialize failed: {ex}");
+            AppLogger.Fatal($"App.OnLaunchedCore: DB initialize failed: {ex}");
             throw;
         }
         lifecycle.advanceTo(AppLifecyclePhase.servicesReady);
@@ -167,7 +167,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"App.OnLaunchedCore: MainWindow creation failed: {ex}");
+            AppLogger.Fatal($"App.OnLaunchedCore: MainWindow creation failed: {ex}");
             throw;
         }
 
@@ -179,7 +179,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"App.OnLaunchedCore: MainWindow.Activate failed: {ex}");
+            AppLogger.Fatal($"App.OnLaunchedCore: MainWindow.Activate failed: {ex}");
             throw;
         }
 
@@ -197,7 +197,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"App.OnLaunchedCore: BootstrapPage setup failed: {ex}");
+            AppLogger.Fatal($"App.OnLaunchedCore: BootstrapPage setup failed: {ex}");
             throw;
         }
 
@@ -211,7 +211,7 @@ public partial class App : Application
                 dispatcherQueue.TryEnqueue(() =>
                 {
                     try { bootstrapPage.SetPhase(phase); }
-                    catch (Exception ex) { AppLogger.Error($"App.bootstrap.PhaseAdvanced ui: threw: {ex}"); }
+                    catch (Exception ex) { AppLogger.Fatal($"App.bootstrap.PhaseAdvanced ui: threw: {ex}"); }
 
                     if (phase >= AppLifecyclePhase.dataReady)
                     {
@@ -233,7 +233,7 @@ public partial class App : Application
             }
             catch (Exception ex)
             {
-                AppLogger.Error($"App.bootstrap.PhaseAdvanced: threw: {ex}");
+                AppLogger.Fatal($"App.bootstrap.PhaseAdvanced: threw: {ex}");
             }
         };
 
@@ -263,11 +263,11 @@ public partial class App : Application
                 if (t.IsCompletedSuccessfully)
                     lifecycle.advanceTo(AppLifecyclePhase.dataReady);
                 else if (t.Exception is not null)
-                    AppLogger.Error($"App.initContinuation: initialize() failed: {t.Exception}");
+                    AppLogger.Fatal($"App.initContinuation: initialize() failed: {t.Exception}");
             }
             catch (Exception ex)
             {
-                AppLogger.Error($"App.initContinuation: threw: {ex}");
+                AppLogger.Fatal($"App.initContinuation: threw: {ex}");
             }
         }, TaskContinuationOptions.ExecuteSynchronously);
     }
@@ -287,7 +287,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"App.SwapToShell: failed: {ex}");
+            AppLogger.Fatal($"App.SwapToShell: failed: {ex}");
         }
         AppLogger.Trace("App.SwapToShell: exit");
     }

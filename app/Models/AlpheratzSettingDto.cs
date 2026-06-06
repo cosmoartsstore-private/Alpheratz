@@ -21,6 +21,9 @@ public sealed record AlpheratzSettingDto
     [JsonPropertyName("viewMode")]
     public ViewMode? viewMode { get; init; }
 
+    [JsonPropertyName("openWorldLinkOnPost")]
+    public bool? openWorldLinkOnPost { get; init; }
+
     [JsonPropertyName("tweetTemplates")]
     public IReadOnlyList<string>? tweetTemplates { get; init; }
 

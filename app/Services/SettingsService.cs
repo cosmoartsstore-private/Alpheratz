@@ -44,6 +44,7 @@ public sealed class SettingsService
                     themeMode = s.ThemeMode switch { "dark" => ThemeMode.dark, _ => ThemeMode.light },
                     viewMode = s.ViewMode switch { "gallery" => ViewMode.gallery, _ => ViewMode.standard },
                     enableStartup = s.EnableStartup,
+                    openWorldLinkOnPost = s.OpenWorldLinkOnPost,
                     // TweetTemplates はスナップショットコピーを返す（後続の Save が編集中の参照を踏まないように）。
                     tweetTemplates = s.TweetTemplates is null ? null : new System.Collections.Generic.List<string>(s.TweetTemplates),
                     activeTweetTemplate = s.ActiveTweetTemplate,
@@ -75,6 +76,7 @@ public sealed class SettingsService
                 if (dto.themeMode.HasValue) s.ThemeMode = dto.themeMode.Value.ToString();
                 if (dto.viewMode.HasValue) s.ViewMode = dto.viewMode.Value.ToString();
                 if (dto.enableStartup.HasValue) s.EnableStartup = dto.enableStartup.Value;
+                if (dto.openWorldLinkOnPost.HasValue) s.OpenWorldLinkOnPost = dto.openWorldLinkOnPost.Value;
                 if (dto.tweetTemplates is not null) s.TweetTemplates = new System.Collections.Generic.List<string>(dto.tweetTemplates);
                 if (dto.activeTweetTemplate is not null) s.ActiveTweetTemplate = dto.activeTweetTemplate;
                 _config.SaveSetting(s);

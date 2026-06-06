@@ -12,6 +12,8 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Windows.Foundation;
+using Windows.UI;
 
 namespace Alpheratz.Features.PhotoModal;
 
@@ -99,6 +101,7 @@ public sealed partial class PhotoModalPage : Page
         syncMatchSource();
         syncEmptyTagNote();
         syncModalImage();
+        syncPhotoEdgeButtons();
     }
 
     /// <summary>選択写真やタグの変更に合わせてモーダル表示を同期する。</summary>
@@ -111,6 +114,11 @@ public sealed partial class PhotoModalPage : Page
             syncMatchSource();
             syncEmptyTagNote();
             syncModalImage();
+        }
+
+        if (e.PropertyName is nameof(PhotoModalState.CanGoPrev) or nameof(PhotoModalState.CanGoNext))
+        {
+            syncPhotoEdgeButtons();
         }
     }
 
@@ -170,6 +178,7 @@ public sealed partial class PhotoModalPage : Page
             // DecodePixelWidth を Modal の最大表示幅 (1920px) で頭打ちにする。
             // 設定しないと 4K 写真が約 50MB のメモリにフルデコードされ、Modal の開閉だけで
             // 数百 MB の一時メモリを使う。Modal レイアウト上はこれ以上のピクセルを使い切らない。
+            ModalImage.Source = null;
             ModalImage.Source = new BitmapImage
             {
                 CreateOptions = BitmapCreateOptions.IgnoreImageCache,
@@ -258,6 +267,7 @@ public sealed partial class PhotoModalPage : Page
             syncMatchSource();
             syncEmptyTagNote();
             syncModalImage();
+            syncPhotoEdgeButtons();
         }
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.Page_Loaded: {ex}"); }
     }
@@ -300,6 +310,18 @@ public sealed partial class PhotoModalPage : Page
 
 
     /// <summary>選択写真の VRChat ワールドページを開く。</summary>
+    private void PrevPhoto_Click(object sender, RoutedEventArgs e)
+    {
+        try { OnGoPrev?.Invoke(); }
+        catch (Exception ex) { AppLogger.Error($"PhotoModalPage.PrevPhoto_Click: {ex}"); }
+    }
+
+    private void NextPhoto_Click(object sender, RoutedEventArgs e)
+    {
+        try { OnGoNext?.Invoke(); }
+        catch (Exception ex) { AppLogger.Error($"PhotoModalPage.NextPhoto_Click: {ex}"); }
+    }
+
     private async void OpenWorld_Click(object sender, RoutedEventArgs e)
     {
         try
@@ -429,5 +451,111 @@ public sealed partial class PhotoModalPage : Page
                 btn.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         }
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.BottomAction_PointerExited: {ex}"); }
+    }
+
+    private void PhotoEdgeButton_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        try
+        {
+            if (sender is not Button button || !button.IsEnabled) return;
+
+            if (ReferenceEquals(button, PrevPhotoButton))
+            {
+                ShowPhotoEdgeButton(button, previous: true);
+                return;
+            }
+
+            if (ReferenceEquals(button, NextPhotoButton))
+            {
+                ShowPhotoEdgeButton(button, previous: false);
+            }
+        }
+        catch (Exception ex) { AppLogger.Error($"PhotoModalPage.PhotoEdgeButton_PointerEntered: {ex}"); }
+    }
+
+    private void PhotoEdgeButton_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        try
+        {
+            if (sender is Button button)
+                ResetPhotoEdgeButton(button);
+        }
+        catch (Exception ex) { AppLogger.Error($"PhotoModalPage.PhotoEdgeButton_PointerExited: {ex}"); }
+    }
+
+    private void ImagePanel_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        try
+        {
+            var point = e.GetCurrentPoint(ImagePanel).Position;
+            var edgeWidth = Math.Max(96, Math.Min(PrevPhotoButton.ActualWidth, ImagePanel.ActualWidth * 0.14));
+
+            if (point.X <= edgeWidth && PrevPhotoButton.IsEnabled)
+            {
+                ShowPhotoEdgeButton(PrevPhotoButton, previous: true);
+                ResetPhotoEdgeButton(NextPhotoButton);
+                return;
+            }
+
+            if (point.X >= ImagePanel.ActualWidth - edgeWidth && NextPhotoButton.IsEnabled)
+            {
+                ResetPhotoEdgeButton(PrevPhotoButton);
+                ShowPhotoEdgeButton(NextPhotoButton, previous: false);
+                return;
+            }
+
+            syncPhotoEdgeButtons();
+        }
+        catch (Exception ex) { AppLogger.Error($"PhotoModalPage.ImagePanel_PointerMoved: {ex}"); }
+    }
+
+    private void ImagePanel_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        try { syncPhotoEdgeButtons(); }
+        catch (Exception ex) { AppLogger.Error($"PhotoModalPage.ImagePanel_PointerExited: {ex}"); }
+    }
+
+    private void syncPhotoEdgeButtons()
+    {
+        ResetPhotoEdgeButton(PrevPhotoButton);
+        ResetPhotoEdgeButton(NextPhotoButton);
+    }
+
+    private void ShowPhotoEdgeButton(Button button, bool previous)
+    {
+        button.Background = BuildPhotoEdgeGradient(previous);
+        if (ReferenceEquals(button, PrevPhotoButton))
+            PrevPhotoChevron.Opacity = 1;
+        else if (ReferenceEquals(button, NextPhotoButton))
+            NextPhotoChevron.Opacity = 1;
+    }
+
+    private void ResetPhotoEdgeButton(Button button)
+    {
+        button.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        if (ReferenceEquals(button, PrevPhotoButton))
+            PrevPhotoChevron.Opacity = 0;
+        else if (ReferenceEquals(button, NextPhotoButton))
+            NextPhotoChevron.Opacity = 0;
+    }
+
+    private static LinearGradientBrush BuildPhotoEdgeGradient(bool previous)
+    {
+        var brush = new LinearGradientBrush
+        {
+            StartPoint = previous ? new Point(0, 0.5) : new Point(1, 0.5),
+            EndPoint = previous ? new Point(1, 0.5) : new Point(0, 0.5),
+        };
+        brush.GradientStops.Add(new GradientStop
+        {
+            Color = Color.FromArgb(87, 0, 0, 0),
+            Offset = 0,
+        });
+        brush.GradientStops.Add(new GradientStop
+        {
+            Color = Microsoft.UI.Colors.Transparent,
+            Offset = 0.78,
+        });
+        return brush;
     }
 }

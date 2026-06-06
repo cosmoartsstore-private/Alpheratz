@@ -23,6 +23,9 @@ public sealed class AlpheratzSetting
     [JsonPropertyName("startupPreferenceSet")]
     public bool StartupPreferenceSet { get; set; }
 
+    [JsonPropertyName("openWorldLinkOnPost")]
+    public bool OpenWorldLinkOnPost { get; set; }
+
     [JsonPropertyName("tweetTemplates")]
     public List<string> TweetTemplates { get; set; } =
     [

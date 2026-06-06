@@ -80,44 +80,37 @@ public sealed class GalleryViewModelBehaviorTests : IDisposable
         catch { }
     }
 
-    /// <summary>
-    /// applySearchNow が検索コマンドをフィルタ状態へ即時反映することを確認する。
-    ///
-    /// 検索ボックスの Enter は debounce を待たずにこのメソッドを呼ぶ。
-    /// tag/is/folder/sort のようなコマンドが即座に filtersState へ移らないと、
-    /// UI の検索条件表示と実際の DB クエリ条件が食い違うため、代表的なコマンドをまとめて検証する。
-    /// </summary>
     [Fact]
-    public void ApplySearchNow_AppliesCommandFiltersImmediately()
+    public void SearchQueryChange_TreatsCommandLikeTextAsPlainText()
     {
-        viewModel.filtersState.SearchQuery = "tag:night is:fav folder:primary sort:world";
+        viewModel.filtersState.SearchQuery = "tag:night world:Moon scene";
+
+        Assert.Equal("", viewModel.filtersState.DebouncedQuery);
+        Assert.Empty(viewModel.filtersState.tagFilters);
+        Assert.Empty(viewModel.filtersState.worldFilters);
 
         viewModel.applySearchNow();
 
-        Assert.Equal("", viewModel.filtersState.DebouncedQuery);
-        Assert.Equal(["night"], viewModel.filtersState.tagFilters);
-        Assert.True(viewModel.filtersState.FavoritesOnly);
-        Assert.Equal(DisplayFolderMode.primary, viewModel.filtersState.DisplayFolderMode);
-        Assert.Equal(SortMode.worldAsc, viewModel.filtersState.SortMode);
+        Assert.Equal("tag:night world:Moon scene", viewModel.filtersState.DebouncedQuery);
+        Assert.Empty(viewModel.filtersState.tagFilters);
+        Assert.Empty(viewModel.filtersState.worldFilters);
     }
 
     /// <summary>
-    /// SearchQuery の変更が 400ms デバウンス後に DebouncedQuery へ反映されることを確認する。
+    /// SearchQuery の変更だけでは DebouncedQuery へ反映されず、Enter相当の applySearchNow で確定することを確認する。
     ///
-    /// 通常入力ではキー入力ごとに DB を叩かないよう、GalleryViewModel は SearchQuery 変更を遅延して
-    /// DebouncedQuery に移す。
-    /// 連続入力の最後の値だけが残ることを、短時間に2回代入してから待機して検証する。
+    /// 通常入力ではキー入力ごとに DB を叩かないよう、GalleryViewModel は SearchQuery 変更を保留する。
+    /// 連続入力の最後の値だけが Enter 確定時に反映されることを検証する。
     /// </summary>
     [Fact]
-    public async Task SearchQueryChange_DebouncesPlainTextBeforeReload()
+    public void SearchQueryChange_WaitsForEnterBeforeApplyingPlainText()
     {
         viewModel.filtersState.SearchQuery = "first";
         viewModel.filtersState.SearchQuery = "second";
 
-        for (var i = 0; i < 20 && viewModel.filtersState.DebouncedQuery != "second"; i++)
-        {
-            await Task.Delay(50);
-        }
+        Assert.Equal("", viewModel.filtersState.DebouncedQuery);
+
+        viewModel.applySearchNow();
 
         Assert.Equal("second", viewModel.filtersState.DebouncedQuery);
     }
