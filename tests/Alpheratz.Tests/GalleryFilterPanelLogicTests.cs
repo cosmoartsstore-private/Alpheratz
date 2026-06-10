@@ -71,7 +71,7 @@ public sealed class GalleryFilterPanelLogicTests
         Assert.True(state.FolderSecondary);
         Assert.False(state.GroupNone);
         Assert.True(state.GroupWorld);
-        Assert.Equal("APrimary", GalleryFilterPanelLogic.IconForegroundKey(true));
+        Assert.Equal("ATextOnPrimary", GalleryFilterPanelLogic.IconForegroundKey(true));
         Assert.Equal("ATextFaint", GalleryFilterPanelLogic.IconForegroundKey(false));
     }
 
@@ -429,7 +429,7 @@ public sealed class GalleryFilterPanelLogicTests
     /// <summary>
     /// active ボタンのテーマキーと、ドロップダウン開閉後の副作用が決まることを確認する。
     ///
-    /// active ボタンは primary 系の背景・文字・枠線を使い、非 active では薄い面色と透明枠へ戻す。
+    /// active ボタンは青背景と白文字を使い、非 active では薄い面色と透明枠へ戻す。
     /// ドロップダウンは閉じている状態から開いた時だけ検索欄をクリアして候補を再構築し、
     /// 開いている状態から閉じる時は既存検索語を触らない。
     /// </summary>
@@ -437,7 +437,7 @@ public sealed class GalleryFilterPanelLogicTests
     public void ButtonStyleAndDropdownToggle_ReturnDisplayKeysAndOpenSideEffect()
     {
         Assert.Equal(
-            new FilterPanelButtonStyle("APrimarySoft", "APrimary", "ABorderStrong", 1, false),
+            new FilterPanelButtonStyle("APrimary", "ATextOnPrimary", null, 0, true),
             GalleryFilterPanelLogic.ActiveButtonStyle(true));
         Assert.Equal(
             new FilterPanelButtonStyle("ASurfaceSoft", "ATextDim", null, 0, true),
@@ -478,9 +478,8 @@ public sealed class GalleryFilterPanelLogicTests
     /// <summary>
     /// チェックリスト行の checked 状態と件数表示有無から、テーマキーとチェック列が決まることを確認する。
     ///
-    /// 件数表示があるタグ/ワールド行ではチェックボックスを 3 列目に置き、
-    /// 件数表示がない「すべて」行では 2 列目に置く。
-    /// checked 行だけが primary soft 背景、強い枠線、チェックマークを持つ。
+    /// タグ/ワールド行のチェックは左端に固定し、選択状態はチェックボックス自体で示す。
+    /// 行背景と行枠線を使うとリストが重く見えるため、選択時も行の面色は変えない。
     /// </summary>
     [Fact]
     public void CheckboxVisual_ReturnsThemeKeysCheckColumnAndCheckmarkState()
@@ -489,12 +488,12 @@ public sealed class GalleryFilterPanelLogicTests
             new FilterCheckboxVisual(
                 "APrimary",
                 "ATextDisabled",
-                "ABorderStrong",
-                "APrimarySoft",
-                "APrimarySoft",
-                "ABorderStrong",
                 "APrimary",
-                CheckColumn: 2,
+                "APrimary",
+                null,
+                null,
+                "ATextOnPrimary",
+                CheckColumn: 0,
                 CheckmarkVisible: true),
             GalleryFilterPanelLogic.CheckboxVisual(isChecked: true, hasCountText: true));
 
@@ -503,11 +502,11 @@ public sealed class GalleryFilterPanelLogicTests
                 "ATextFaint",
                 "ATextDisabled",
                 "ABorder",
-                "ASurfaceSoft",
+                "ASurface",
                 null,
                 null,
-                "APrimary",
-                CheckColumn: 1,
+                "ATextOnPrimary",
+                CheckColumn: 0,
                 CheckmarkVisible: false),
             GalleryFilterPanelLogic.CheckboxVisual(isChecked: false, hasCountText: false));
     }

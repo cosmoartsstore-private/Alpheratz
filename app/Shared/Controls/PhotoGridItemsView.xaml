@@ -15,6 +15,10 @@
               ScrollViewer.VerticalScrollBarVisibility="Hidden"
               ScrollViewer.HorizontalScrollBarVisibility="Disabled"
               SizeChanged="GridView_SizeChanged">
+        <GridView.Resources>
+            <SolidColorBrush x:Key="GridViewItemBackgroundPointerOver" Color="Transparent"/>
+            <SolidColorBrush x:Key="GridViewItemPointerOverBorderBrush" Color="Transparent"/>
+        </GridView.Resources>
         <GridView.ItemsPanel>
             <ItemsPanelTemplate>
                 <ItemsWrapGrid Orientation="Horizontal"
@@ -77,14 +81,14 @@
 
                                 <!--
                                     複数選択モードで選択された写真には solid なアクセント枠 + チェックバッジを表示。
-                                    半透明ティントは写真を覆い隠すため使わず、3px の APrimary リングで示す。
-                                    PhotoThumbnailItem.IsSelected は GalleryViewModel.onSelectedPathsChanged が
-                                    selectedPhotoPaths の追加/削除に同期して更新する。
+                                    写真を覆う色面は使わず、2px の APrimary リングで示す。
+                                    PhotoThumbnailItem.IsSelected は GallerySelectionState の選択パスと
+                                    表示写真の再同期で更新する。
                                 -->
-                                <Border Background="Transparent"
+                                <Border Background="{ThemeResource APhotoSelectionTint}"
                                         BorderBrush="{ThemeResource APrimary}"
-                                        BorderThickness="3"
-                                        CornerRadius="{StaticResource ARadius}"
+                                        BorderThickness="2"
+                                        CornerRadius="4"
                                         Visibility="{Binding Photo.IsSelected, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
                                 <!--
@@ -105,22 +109,21 @@
                                 </Border>
 
                                 <!--
-                                    選択チェック (notification dot 風)。26px サイズ、白枠でくっきり。
+                                    選択チェック。角丸スクエアで写真選択の状態を示す。
                                 -->
                                 <Border HorizontalAlignment="Right" VerticalAlignment="Top"
-                                        Margin="0,9,9,0"
-                                        Width="26" Height="26"
-                                        CornerRadius="13"
+                                        Margin="0,6,6,0"
+                                        Width="22" Height="22"
+                                        CornerRadius="8"
                                         Background="{ThemeResource APrimary}"
-                                        BorderBrush="White"
-                                        BorderThickness="1"
+                                        BorderBrush="{ThemeResource APhotoSelectionBadgeBorder}"
+                                        BorderThickness="0"
                                         Visibility="{Binding Photo.IsSelected, Converter={StaticResource BoolToVisibilityConverter}}">
-                                    <TextBlock Text="✓"
-                                               Foreground="White"
-                                               FontSize="13"
-                                               FontWeight="Bold"
-                                               HorizontalAlignment="Center"
-                                               VerticalAlignment="Center"/>
+                                    <controls:AppIcon IconName="check"
+                                                      IconSize="13"
+                                                      Foreground="White"
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"/>
                                 </Border>
 
                                 <controls:AnimatedFavoriteStar HorizontalAlignment="Right"
@@ -146,6 +149,7 @@
                                            Foreground="{ThemeResource ATextDim}"
                                            TextTrimming="CharacterEllipsis"/>
                             </StackPanel>
+
                         </Grid>
                     </Border>
                 </Grid>

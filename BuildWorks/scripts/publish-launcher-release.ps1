@@ -9,12 +9,7 @@ if (Test-Path $LauncherPublishRoot) {
     Remove-Item $LauncherPublishRoot -Recurse -Force
 }
 
-dotnet publish $LauncherProjectPath `
-    -c Release `
-    -r win-x64 `
-    --self-contained true `
-    -p:PublishSingleFile=true `
-    -o $LauncherPublishRoot
+& dotnet publish $LauncherProjectPath -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o $LauncherPublishRoot
 
 $LauncherExe = Join-Path $LauncherPublishRoot "Alpheratz.exe"
 if (!(Test-Path $LauncherExe)) {

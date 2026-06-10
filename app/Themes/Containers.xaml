@@ -4,7 +4,7 @@
 
     <!-- Photo card frame -->
     <Style x:Key="PhotoCardBorderStyle" TargetType="Border">
-        <Setter Property="CornerRadius" Value="{StaticResource ARadius}"/>
+        <Setter Property="CornerRadius" Value="4"/>
         <Setter Property="BorderBrush" Value="{ThemeResource ABorder}"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Background" Value="{ThemeResource ASurface}"/>

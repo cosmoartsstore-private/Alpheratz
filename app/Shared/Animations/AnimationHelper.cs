@@ -23,6 +23,7 @@ public static class AnimationHelper
     {
         var visual = ElementCompositionPreview.GetElementVisual(element);
         var compositor = visual.Compositor;
+        visual.StopAnimation("Opacity");
         var anim = compositor.CreateScalarKeyFrameAnimation();
         anim.InsertKeyFrame(1f, 1f, compositor.CreateCubicBezierEasingFunction(new Vector2(0.25f, 0.1f), new Vector2(0.25f, 1f)));
         anim.Duration = TimeSpan.FromMilliseconds(durationMs);
@@ -210,6 +211,31 @@ public static class AnimationHelper
         SlideIn(element, 0, fromY, durationMs);
     }
 
+    /// <summary>モーダルを下から上へスライドしながら表示する。HTML デモの slide-up と同じ移動量・時間を使う。</summary>
+    public static void ModalSlideUpIn(UIElement element, float fromY = 48f, int durationMs = 300)
+    {
+        var visual = ElementCompositionPreview.GetElementVisual(element);
+        var compositor = visual.Compositor;
+
+        StopTransformAnimations(visual);
+        visual.Offset = new Vector3(0, fromY, 0);
+        visual.Opacity = 0f;
+        visual.Scale = Vector3.One;
+
+        var ease = compositor.CreateCubicBezierEasingFunction(new Vector2(0.34f, 1.1f), new Vector2(0.64f, 1f));
+
+        var offsetAnim = compositor.CreateVector3KeyFrameAnimation();
+        offsetAnim.InsertKeyFrame(1f, Vector3.Zero, ease);
+        offsetAnim.Duration = TimeSpan.FromMilliseconds(durationMs);
+
+        var opacityAnim = compositor.CreateScalarKeyFrameAnimation();
+        opacityAnim.InsertKeyFrame(1f, 1f, ease);
+        opacityAnim.Duration = TimeSpan.FromMilliseconds(durationMs);
+
+        visual.StartAnimation("Offset", offsetAnim);
+        visual.StartAnimation("Opacity", opacityAnim);
+    }
+
     /// <summary>上方向へスライドしながらフェードアウトする。</summary>
     public static void SlideUpFadeOut(UIElement element, float toY = -10f, int durationMs = 200, Action? onCompleted = null)
     {
@@ -236,8 +262,17 @@ public static class AnimationHelper
     public static void ResetVisual(UIElement element)
     {
         var visual = ElementCompositionPreview.GetElementVisual(element);
+        StopTransformAnimations(visual);
         visual.Opacity = 1f;
         visual.Offset = Vector3.Zero;
         visual.Scale = Vector3.One;
+    }
+
+    /// <summary>再表示前に残っている Composition アニメーションを止め、古い縮小状態の再描画を防ぐ。</summary>
+    private static void StopTransformAnimations(Visual visual)
+    {
+        visual.StopAnimation("Opacity");
+        visual.StopAnimation("Offset");
+        visual.StopAnimation("Scale");
     }
 }

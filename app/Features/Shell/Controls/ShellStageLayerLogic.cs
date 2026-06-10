@@ -9,7 +9,7 @@ namespace Alpheratz.Features.Shell.Controls;
 internal static class ShellStageLayerLogic
 {
     public const int ModalFadeInDurationMilliseconds = 250;
-    public const int ModalScaleInDurationMilliseconds = 350;
+    public const int ModalSlideUpDurationMilliseconds = 300;
     public const int ModalFadeOutDurationMilliseconds = 200;
     public const int ModalScaleOutDurationMilliseconds = 200;
     public const int OverlayFadeInDurationMilliseconds = 300;

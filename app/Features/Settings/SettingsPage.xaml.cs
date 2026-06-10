@@ -5,12 +5,12 @@ using System.ComponentModel;
 using System.Threading.Tasks;
 using Alpheratz.Core;
 using Alpheratz.Services;
+using Alpheratz.Shared.Models;
 using Alpheratz.Shared.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
-using Windows.System;
 
 namespace Alpheratz.Features.Settings;
 
@@ -101,6 +101,17 @@ public sealed partial class SettingsPage : Page
         catch (Exception ex) { AppLogger.Error($"SettingsPage.SetWorldAnalysisEnabled: threw: {ex}"); }
     }
 
+    /// <summary>外部遷移から指定セクションを表示する。サイドバークリックと同じ切替処理を使う。</summary>
+    public void ShowSection(string section)
+    {
+        try
+        {
+            if (SettingsPageLogic.IsKnownSection(section))
+                ShowSettingsSection(section);
+        }
+        catch (Exception ex) { AppLogger.Error($"SettingsPage.ShowSection: threw: {ex}"); }
+    }
+
     /// <summary>設定モーダルの幅に合わせて、2カラム/1カラム配置を切り替える。</summary>
     private void SettingsContentGrid_SizeChanged(object sender, SizeChangedEventArgs e)
     {
@@ -134,9 +145,11 @@ public sealed partial class SettingsPage : Page
         {
             viewModel.TagMaster.masterTags.CollectionChanged += MasterTags_CollectionChanged;
             viewModel.Template.PropertyChanged += TemplateViewModel_PropertyChanged;
+            viewModel.Settings.PropertyChanged += SettingsViewModel_PropertyChanged;
             ActualThemeChanged += OnActualThemeChanged;
             UpdateTagEmptyState();
             UpdateEditorState();
+            UpdateThemeSegmentVisual();
             ShowSettingsSection(activeSettingsSection);
         }
         catch (Exception ex) { AppLogger.Error($"SettingsPage.SettingsPage_Loaded: threw: {ex}"); }
@@ -149,6 +162,7 @@ public sealed partial class SettingsPage : Page
         {
             viewModel.TagMaster.masterTags.CollectionChanged -= MasterTags_CollectionChanged;
             viewModel.Template.PropertyChanged -= TemplateViewModel_PropertyChanged;
+            viewModel.Settings.PropertyChanged -= SettingsViewModel_PropertyChanged;
             ActualThemeChanged -= OnActualThemeChanged;
         }
         catch (Exception ex) { AppLogger.Error($"SettingsPage.SettingsPage_Unloaded: threw: {ex}"); }
@@ -161,10 +175,18 @@ public sealed partial class SettingsPage : Page
         {
             RefreshTemplateCardVisuals();
             RefreshSettingsNavVisuals();
+            UpdateThemeSegmentVisual();
             DispatcherQueue?.TryEnqueue(RefreshTemplateCardVisuals);
             DispatcherQueue?.TryEnqueue(RefreshSettingsNavVisuals);
+            DispatcherQueue?.TryEnqueue(() => UpdateThemeSegmentVisual());
         }
         catch (Exception ex) { AppLogger.Error($"SettingsPage.OnActualThemeChanged: {ex}"); }
+    }
+
+    private void SettingsViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(viewModel.Settings.ThemeMode))
+            DispatcherQueue?.TryEnqueue(() => UpdateThemeSegmentVisual());
     }
 
     /// <summary>左サイドバーから表示する設定セクションを切り替える。</summary>
@@ -312,7 +334,11 @@ public sealed partial class SettingsPage : Page
     private async void ThemeLight_Click(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("SettingsPage.ThemeLight_Click: enter");
-        try { if (OnThemeChanged is not null) await OnThemeChanged(false).ConfigureAwait(false); }
+        try
+        {
+            if (OnThemeChanged is not null) await OnThemeChanged(false).ConfigureAwait(false);
+            DispatcherQueue?.TryEnqueue(() => UpdateThemeSegmentVisual(isDark: false));
+        }
         catch (Exception ex) { AppLogger.Error($"SettingsPage.ThemeLight_Click: threw: {ex}"); }
         AppLogger.Trace("SettingsPage.ThemeLight_Click: exit");
     }
@@ -321,10 +347,39 @@ public sealed partial class SettingsPage : Page
     private async void ThemeDark_Click(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("SettingsPage.ThemeDark_Click: enter");
-        try { if (OnThemeChanged is not null) await OnThemeChanged(true).ConfigureAwait(false); }
+        try
+        {
+            if (OnThemeChanged is not null) await OnThemeChanged(true).ConfigureAwait(false);
+            DispatcherQueue?.TryEnqueue(() => UpdateThemeSegmentVisual(isDark: true));
+        }
         catch (Exception ex) { AppLogger.Error($"SettingsPage.ThemeDark_Click: threw: {ex}"); }
         AppLogger.Trace("SettingsPage.ThemeDark_Click: exit");
     }
+
+    /// <summary>テーマ切替セグメントの選択ピルと文字色を現在テーマへ同期する。</summary>
+    private void UpdateThemeSegmentVisual(bool? isDark = null)
+    {
+        var dark = isDark ?? viewModel.Settings.ThemeMode == ThemeMode.dark;
+        Grid.SetColumn(ThemeSelectionPill, dark ? 1 : 0);
+
+        ThemeSegment.Background = ResolveSelectedThemeBrush("ASurfaceSoft")
+            ?? new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        ThemeSegment.BorderBrush = ResolveSelectedThemeBrush("ABorder")
+            ?? new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        ThemeSelectionPill.Background = ResolveSelectedThemeBrush("APrimary")
+            ?? new SolidColorBrush(Microsoft.UI.Colors.DodgerBlue);
+
+        var activeForeground = ResolveSelectedThemeBrush("ATextOnPrimary")
+            ?? new SolidColorBrush(Microsoft.UI.Colors.White);
+        var restForeground = ResolveSelectedThemeBrush("ATextFaint")
+            ?? new SolidColorBrush(Microsoft.UI.Colors.Gray);
+
+        ThemeLightButton.Foreground = dark ? restForeground : activeForeground;
+        ThemeDarkButton.Foreground = dark ? activeForeground : restForeground;
+    }
+
+    private Brush? ResolveSelectedThemeBrush(string key)
+        => ThemeHelper.BrushForSelectedTheme(key) ?? ThemeHelper.Brush(this, key);
 
     /// <summary>StellaRecord へ現在の実行ファイルを登録する。</summary>
     private void RegisterStellaRecord_Click(object sender, RoutedEventArgs e)
@@ -345,19 +400,6 @@ public sealed partial class SettingsPage : Page
         }
         catch (Exception ex) { AppLogger.Error($"SettingsPage.RegisterStellaRecord_Click: threw: {ex}"); }
         AppLogger.Trace("SettingsPage.RegisterStellaRecord_Click: exit");
-    }
-
-    private async void CreditLink_Click(object sender, RoutedEventArgs e)
-    {
-        AppLogger.Trace("SettingsPage.CreditLink_Click: enter");
-        try
-        {
-            if ((sender as FrameworkElement)?.Tag is not string url) return;
-            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return;
-            await Launcher.LaunchUriAsync(uri).AsTask().ConfigureAwait(false);
-        }
-        catch (Exception ex) { AppLogger.Error($"SettingsPage.CreditLink_Click: threw: {ex}"); }
-        AppLogger.Trace("SettingsPage.CreditLink_Click: exit");
     }
 
     /// <summary>未知ワールド解析モーダルの表示を要求する。</summary>
@@ -598,5 +640,7 @@ public sealed partial class SettingsPage : Page
             label.Text = state.Label;
             label.Foreground = ThemeHelper.Brush(card, state.LabelForegroundKey);
         }
+        if (stack?.Children[1] is TextBlock body)
+            body.Foreground = ThemeHelper.Brush(card, state.BodyForegroundKey);
     }
 }

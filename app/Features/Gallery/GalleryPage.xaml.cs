@@ -1,14 +1,22 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Alpheratz.Core;
 using Alpheratz.Features.Gallery.Controls;
 using Alpheratz.Shared.Models;
-using Alpheratz.Shared.Animations;
+using Alpheratz.Shared.Services;
+using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
+using Windows.System;
+using Windows.UI.Core;
 
 namespace Alpheratz.Features.Gallery;
 
@@ -19,6 +27,9 @@ namespace Alpheratz.Features.Gallery;
 public sealed partial class GalleryPage : Page
 {
     private readonly GalleryViewModel viewModel;
+    private UiObservableCollection<string>? masterTags;
+    private readonly HashSet<string> pendingBulkTags = new(StringComparer.OrdinalIgnoreCase);
+    public ObservableCollection<string> BulkTagConfirmationTargets { get; } = [];
 
     /// <summary>
     /// 検索条件パネル。ShellPage 側の XAML (FilterOverlay) で生成されたインスタンスを
@@ -104,10 +115,17 @@ public sealed partial class GalleryPage : Page
                 photoGrid.OnFavoriteClicked = item => _ = viewModel.toggleFavorite(item.Photo.PhotoPath, item.Photo.IsFavorite);
                 photoGrid.OnPhotoActivated = item =>
                 {
+                    var shiftKey = IsShiftKeyDown();
+                    if (viewModel.selectionState.IsMultiSelectMode)
+                    {
+                        viewModel.handlePhotoActivate(item, shiftKey, photo => OnSelectPhoto?.Invoke(photo));
+                        return;
+                    }
+
                     if (viewModel.filtersState.GroupingMode != Shared.Models.GroupingMode.none && item.GroupKey is not null)
                         OnDrillIntoGroup?.Invoke(item);
                     else
-                        viewModel.handlePhotoActivate(item, false, photo => OnSelectPhoto?.Invoke(photo));
+                        viewModel.handlePhotoActivate(item, shiftKey, photo => OnSelectPhoto?.Invoke(photo));
                 };
                 AppLogger.Trace("GalleryPage.ctor: PhotoGrid callbacks wired");
             }
@@ -165,6 +183,7 @@ public sealed partial class GalleryPage : Page
                     if (DispatcherQueue is not { } dq) return;
                     dq.TryEnqueue(() =>
                     {
+                        viewModel.selectionState.syncSelectionWithVisiblePhotos(viewModel.photosState.photos);
                         GridStage.MasonryViewControlRef?.ScrollToTop();
                         GridStage.PhotoGridControlRef?.ScrollToTop();
                     });
@@ -204,7 +223,7 @@ public sealed partial class GalleryPage : Page
         try
         {
             FilterPanel.setMasterTagsSource(tags);
-            BulkTagCombo.ItemsSource = tags;
+            masterTags = tags;
         }
         catch (Exception ex)
         {
@@ -252,7 +271,7 @@ public sealed partial class GalleryPage : Page
             masonry.SetColumnCount(5);
             masonry.SetPhotos(viewModel.photosState.photos);
             masonry.OnPhotoTapped = photo => viewModel.handlePhotoActivate(
-                new PhotoGridItem { Photo = photo }, false, p => OnSelectPhoto?.Invoke(p));
+                new PhotoGridItem { Photo = photo }, IsShiftKeyDown(), p => OnSelectPhoto?.Invoke(p));
             masonry.OnThumbnailsNeeded = items => viewModel.photosState.requestVisibleThumbnails(items);
             masonry.OnFirstVisibleIndexChanged = idx => SyncMonthNavToIndex(idx);
         }
@@ -313,21 +332,13 @@ public sealed partial class GalleryPage : Page
             if (state.Transition == BulkOperationBarTransition.Show)
             {
                 BulkOpBar.Visibility = Visibility.Visible;
-                AnimationHelper.SlideIn(BulkOpBar, fromY: 20f, durationMs: 200);
             }
             else if (state.Transition == BulkOperationBarTransition.Hide)
             {
-                AnimationHelper.SlideOut(BulkOpBar, toY: 20f, durationMs: 150, onCompleted: () =>
-                {
-                    DispatcherQueue?.TryEnqueue(() =>
-                    {
-                        BulkOpBar.Visibility = Visibility.Collapsed;
-                        AnimationHelper.ResetVisual(BulkOpBar);
-                    });
-                });
+                BulkOpBar.Visibility = Visibility.Collapsed;
             }
             bulkOpBarWasVisible = state.NextWasVisible;
-            SelectionCountLabel.Text = state.SelectionLabel;
+            SelectionCountLabel.Text = viewModel.selectionState.selectedPhotoPaths.Count.ToString();
         }
         catch (Exception ex)
         {
@@ -335,6 +346,14 @@ public sealed partial class GalleryPage : Page
         }
         AppLogger.Trace("GalleryPage.updateBulkOpBar: exit");
     }
+
+    /// <summary>バルク操作バー上のポインタ入力をここで止め、背面の写真カードへ渡さない。</summary>
+    private void BulkOpBar_PointerPressed(object sender, PointerRoutedEventArgs e)
+        => e.Handled = true;
+
+    /// <summary>バルク操作バー内のタップを背面の GridView 選択へ伝播させない。</summary>
+    private void BulkOpBar_Tapped(object sender, TappedRoutedEventArgs e)
+        => e.Handled = true;
 
     /// <summary>マルチセレクトモードを終了する。</summary>
     private void ExitMultiSelect_Click(object sender, RoutedEventArgs e)
@@ -381,24 +400,211 @@ public sealed partial class GalleryPage : Page
         AppLogger.Trace("GalleryPage.BulkUnfavorite_Click: exit");
     }
 
-    /// <summary>ドロップダウンから選択されたタグを一括追加する。</summary>
-    private async void BulkTagCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    /// <summary>複数選択中の写真へ追加するタグを選ぶ確認モーダルを開く。</summary>
+    private void BulkTagButton_Click(object sender, RoutedEventArgs e)
     {
-        AppLogger.Trace("GalleryPage.BulkTagCombo_SelectionChanged: enter");
+        AppLogger.Trace("GalleryPage.BulkTagButton_Click: enter");
         try
         {
-            if (BulkTagCombo.SelectedItem is string tag)
-            {
-                BulkTagCombo.SelectedIndex = -1;
-                await viewModel.bulkAddTag(tag).ConfigureAwait(false);
-            }
+            ShowBulkTagConfirmation();
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"GalleryPage.BulkTagCombo_SelectionChanged: threw: {ex}");
+            AppLogger.Error($"GalleryPage.BulkTagButton_Click: threw: {ex}");
         }
-        AppLogger.Trace("GalleryPage.BulkTagCombo_SelectionChanged: exit");
+        AppLogger.Trace("GalleryPage.BulkTagButton_Click: exit");
     }
+
+    /// <summary>一括タグ追加の対象写真と追加タグを確認するモーダルを開く。</summary>
+    private void ShowBulkTagConfirmation()
+    {
+        var selectedPaths = viewModel.selectionState.selectedPhotoPaths.ToArray();
+        if (selectedPaths.Length == 0) return;
+
+        pendingBulkTags.Clear();
+        rebuildBulkTagSelectionRows();
+        BulkTagConfirmationTargets.Clear();
+
+        var photoMap = viewModel.photosState.photos
+            .ToDictionary(photo => photo.PhotoPath, photo => photo.PhotoFilename, StringComparer.Ordinal);
+        foreach (var path in selectedPaths)
+        {
+            var name = photoMap.TryGetValue(path, out var filename) && !string.IsNullOrWhiteSpace(filename)
+                ? filename
+                : Path.GetFileName(path);
+            BulkTagConfirmationTargets.Add(string.IsNullOrWhiteSpace(name) ? path : name);
+        }
+
+        updateBulkTagConfirmLabels(selectedPaths.Length);
+        BulkTagConfirmOverlay.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>タグ候補を重複なし・空文字なしの選択行として再描画する。</summary>
+    private void rebuildBulkTagSelectionRows()
+    {
+        BulkTagSelectionList.Children.Clear();
+        var choices = (masterTags ?? [])
+            .Select(tag => tag.Trim())
+            .Where(tag => !string.IsNullOrEmpty(tag))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(tag => tag, StringComparer.Create(new System.Globalization.CultureInfo("ja-JP"), false))
+            .ToArray();
+
+        if (choices.Length == 0)
+        {
+            BulkTagSelectionList.Children.Add(new TextBlock
+            {
+                Text = "追加できるタグがありません。",
+                Foreground = themeBrush("ATextFaint"),
+                FontSize = 12,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                Margin = new Thickness(8, 6, 8, 6),
+            });
+            return;
+        }
+
+        foreach (var tag in choices)
+            BulkTagSelectionList.Children.Add(createBulkTagChoiceButton(tag));
+    }
+
+    /// <summary>一括追加タグの選択行を作成する。</summary>
+    private Button createBulkTagChoiceButton(string tag)
+    {
+        var selected = pendingBulkTags.Contains(tag);
+        var checkBox = new Border
+        {
+            Width = 20,
+            Height = 20,
+            CornerRadius = new CornerRadius(7),
+            Background = selected ? themeBrush("APrimary") : themeBrush("ASurface"),
+            BorderBrush = selected ? themeBrush("APrimary") : themeBrush("ABorder"),
+            BorderThickness = new Thickness(1),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        if (selected)
+        {
+            checkBox.Child = new Alpheratz.Shared.Controls.AppIcon
+            {
+                IconName = "check",
+                IconSize = 12,
+                Foreground = themeBrush("ATextOnPrimary"),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+        }
+
+        var row = new Grid
+        {
+            Padding = new Thickness(10, 8, 10, 8),
+            Background = new SolidColorBrush(Colors.Transparent),
+        };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        Grid.SetColumn(checkBox, 0);
+        row.Children.Add(checkBox);
+
+        var label = new TextBlock
+        {
+            Text = tag,
+            FontSize = 12,
+            FontWeight = Microsoft.UI.Text.FontWeights.Bold,
+            Foreground = selected ? themeBrush("APrimary") : themeBrush("ATextDim"),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(10, 0, 0, 0),
+        };
+        Grid.SetColumn(label, 1);
+        row.Children.Add(label);
+
+        var border = new Border
+        {
+            CornerRadius = new CornerRadius(8),
+            Background = new SolidColorBrush(Colors.Transparent),
+            BorderThickness = new Thickness(0),
+            Child = row,
+        };
+
+        var button = new Button
+        {
+            Content = border,
+            Padding = new Thickness(0),
+            Background = new SolidColorBrush(Colors.Transparent),
+            BorderThickness = new Thickness(0),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+        };
+        button.Click += (_, _) =>
+        {
+            if (!pendingBulkTags.Add(tag))
+                pendingBulkTags.Remove(tag);
+            rebuildBulkTagSelectionRows();
+            updateBulkTagConfirmLabels(viewModel.selectionState.selectedPhotoPaths.Count);
+        };
+        return button;
+    }
+
+    /// <summary>一括タグ追加確認モーダルの件数表示と実行可否を更新する。</summary>
+    private void updateBulkTagConfirmLabels(int selectedPhotoCount)
+    {
+        var tagCount = pendingBulkTags.Count;
+        BulkTagConfirmTagLabel.Text = tagCount == 0
+            ? "追加するタグを選択してください"
+            : $"追加タグ: {string.Join(", ", pendingBulkTags.OrderBy(tag => tag, StringComparer.Create(new System.Globalization.CultureInfo("ja-JP"), false)))}";
+        BulkTagConfirmSummaryLabel.Text = tagCount == 0
+            ? $"{selectedPhotoCount} 枚の写真が対象です。"
+            : $"{selectedPhotoCount} 枚の写真に {tagCount} 件のタグを追加します。";
+        BulkTagConfirmButton.IsEnabled = tagCount > 0;
+    }
+
+    private async void ConfirmBulkTag_Click(object sender, RoutedEventArgs e)
+    {
+        AppLogger.Trace("GalleryPage.ConfirmBulkTag_Click: enter");
+        try
+        {
+            var tags = pendingBulkTags.ToArray();
+            CloseBulkTagConfirmation();
+            if (tags.Length > 0)
+                await viewModel.bulkAddTags(tags).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"GalleryPage.ConfirmBulkTag_Click: threw: {ex}");
+        }
+        AppLogger.Trace("GalleryPage.ConfirmBulkTag_Click: exit");
+    }
+
+    private void CancelBulkTagConfirm_Click(object sender, RoutedEventArgs e)
+    {
+        try { CloseBulkTagConfirmation(); }
+        catch (Exception ex) { AppLogger.Error($"GalleryPage.CancelBulkTagConfirm_Click: threw: {ex}"); }
+    }
+
+    private void BulkTagConfirmOverlay_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        try
+        {
+            e.Handled = true;
+            CloseBulkTagConfirmation();
+        }
+        catch (Exception ex) { AppLogger.Error($"GalleryPage.BulkTagConfirmOverlay_Tapped: threw: {ex}"); }
+    }
+
+    private void BulkTagConfirmContent_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        e.Handled = true;
+    }
+
+    /// <summary>一括タグ追加の確認モーダルを閉じ、保留中のタグと対象表示を破棄する。</summary>
+    private void CloseBulkTagConfirmation()
+    {
+        pendingBulkTags.Clear();
+        BulkTagSelectionList.Children.Clear();
+        BulkTagConfirmationTargets.Clear();
+        BulkTagConfirmOverlay.Visibility = Visibility.Collapsed;
+    }
+
+    private Brush themeBrush(string key)
+        => ThemeHelper.Brush(this, key) ?? new SolidColorBrush(Colors.Transparent);
 
     // 表示中の先頭写真インデックスから、月ナビのアクティブ月を決める。
     private void SyncMonthNavToIndex(int firstVisibleIndex)
@@ -428,6 +634,7 @@ public sealed partial class GalleryPage : Page
         FilterPanel.SetGroupingEnabled(!isGallery);
         SyncMonthNavAvailability();
         GridStage.UpdateLoadingState(viewModel.photosState.IsLoading, viewModel.photosState.TotalCount);
+        viewModel.selectionState.syncSelectionWithVisiblePhotos(viewModel.photosState.photos);
     }
 
     // ページ破棄時に ViewModel と子コントロールへの購読・コールバックを解除する。
@@ -483,4 +690,9 @@ public sealed partial class GalleryPage : Page
 
     private void SyncMonthNavAvailability()
         => GridStage.SetMonthNavAvailable(IsMonthNavAvailableForCurrentSort());
+
+    /// <summary>現在のキーボード状態から Shift 範囲選択の有無を取得する。</summary>
+    private static bool IsShiftKeyDown()
+        => (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift)
+            & CoreVirtualKeyStates.Down) == CoreVirtualKeyStates.Down;
 }

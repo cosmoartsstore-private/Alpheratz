@@ -19,12 +19,6 @@ namespace Alpheratz.Features.Gallery.Controls;
 [ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public sealed partial class GalleryFilterPanel : UserControl
 {
-    private const double MinChoiceRowWidth = 328;
-    private const double MaxChoiceRowWidth = 560;
-    private const double ChoicePanelHorizontalReserve = 44;
-    private const double ChoiceNameReserveWithCount = 112;
-    private const double ChoiceNameReserveWithoutCount = 48;
-
     private GalleryFiltersState? boundFiltersState;
     private UiObservableCollection<WorldFilterOptionDto>? boundWorldOptions;
     private UiObservableCollection<string>? boundMasterTags;
@@ -58,7 +52,6 @@ public sealed partial class GalleryFilterPanel : UserControl
         {
             InitializeComponent();
             buildWeekdayHeaders();
-            SizeChanged += OnPanelSizeChanged;
         }
         catch (Exception ex)
         {
@@ -86,6 +79,7 @@ public sealed partial class GalleryFilterPanel : UserControl
 
     private void RefreshThemeBoundVisuals()
     {
+        ApplyPanelSurfaceBrushes();
         syncActiveStates();
         syncFavoriteToggle();
         buildWeekdayHeaders();
@@ -95,16 +89,48 @@ public sealed partial class GalleryFilterPanel : UserControl
             buildCalendar();
     }
 
-    private void OnPanelSizeChanged(object sender, SizeChangedEventArgs e)
+    /// <summary>Collapsed 配下でも検索条件パネルのテーマ色を現在選択テーマへ明示反映する。</summary>
+    public void ApplyThemeNow(ElementTheme theme)
     {
-        try
+        RequestedTheme = theme;
+        ThemeHelper.NotifySelectedThemeChanged(theme);
+        RefreshThemeBoundVisuals();
+        DispatcherQueue?.TryEnqueue(RefreshThemeBoundVisuals);
+    }
+
+    /// <summary>カード化した検索条件パネルの土台・カード・区切り線を現在テーマのブラシで塗り直す。</summary>
+    private void ApplyPanelSurfaceBrushes()
+    {
+        var background = ResolveThemeBrush(this, "AFilterPanelBackground");
+        var sectionLine = ResolveThemeBrush(this, "AFilterPanelSectionLine")
+            ?? ResolveThemeBrush(this, "AFilterPanelBorder");
+        var border = ResolveThemeBrush(this, "AFilterPanelBorder");
+
+        if (background is not null)
         {
-            if (TagDropdownPanel.Visibility == Visibility.Visible)
-                rebuildTagCheckboxList();
-            if (WorldDropdownPanel.Visibility == Visibility.Visible)
-                rebuildWorldCheckboxList();
+            FilterPanelRoot.Background = background;
+            FilterPanelHeader.Background = background;
+            FilterPanelFooter.Background = background;
         }
-        catch (Exception ex) { AppLogger.Error($"GalleryFilterPanel.OnPanelSizeChanged: {ex}"); }
+        if (border is not null)
+        {
+            FilterPanelRoot.BorderBrush = border;
+            FilterPanelHeader.BorderBrush = border;
+            FilterPanelFooter.BorderBrush = border;
+        }
+
+        foreach (var item in FindDescendants<Border>(this))
+        {
+            if (Equals(item.Tag, "FilterPanelCard"))
+            {
+                if (background is not null) item.Background = background;
+                if (sectionLine is not null) item.BorderBrush = sectionLine;
+            }
+            else if (Equals(item.Tag, "FilterPanelDivider"))
+            {
+                if (sectionLine is not null) item.Background = sectionLine;
+            }
+        }
     }
 
     /// <summary>
@@ -132,7 +158,6 @@ public sealed partial class GalleryFilterPanel : UserControl
                 boundMasterTags.CollectionChanged -= OnMasterTagsChanged;
                 boundMasterTags = null;
             }
-            SizeChanged -= OnPanelSizeChanged;
             ActualThemeChanged -= OnActualThemeChanged;
         }
         catch (Exception ex)
@@ -279,9 +304,9 @@ public sealed partial class GalleryFilterPanel : UserControl
             setActive(OrientationAllBtn, state.OrientationAll);
             setActive(OrientationPortraitBtn, state.OrientationPortrait);
             setActive(OrientationLandscapeBtn, state.OrientationLandscape);
-            OrientationAllIcon.Foreground = ThemeHelper.Brush(OrientationAllIcon, GalleryFilterPanelLogic.IconForegroundKey(state.OrientationAll));
-            OrientationLandscapeIcon.Foreground = ThemeHelper.Brush(OrientationLandscapeIcon, GalleryFilterPanelLogic.IconForegroundKey(state.OrientationLandscape));
-            OrientationPortraitIcon.Foreground = ThemeHelper.Brush(OrientationPortraitIcon, GalleryFilterPanelLogic.IconForegroundKey(state.OrientationPortrait));
+            OrientationAllIcon.Foreground = ResolveThemeBrushOrTransparent(OrientationAllIcon, GalleryFilterPanelLogic.IconForegroundKey(state.OrientationAll));
+            OrientationLandscapeIcon.Foreground = ResolveThemeBrushOrTransparent(OrientationLandscapeIcon, GalleryFilterPanelLogic.IconForegroundKey(state.OrientationLandscape));
+            OrientationPortraitIcon.Foreground = ResolveThemeBrushOrTransparent(OrientationPortraitIcon, GalleryFilterPanelLogic.IconForegroundKey(state.OrientationPortrait));
 
             setActive(SortDateBtn, state.SortDate);
             setActive(SortWorldBtn, state.SortWorld);
@@ -322,11 +347,11 @@ public sealed partial class GalleryFilterPanel : UserControl
         if (boundFiltersState is null) return;
         var state = GalleryFilterPanelLogic.FavoriteToggle(boundFiltersState.FavoritesOnly);
         FavoriteStarIcon.Liked = state.Liked;
-        FavoriteToggleBtn.Background = ThemeHelper.Brush(FavoriteToggleBtn, state.BackgroundKey);
+        FavoriteToggleBtn.Background = ResolveThemeBrush(FavoriteToggleBtn, state.BackgroundKey);
         FavoriteToggleBtn.BorderBrush = state.BorderKey is null
             ? new SolidColorBrush(Colors.Transparent)
-            : ThemeHelper.Brush(FavoriteToggleBtn, state.BorderKey);
-        FavoriteLabel.Foreground = ThemeHelper.Brush(FavoriteLabel, state.LabelForegroundKey);
+            : ResolveThemeBrush(FavoriteToggleBtn, state.BorderKey);
+        FavoriteLabel.Foreground = ResolveThemeBrush(FavoriteLabel, state.LabelForegroundKey);
     }
 
     /// <summary>選択中タグの件数サマリを更新する。</summary>
@@ -348,12 +373,16 @@ public sealed partial class GalleryFilterPanel : UserControl
     /// <summary>ボタンの active 用スタイルクラスを有効/無効にする。</summary>
     private static void setActive(Button btn, bool active)
     {
+        var styleKey = active ? "PrimaryButtonStyle" : "GhostButtonStyle";
+        if (ThemeHelper.AppResource<Style>(styleKey) is { } buttonStyle)
+            btn.Style = buttonStyle;
+
         var style = GalleryFilterPanelLogic.ActiveButtonStyle(active);
-        btn.Background = ThemeHelper.Brush(btn, style.BackgroundKey);
-        btn.Foreground = ThemeHelper.Brush(btn, style.ForegroundKey);
+        btn.Background = ResolveThemeBrush(btn, style.BackgroundKey);
+        btn.Foreground = ResolveThemeBrush(btn, style.ForegroundKey);
         btn.BorderBrush = style.BorderTransparent || style.BorderKey is null
             ? new SolidColorBrush(Colors.Transparent)
-            : ThemeHelper.Brush(btn, style.BorderKey);
+            : ResolveThemeBrush(btn, style.BorderKey);
         btn.BorderThickness = new Thickness(style.BorderThickness);
     }
 
@@ -549,7 +578,7 @@ public sealed partial class GalleryFilterPanel : UserControl
                 Text = GalleryFilterPanelLogic.WeekLabels[i],
                 FontSize = 10,
                 FontWeight = Microsoft.UI.Text.FontWeights.ExtraBold,
-                Foreground = ThemeHelper.Brush(WeekdayHeaderGrid, "ATextFaint"),
+                Foreground = ResolveThemeBrush(WeekdayHeaderGrid, "ATextFaint"),
                 HorizontalAlignment = HorizontalAlignment.Center,
             };
             Grid.SetColumn(tb, i);
@@ -591,10 +620,10 @@ public sealed partial class GalleryFilterPanel : UserControl
                 HorizontalAlignment = HorizontalAlignment.Center,
                 Background = visual.BackgroundTransparent || visual.BackgroundKey is null
                     ? new SolidColorBrush(Colors.Transparent)
-                    : ThemeHelper.Brush(CalendarDayGrid, visual.BackgroundKey),
+                    : ResolveThemeBrush(CalendarDayGrid, visual.BackgroundKey),
                 Foreground = visual.ForegroundWhite || visual.ForegroundKey is null
                     ? new SolidColorBrush(Colors.White)
-                    : ThemeHelper.Brush(CalendarDayGrid, visual.ForegroundKey),
+                    : ResolveThemeBrush(CalendarDayGrid, visual.ForegroundKey),
                 BorderBrush = new SolidColorBrush(Colors.Transparent),
                 BorderThickness = new Thickness(0),
                 CornerRadius = new CornerRadius(6),
@@ -797,30 +826,28 @@ public sealed partial class GalleryFilterPanel : UserControl
     // ── Shared checkbox item builder ──
     private void addCheckboxItem(StackPanel parent, string label, string? countText, bool isChecked, Action onToggle)
     {
-        var rowWidth = CurrentChoiceRowWidth();
-        var nameMaxWidth = CurrentChoiceNameMaxWidth(countText is not null, rowWidth);
         var visual = GalleryFilterPanelLogic.CheckboxVisual(isChecked, countText is not null);
         var grid = new Grid
         {
             Padding = new Thickness(10, 8, 10, 8),
-            Width = rowWidth,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
         };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         if (countText is not null)
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var nameBlock = new TextBlock
         {
             Text = label,
             FontSize = 12,
             FontWeight = Microsoft.UI.Text.FontWeights.Bold,
-            Foreground = ThemeHelper.Brush(parent, visual.NameForegroundKey),
+            Foreground = ResolveThemeBrush(parent, visual.NameForegroundKey),
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxWidth = nameMaxWidth,
+            Margin = new Thickness(10, 0, 0, 0),
         };
-        Grid.SetColumn(nameBlock, 0);
+        Grid.SetColumn(nameBlock, 1);
         grid.Children.Add(nameBlock);
 
         if (countText is not null)
@@ -830,52 +857,55 @@ public sealed partial class GalleryFilterPanel : UserControl
                 Text = countText,
                 FontSize = 11,
                 FontFamily = ThemeHelper.AppResource<FontFamily>("AFontMono"),
-                Foreground = ThemeHelper.Brush(parent, visual.CountForegroundKey),
+                Foreground = ResolveThemeBrush(parent, visual.CountForegroundKey),
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(8, 0, 8, 0),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                TextAlignment = TextAlignment.Right,
+                MinWidth = 36,
+                Margin = new Thickness(8, 0, 0, 0),
             };
-            Grid.SetColumn(countBlock, 1);
+            Grid.SetColumn(countBlock, 2);
             grid.Children.Add(countBlock);
         }
 
         var checkBorder = new Border
         {
-            Width = 18,
-            Height = 18,
-            CornerRadius = new CornerRadius(5),
+            Width = 20,
+            Height = 20,
+            CornerRadius = new CornerRadius(7),
             BorderThickness = new Thickness(1),
-            BorderBrush = ThemeHelper.Brush(parent, visual.CheckBorderKey),
-            Background = ThemeHelper.Brush(parent, visual.CheckBackgroundKey),
+            BorderBrush = ResolveThemeBrush(parent, visual.CheckBorderKey),
+            Background = ResolveThemeBrush(parent, visual.CheckBackgroundKey),
+            HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Center,
         };
 
         if (visual.CheckmarkVisible)
         {
-            checkBorder.Child = new TextBlock
+            checkBorder.Child = new Alpheratz.Shared.Controls.AppIcon
             {
-                Text = "✓",
-                FontSize = 10,
-                FontWeight = Microsoft.UI.Text.FontWeights.ExtraBold,
-                Foreground = ThemeHelper.Brush(parent, visual.CheckmarkForegroundKey),
+                IconName = "check",
+                IconSize = 12,
+                Foreground = ResolveThemeBrushOrTransparent(parent, visual.CheckmarkForegroundKey),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
             };
         }
 
-        Grid.SetColumn(checkBorder, visual.CheckColumn);
+        Grid.SetColumn(checkBorder, 0);
         grid.Children.Add(checkBorder);
 
         var itemBorder = new Border
         {
-            Width = rowWidth,
             CornerRadius = new CornerRadius(8),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             Background = visual.ItemBackgroundKey is null
                 ? new SolidColorBrush(Colors.Transparent)
-                : ThemeHelper.Brush(parent, visual.ItemBackgroundKey),
+                : ResolveThemeBrush(parent, visual.ItemBackgroundKey),
             BorderBrush = visual.ItemBorderKey is null
                 ? new SolidColorBrush(Colors.Transparent)
-                : ThemeHelper.Brush(parent, visual.ItemBorderKey),
-            BorderThickness = new Thickness(1),
+                : ResolveThemeBrush(parent, visual.ItemBorderKey),
+            BorderThickness = new Thickness(0),
             Child = grid,
         };
 
@@ -888,29 +918,12 @@ public sealed partial class GalleryFilterPanel : UserControl
             BorderThickness = new Thickness(0),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            Width = rowWidth,
         };
 
         btn.Content = itemBorder;
         btn.Click += (_, _) => onToggle();
 
         parent.Children.Add(btn);
-    }
-
-    private double CurrentChoiceRowWidth()
-    {
-        if (double.IsNaN(ActualWidth) || ActualWidth <= 0)
-            return MaxChoiceRowWidth;
-
-        return Math.Max(
-            MinChoiceRowWidth,
-            Math.Min(MaxChoiceRowWidth, ActualWidth - ChoicePanelHorizontalReserve));
-    }
-
-    private static double CurrentChoiceNameMaxWidth(bool hasCountText, double rowWidth)
-    {
-        var reserve = hasCountText ? ChoiceNameReserveWithCount : ChoiceNameReserveWithoutCount;
-        return Math.Max(180, rowWidth - reserve);
     }
 
     /// <summary>メニュー内へ区切り線を追加する。</summary>
@@ -920,7 +933,7 @@ public sealed partial class GalleryFilterPanel : UserControl
         {
             Height = 1,
             Margin = new Thickness(4, 4, 4, 4),
-            Background = ThemeHelper.Brush(parent, "ABorder"),
+            Background = ResolveThemeBrush(parent, "ABorder"),
         });
     }
 
@@ -932,7 +945,7 @@ public sealed partial class GalleryFilterPanel : UserControl
             Text = text,
             FontSize = 10,
             FontWeight = Microsoft.UI.Text.FontWeights.ExtraBold,
-            Foreground = ThemeHelper.Brush(parent, "ATextFaint"),
+            Foreground = ResolveThemeBrush(parent, "ATextFaint"),
             Margin = new Thickness(10, 4, 0, 2),
         });
     }
@@ -990,4 +1003,24 @@ public sealed partial class GalleryFilterPanel : UserControl
 
     /// <summary>bool の表示状態を WinUI の Visibility へ変換する。</summary>
     private static Visibility ToVisibility(bool visible) => visible ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>現在のテーマで使う Brush を取得する。未定義キーなら null を返す。</summary>
+    private static Brush? ResolveThemeBrush(FrameworkElement element, string key)
+        => ThemeHelper.BrushForSelectedTheme(key) ?? ThemeHelper.Brush(element, key);
+
+    /// <summary>必須 Brush プロパティ用に、テーマ未定義時は透明ブラシへフォールバックする。</summary>
+    private static Brush ResolveThemeBrushOrTransparent(FrameworkElement element, string key)
+        => ResolveThemeBrush(element, key) ?? new SolidColorBrush(Colors.Transparent);
+
+    /// <summary>指定要素の VisualTree から型が一致する子孫を列挙する。</summary>
+    private static IEnumerable<T> FindDescendants<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match) yield return match;
+            foreach (var nested in FindDescendants<T>(child))
+                yield return nested;
+        }
+    }
 }

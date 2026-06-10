@@ -4,8 +4,8 @@ $BuildWorksRoot = Split-Path -Parent $PSScriptRoot
 $RepoRoot = Split-Path -Parent $BuildWorksRoot
 $InstallerScriptPath = Join-Path $BuildWorksRoot "nsis\Installer.nsi"
 $InstallerOutputPath = Join-Path $BuildWorksRoot "Alpheratz-v2-Installer.exe"
-# WindowsAppRuntimeInstall は self-contained 配布で不要になったため事前検査も削除。
-# (csproj の WindowsAppSDKSelfContained=true で WinAppSDK は AppLocal に同梱される)
+# Windows App Runtime preflight is intentionally skipped for the self-contained build.
+# WindowsAppSDKSelfContained=true copies WinAppSDK dependencies into the app output.
 
 $MakensisCandidates = @(
     "C:\Program Files (x86)\NSIS\makensis.exe",

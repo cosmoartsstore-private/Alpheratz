@@ -72,6 +72,7 @@ public sealed partial class ShellPage : Page
             // 検索ボックスで Enter が押されたときの即時検索。SearchQuery は HeaderBar 側で
             // UpdateSource 済みなので、ここでは applySearchNow() を呼ぶだけ (リアルタイム検索は廃止)。
             HeaderBar.OnSearchSubmit = () => viewModel.galleryViewModel.applySearchNow();
+            HeaderBar.SetWorldFilterOptions(viewModel.galleryViewModel.filtersState.worldFilterOptions);
 
             viewModel.galleryViewModel.selectionState.PropertyChanged += OnSelectionStateChanged;
             viewModel.galleryViewModel.filtersState.PropertyChanged += OnShellFiltersStateChanged;
@@ -370,7 +371,10 @@ public sealed partial class ShellPage : Page
     /// SettingsPage を Stage.ModalContent 経由で重ねる。Gallery は背景に残ったまま。
     /// インスタンスは初回生成時にキャッシュし、以降の表示は再ハイドレートで使い回す。
     /// </summary>
-    public void ShowSettings()
+    public void ShowSettings() => ShowSettings(null);
+
+    /// <summary>指定セクションを初期表示して設定モーダルを開く。null なら前回表示セクションを維持する。</summary>
+    public void ShowSettings(string? initialSection)
     {
         AppLogger.Trace("ShellPage.ShowSettings: enter");
         // モーダル多重化防止: 何らかのオーバーレイ (最上位/中位モーダル/検索条件) が開いている間は
@@ -436,6 +440,8 @@ public sealed partial class ShellPage : Page
                 };
             }
             settingsPage.SetWorldAnalysisEnabled(viewModel.CanStartWorldResolve);
+            if (initialSection is not null)
+                settingsPage.ShowSection(initialSection);
             Stage.ModalContent = settingsPage;
             Stage.ModalVisibility = Visibility.Visible;
             isMiddleModalOpen = true;
@@ -463,6 +469,7 @@ public sealed partial class ShellPage : Page
             // 親から自動継承されないことがある。明示的に ShellPage 側のテーマを伝える。
             page.RequestedTheme = RequestedTheme;
             page.OnAddTag = (photoPath, tag) => viewModel.galleryViewModel.addTag(photoPath, tag);
+            page.OnAddTags = (photoPath, tags) => viewModel.galleryViewModel.addTags(photoPath, tags);
             page.OnRemoveTag = (photoPath, tag) => viewModel.galleryViewModel.removeTag(photoPath, tag);
             page.OnClose = () => { modalViewModel.closePhotoModal(); CloseModal(); };
             page.OnOpenWorld = modalViewModel.handleOpenWorld;
@@ -473,7 +480,7 @@ public sealed partial class ShellPage : Page
             {
                 modalViewModel.closePhotoModal();
                 CloseModal();
-                ShowSettings();
+                ShowSettings("tags");
             };
             page.OnToggleFavorite = async () =>
             {

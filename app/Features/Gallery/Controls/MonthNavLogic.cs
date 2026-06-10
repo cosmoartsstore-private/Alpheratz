@@ -9,9 +9,9 @@ namespace Alpheratz.Features.Gallery.Controls;
 internal static class MonthNavLogic
 {
     public const string YearHeaderForegroundKey = "ATextFaint";
-    public const string ActiveMonthForegroundKey = "APrimary";
+    public const string ActiveMonthForegroundKey = "ATextOnPrimary";
     public const string RestMonthForegroundKey = "ATextDim";
-    public const string ActiveMonthBackgroundKey = "APrimarySoft";
+    public const string ActiveMonthBackgroundKey = "APrimary";
 
     /// <summary>月グループ一覧と active index から、年見出しと月ボタンの描画行を返す。</summary>
     public static IReadOnlyList<MonthNavRenderItem> BuildRenderItems(IReadOnlyList<GalleryMonthGroup> groups, int activeIndex)

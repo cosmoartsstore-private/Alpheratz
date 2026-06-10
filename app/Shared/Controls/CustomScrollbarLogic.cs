@@ -7,10 +7,10 @@ namespace Alpheratz.Shared.Controls;
 internal static class CustomScrollbarLogic
 {
     public const double MinimumThumbHeight = 18;
-    public const double RestThumbWidth = 6;
-    public const double HoverThumbWidth = 8;
+    public const double RestThumbWidth = 4;
+    public const double HoverThumbWidth = 6;
     public const float HiddenRailOpacity = 0f;
-    public const float VisibleRailOpacity = 1f;
+    public const float VisibleRailOpacity = 0.35f;
     public const int HoverAnimationDurationMilliseconds = 200;
     public const string RestThumbBrushKey = "AScrollbarThumb";
     public const string HoverThumbBrushKey = "AScrollbarThumbHover";
@@ -22,9 +22,13 @@ internal static class CustomScrollbarLogic
     /// <summary>ドラッグ開始時に通知するトラック上の Y 位置を返す。</summary>
     public static double TrackClickPosition(double trackY) => trackY;
 
-    /// <summary>ドラッグ中だけ親へ渡す Y 位置を返し、非ドラッグ時は通知しない。</summary>
-    public static double? DragPosition(bool isDragging, double trackY)
-        => isDragging ? trackY : null;
+    /// <summary>ドラッグ状態かつ左ボタン押下中なら親へ渡す Y 位置を返す。</summary>
+    public static double? DragPosition(bool isDragging, bool leftButtonPressed, double trackY)
+        => ShouldContinueDragging(isDragging, leftButtonPressed) ? trackY : null;
+
+    /// <summary>ドラッグを継続すべきかを返す。捕捉解除漏れ時は左ボタン状態で止める。</summary>
+    public static bool ShouldContinueDragging(bool isDragging, bool leftButtonPressed)
+        => isDragging && leftButtonPressed;
 
     /// <summary>ポインタ解放後のドラッグ状態を返す。</summary>
     public static bool DraggingAfterRelease() => false;

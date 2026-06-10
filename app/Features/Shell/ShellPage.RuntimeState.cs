@@ -65,6 +65,9 @@ public sealed partial class ShellPage
                 ? ElementTheme.Dark
                 : ElementTheme.Light;
 
+            // code-behind で動的生成/直接代入するブラシは、この値を基準に再解決する。
+            Shared.Services.ThemeHelper.NotifySelectedThemeChanged(theme);
+
             RequestedTheme = theme;
 
             if (App.MainWindowInstance is MainWindow mw)
@@ -87,10 +90,7 @@ public sealed partial class ShellPage
             // 親が Collapsed のときは ActualThemeChanged が確実に伝播しないことがあるため
             // 明示的に RequestedTheme を直接セットして、Open 時に正しい theme で
             // 解決されるよう保険をかける。
-            FilterPanel.RequestedTheme = theme;
-
-            // IValueConverter のように element context を渡せない経路向けに通知する。
-            Shared.Services.ThemeHelper.NotifySelectedThemeChanged(theme);
+            FilterPanel.ApplyThemeNow(theme);
         }
         catch (System.Exception ex)
         {

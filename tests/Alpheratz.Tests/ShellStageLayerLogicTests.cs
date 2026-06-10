@@ -81,14 +81,14 @@ public sealed class ShellStageLayerLogicTests
     /// <summary>
     /// ShellStage のアニメーション時間がレイヤ種別ごとの固定値として公開されていることを確認する。
     ///
-    /// code-behind はこれらの値を FadeIn/FadeOut/ScaleIn/ScaleOut に渡すだけにし、
+    /// code-behind はこれらの値を FadeIn/FadeOut/SlideUpIn/ScaleOut に渡すだけにし、
     /// 数値の変更は helper とテストの差分として見えるようにしている。
     /// </summary>
     [Fact]
     public void AnimationDurations_ReturnCurrentLayerTimingValues()
     {
         Assert.Equal(250, ShellStageLayerLogic.ModalFadeInDurationMilliseconds);
-        Assert.Equal(350, ShellStageLayerLogic.ModalScaleInDurationMilliseconds);
+        Assert.Equal(300, ShellStageLayerLogic.ModalSlideUpDurationMilliseconds);
         Assert.Equal(200, ShellStageLayerLogic.ModalFadeOutDurationMilliseconds);
         Assert.Equal(200, ShellStageLayerLogic.ModalScaleOutDurationMilliseconds);
         Assert.Equal(300, ShellStageLayerLogic.OverlayFadeInDurationMilliseconds);

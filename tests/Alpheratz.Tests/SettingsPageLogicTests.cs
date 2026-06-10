@@ -57,18 +57,30 @@ public sealed class SettingsPageLogicTests
     /// <summary>
     /// テンプレートカードの active 状態から、表示ラベルとテーマリソースキーが選ばれることを確認する。
     ///
-    /// 使用中カードは強い枠線・アクセント背景・プライマリ文字色を使い、
-    /// 通常カードは標準枠・薄い面色・控えめな文字色へ戻す。
+    /// 使用中カードは水色の solid 背景と白文字を使い、
+    /// 通常カードは標準枠・薄い面色・通常文字色へ戻す。
     /// </summary>
     [Fact]
     public void TemplateCard_ReturnsThemeKeysForActiveAndRestCards()
     {
         Assert.Equal(
-            new TemplateCardDisplay("使用中", "ABorderStrong", "AAccentSoft", "APrimary"),
+            new TemplateCardDisplay("使用中", "APrimary", "ASurfaceSoft", "APrimary", "AText"),
             SettingsPageLogic.TemplateCard(true));
         Assert.Equal(
-            new TemplateCardDisplay("テンプレート", "ABorder", "ASurfaceSoft", "ATextDim"),
+            new TemplateCardDisplay("テンプレート", "ABorder", "ASurfaceSoft", "ATextDim", "AText"),
             SettingsPageLogic.TemplateCard(false));
+    }
+
+    /// <summary>外部遷移やサイドバーで扱う設定セクション ID を固定する。</summary>
+    [Fact]
+    public void IsKnownSection_AllowsOnlySettingsSections()
+    {
+        Assert.True(SettingsPageLogic.IsKnownSection("general"));
+        Assert.True(SettingsPageLogic.IsKnownSection("tags"));
+        Assert.True(SettingsPageLogic.IsKnownSection("templates"));
+        Assert.True(SettingsPageLogic.IsKnownSection("credits"));
+        Assert.False(SettingsPageLogic.IsKnownSection("unknown"));
+        Assert.False(SettingsPageLogic.IsKnownSection(null));
     }
 
     /// <summary>

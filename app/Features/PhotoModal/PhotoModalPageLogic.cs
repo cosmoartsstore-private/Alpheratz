@@ -57,9 +57,10 @@ internal static class PhotoModalPageLogic
     public static TagAddDisplay TagAddDisplay(IEnumerable<string>? masterTags, IReadOnlyCollection<string>? currentTags)
     {
         if (masterTags is null) return new TagAddDisplay(false, 0);
-        var availableCount = currentTags is null
-            ? masterTags.Count()
-            : masterTags.Count(tag => !currentTags.Contains(tag));
+        var currentSet = currentTags?.ToHashSet(System.StringComparer.OrdinalIgnoreCase);
+        var availableCount = currentSet is null
+            ? masterTags.Count(tag => !string.IsNullOrWhiteSpace(tag))
+            : masterTags.Count(tag => !string.IsNullOrWhiteSpace(tag) && !currentSet.Contains(tag));
         return new TagAddDisplay(availableCount > 0, availableCount);
     }
 

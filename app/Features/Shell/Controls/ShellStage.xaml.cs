@@ -72,7 +72,7 @@ public sealed partial class ShellStage : UserControl
                 modalVersion = ShellStageLayerLogic.NextVersion(modalVersion);
                 ModalLayerHost.Visibility = Visibility.Visible;
                 AnimationHelper.FadeIn(ModalLayerHost, ShellStageLayerLogic.ModalFadeInDurationMilliseconds);
-                AnimationHelper.ScaleIn(ModalContentHost, fromScale: 0.88f, durationMs: ShellStageLayerLogic.ModalScaleInDurationMilliseconds);
+                AnimationHelper.ModalSlideUpIn(ModalContentHost, durationMs: ShellStageLayerLogic.ModalSlideUpDurationMilliseconds);
             }
             else if (transition == ShellStageLayerTransition.Close)
             {
@@ -129,7 +129,7 @@ public sealed partial class ShellStage : UserControl
                 topModalVersion = ShellStageLayerLogic.NextVersion(topModalVersion);
                 TopModalLayerHost.Visibility = Visibility.Visible;
                 AnimationHelper.FadeIn(TopModalLayerHost, ShellStageLayerLogic.ModalFadeInDurationMilliseconds);
-                AnimationHelper.ScaleIn(TopModalContentHost, fromScale: 0.88f, durationMs: ShellStageLayerLogic.ModalScaleInDurationMilliseconds);
+                AnimationHelper.ModalSlideUpIn(TopModalContentHost, durationMs: ShellStageLayerLogic.ModalSlideUpDurationMilliseconds);
             }
             else if (transition == ShellStageLayerTransition.Close)
             {

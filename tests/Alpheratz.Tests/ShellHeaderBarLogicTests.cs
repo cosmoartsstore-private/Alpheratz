@@ -1,4 +1,5 @@
 using Alpheratz.Features.Shell.Controls;
+using Alpheratz.Models;
 using Alpheratz.Shared.Models;
 using Windows.System;
 
@@ -81,5 +82,44 @@ public sealed class ShellHeaderBarLogicTests
         Assert.True(ShellHeaderBarLogic.ShouldSubmitSearch(VirtualKey.Enter));
         Assert.False(ShellHeaderBarLogic.ShouldSubmitSearch(VirtualKey.Escape));
         Assert.False(ShellHeaderBarLogic.ShouldSubmitSearch(VirtualKey.F));
+    }
+
+    /// <summary>候補表示は文字または数字を含む入力だけを対象にする。</summary>
+    [Theory]
+    [InlineData("moon", true)]
+    [InlineData("月", true)]
+    [InlineData("2026", true)]
+    [InlineData(" ", false)]
+    [InlineData("...", false)]
+    public void ShouldShowWorldSuggestions_RequiresSearchCharacters(string query, bool expected)
+        => Assert.Equal(expected, ShellHeaderBarLogic.ShouldShowWorldSuggestions(query));
+
+    /// <summary>
+    /// ヘッダー検索のワールド候補が入力に部分一致し、最大 5 件に制限されることを確認する。
+    /// 候補順は DB から渡された worldFilterOptions の順序を保つ。
+    /// </summary>
+    [Fact]
+    public void BuildWorldNameSuggestions_FiltersAndLimitsToFiveWorlds()
+    {
+        var worlds = new[]
+        {
+            new WorldFilterOptionDto { world_name = "Moon Station", count = 9 },
+            new WorldFilterOptionDto { world_name = "Sunset Moon", count = 8 },
+            new WorldFilterOptionDto { world_name = "", count = 7 },
+            new WorldFilterOptionDto { world_name = "Moon Garden", count = 6 },
+            new WorldFilterOptionDto { world_name = "Blue Moon", count = 5 },
+            new WorldFilterOptionDto { world_name = "Moonlight Cave", count = 4 },
+            new WorldFilterOptionDto { world_name = "Moon Archive", count = 3 },
+        };
+
+        var suggestions = ShellHeaderBarLogic.BuildWorldNameSuggestions(worlds, "moon");
+        var empty = ShellHeaderBarLogic.BuildWorldNameSuggestions(worlds, " ");
+
+        Assert.Equal(5, suggestions.Count);
+        Assert.Equal(
+            ["Moon Station", "Sunset Moon", "Moon Garden", "Blue Moon", "Moonlight Cave"],
+            suggestions.Select(s => s.DisplayName).ToArray());
+        Assert.Equal("9枚", suggestions[0].CountText);
+        Assert.Empty(empty);
     }
 }

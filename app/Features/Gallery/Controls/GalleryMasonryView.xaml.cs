@@ -61,6 +61,9 @@ public sealed partial class GalleryMasonryView : UserControl
         public required Border Container;
         public required Image Image;
         public required PhotoThumbnailItem Photo;
+        public Border? SelectionTint;
+        public Border? SelectionRing;
+        public Border? SelectionBadge;
         public string LoadedPath = string.Empty;
         public bool IsLoaded;
         public DispatcherQueueTimer? PendingReleaseTimer;
@@ -122,6 +125,17 @@ public sealed partial class GalleryMasonryView : UserControl
                     entry.Container.Background = bg;
                 if (ThemeHelper.Brush(entry.Container, "ABorder") is { } br)
                     entry.Container.BorderBrush = br;
+                if (entry.SelectionTint is not null && ThemeHelper.Brush(entry.Container, "APhotoSelectionTint") is { } tint)
+                    entry.SelectionTint.Background = tint;
+                if (entry.SelectionRing is not null && ThemeHelper.Brush(entry.Container, "APrimary") is { } primary)
+                    entry.SelectionRing.BorderBrush = primary;
+                if (entry.SelectionBadge is not null)
+                {
+                    if (ThemeHelper.Brush(entry.Container, "APrimary") is { } badgeBg)
+                        entry.SelectionBadge.Background = badgeBg;
+                    if (ThemeHelper.Brush(entry.Container, "APhotoSelectionBadgeBorder") is { } badgeBorder)
+                        entry.SelectionBadge.BorderBrush = badgeBorder;
+                }
             }
         }
         catch (Exception ex) { AppLogger.Error($"GalleryMasonryView.OnActualThemeChanged: {ex}"); }
@@ -456,7 +470,7 @@ public sealed partial class GalleryMasonryView : UserControl
         {
             Width = item.Width,
             Height = item.Height,
-            CornerRadius = new CornerRadius(12),
+            CornerRadius = new CornerRadius(4),
             Background = ThemeHelper.Brush(this, "ASurface"),
             BorderBrush = ThemeHelper.Brush(this, "ABorder"),
             BorderThickness = new Thickness(1),
@@ -607,40 +621,45 @@ public sealed partial class GalleryMasonryView : UserControl
         overlayVisual.Opacity = 0f;
 
         // --- 複数選択モードのチェックバッジ + 選択リング ---
-        // 半透明の全面オーバーレイは写真を覆うため使わず、枠とバッジで選択を示す。
-        // PhotoGridItemsView と同じく「solid な APrimary の枠(3px リング)+ 右上 ✓ バッジ」で
-        // 選択を表現する。PhotoThumbnailItem.IsSelected の変化を PhotoSubscription で受けて、
-        // selectionRing と selectionBadge の Visibility を切り替える。
+        // PhotoGridItemsView と同じく、写真を覆わない 2px 枠と右上の小さな ✓ で選択を示す。
+        // PhotoThumbnailItem.IsSelected の変化を PhotoSubscription で受けて Visibility を切り替える。
         var selection = GalleryMasonryViewportLogic.SelectionVisual(item.Photo.IsSelected);
+        var selectionTint = new Border
+        {
+            Background = ThemeHelper.Brush(this, "APhotoSelectionTint"),
+            CornerRadius = new CornerRadius(4),
+            Visibility = ToVisibility(selection.Visible),
+        };
+        cardGrid.Children.Add(selectionTint);
+
         var selectionRing = new Border
         {
             Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
             BorderBrush = ThemeHelper.Brush(this, "APrimary"),
-            BorderThickness = new Thickness(3),
-            CornerRadius = new CornerRadius(12),
+            BorderThickness = new Thickness(2),
+            CornerRadius = new CornerRadius(4),
             Visibility = ToVisibility(selection.Visible),
         };
         cardGrid.Children.Add(selectionRing);
 
-        // 選択チェックバッジ。PhotoGridItemsView と統一: 26px 半透明白枠 1px。
+        // 選択チェックバッジ。PhotoGridItemsView と統一して角丸スクエアで示す。
         var selectionBadge = new Border
         {
-            Width = 26,
-            Height = 26,
-            CornerRadius = new CornerRadius(13),
+            Width = 22,
+            Height = 22,
+            CornerRadius = new CornerRadius(8),
             Background = ThemeHelper.Brush(this, "APrimary"),
-            BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF)),
-            BorderThickness = new Thickness(1),
+            BorderBrush = ThemeHelper.Brush(this, "APhotoSelectionBadgeBorder"),
+            BorderThickness = new Thickness(0),
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Top,
-            Margin = new Thickness(0, 9, 9, 0),
+            Margin = new Thickness(0, 6, 6, 0),
             Visibility = ToVisibility(selection.Visible),
-            Child = new TextBlock
+            Child = new Alpheratz.Shared.Controls.AppIcon
             {
-                Text = "✓",
+                IconName = "check",
+                IconSize = 13,
                 Foreground = new SolidColorBrush(Microsoft.UI.Colors.White),
-                FontSize = 13,
-                FontWeight = Microsoft.UI.Text.FontWeights.Bold,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
             },
@@ -702,6 +721,9 @@ public sealed partial class GalleryMasonryView : UserControl
             Container = border,
             Image = image,
             Photo = item.Photo,
+            SelectionTint = selectionTint,
+            SelectionRing = selectionRing,
+            SelectionBadge = selectionBadge,
             StopShimmer = StopShimmer,
         };
 
@@ -726,6 +748,7 @@ public sealed partial class GalleryMasonryView : UserControl
                 case MasonryPhotoChangeAction.UpdateSelection:
                     var nextSelection = GalleryMasonryViewportLogic.SelectionVisual(entry.Photo.IsSelected);
                     var v = ToVisibility(nextSelection.Visible);
+                    selectionTint.Visibility = v;
                     selectionRing.Visibility = v;
                     selectionBadge.Visibility = v;
                     return;

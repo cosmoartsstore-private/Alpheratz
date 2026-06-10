@@ -7,39 +7,329 @@
     Background="{ThemeResource ASurface}"
     Loaded="Page_Loaded"
     Unloaded="Page_Unloaded">
-    <Grid Background="{ThemeResource ASurface}">
+    <Page.Resources>
+        <ControlTemplate x:Key="BulkActionNeutralButtonTemplate" TargetType="Button">
+            <Border x:Name="BulkActionNeutralRoot"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="{TemplateBinding CornerRadius}">
+                <Grid>
+                    <ContentPresenter x:Name="BulkActionNeutralContent"
+                                      Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      ContentTransitions="{TemplateBinding ContentTransitions}"
+                                      Foreground="{TemplateBinding Foreground}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                      AutomationProperties.AccessibilityView="Raw"/>
+                    <Border x:Name="BulkActionNeutralFocusRing"
+                            BorderBrush="{ThemeResource APrimary}"
+                            BorderThickness="1"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Visibility="Collapsed"
+                            IsHitTestVisible="False"/>
+                </Grid>
+                <VisualStateManager.VisualStateGroups>
+                    <VisualStateGroup x:Name="CommonStates">
+                        <VisualState x:Name="Normal"/>
+                        <VisualState x:Name="PointerOver">
+                            <VisualState.Setters>
+                                <Setter Target="BulkActionNeutralRoot.Background" Value="{ThemeResource ABulkActionButtonHover}"/>
+                            </VisualState.Setters>
+                        </VisualState>
+                        <VisualState x:Name="Pressed">
+                            <VisualState.Setters>
+                                <Setter Target="BulkActionNeutralRoot.Background" Value="{ThemeResource ABulkActionButtonPressed}"/>
+                            </VisualState.Setters>
+                        </VisualState>
+                        <VisualState x:Name="Disabled">
+                            <VisualState.Setters>
+                                <Setter Target="BulkActionNeutralContent.Opacity" Value="0.5"/>
+                            </VisualState.Setters>
+                        </VisualState>
+                    </VisualStateGroup>
+                    <VisualStateGroup x:Name="FocusStates">
+                        <VisualState x:Name="Unfocused"/>
+                        <VisualState x:Name="PointerFocused"/>
+                        <VisualState x:Name="Focused">
+                            <VisualState.Setters>
+                                <Setter Target="BulkActionNeutralFocusRing.Visibility" Value="Visible"/>
+                            </VisualState.Setters>
+                        </VisualState>
+                    </VisualStateGroup>
+                </VisualStateManager.VisualStateGroups>
+            </Border>
+        </ControlTemplate>
 
-        <!-- Main column: stage + bulk operation bar -->
-        <Grid>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
+        <ControlTemplate x:Key="BulkFavoriteButtonTemplate" TargetType="Button">
+            <Border x:Name="BulkFavoriteRoot"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="{TemplateBinding CornerRadius}">
+                <Grid>
+                    <ContentPresenter x:Name="BulkFavoriteContent"
+                                      Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      ContentTransitions="{TemplateBinding ContentTransitions}"
+                                      Foreground="{TemplateBinding Foreground}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                      AutomationProperties.AccessibilityView="Raw"/>
+                    <Border x:Name="BulkFavoriteFocusRing"
+                            BorderBrush="{ThemeResource APrimary}"
+                            BorderThickness="1"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Visibility="Collapsed"
+                            IsHitTestVisible="False"/>
+                </Grid>
+                <VisualStateManager.VisualStateGroups>
+                    <VisualStateGroup x:Name="CommonStates">
+                        <VisualState x:Name="Normal"/>
+                        <VisualState x:Name="PointerOver">
+                            <VisualState.Setters>
+                                <Setter Target="BulkFavoriteRoot.Background" Value="{ThemeResource ABulkFavoriteAccentHover}"/>
+                                <Setter Target="BulkFavoriteRoot.BorderBrush" Value="{ThemeResource ABulkFavoriteAccentHover}"/>
+                            </VisualState.Setters>
+                        </VisualState>
+                        <VisualState x:Name="Pressed">
+                            <VisualState.Setters>
+                                <Setter Target="BulkFavoriteRoot.Background" Value="{ThemeResource ABulkFavoriteAccentPressed}"/>
+                                <Setter Target="BulkFavoriteRoot.BorderBrush" Value="{ThemeResource ABulkFavoriteAccentPressed}"/>
+                            </VisualState.Setters>
+                        </VisualState>
+                        <VisualState x:Name="Disabled">
+                            <VisualState.Setters>
+                                <Setter Target="BulkFavoriteContent.Opacity" Value="0.5"/>
+                            </VisualState.Setters>
+                        </VisualState>
+                    </VisualStateGroup>
+                    <VisualStateGroup x:Name="FocusStates">
+                        <VisualState x:Name="Unfocused"/>
+                        <VisualState x:Name="PointerFocused"/>
+                        <VisualState x:Name="Focused">
+                            <VisualState.Setters>
+                                <Setter Target="BulkFavoriteFocusRing.Visibility" Value="Visible"/>
+                            </VisualState.Setters>
+                        </VisualState>
+                    </VisualStateGroup>
+                </VisualStateManager.VisualStateGroups>
+            </Border>
+        </ControlTemplate>
 
-            <galleryControls:GalleryGridStage x:Name="GridStage"/>
+        <Style x:Key="BulkActionGhostButtonStyle" TargetType="Button">
+            <Setter Property="MinHeight" Value="34"/>
+            <Setter Property="Padding" Value="12,7"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="CornerRadius" Value="9"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="{ThemeResource ABulkActionMutedText}"/>
+            <Setter Property="FontSize" Value="{StaticResource AFontSizeSm}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Template" Value="{StaticResource BulkActionNeutralButtonTemplate}"/>
+        </Style>
 
-            <Border x:Name="BulkOpBar" Grid.Row="1"
-                    Visibility="Collapsed"
-                    HorizontalAlignment="Center"
-                    Margin="16,0,16,16"
-                    Padding="12,9"
-                    MaxWidth="760"
-                    CornerRadius="{StaticResource ARadiusPill}"
-                    BorderBrush="{ThemeResource ABorderMid}"
-                    BorderThickness="1"
-                    Background="{ThemeResource ASurface}">
+        <Style x:Key="BulkActionFavoriteButtonStyle" TargetType="Button">
+            <Setter Property="MinHeight" Value="34"/>
+            <Setter Property="Padding" Value="14,7"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="CornerRadius" Value="18"/>
+            <Setter Property="Background" Value="{ThemeResource ABulkFavoriteAccent}"/>
+            <Setter Property="BorderBrush" Value="{ThemeResource ABulkFavoriteAccent}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="{StaticResource AFontSizeSm}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Template" Value="{StaticResource BulkFavoriteButtonTemplate}"/>
+        </Style>
+
+        <Style x:Key="BulkActionPrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
+            <Setter Property="MinHeight" Value="34"/>
+            <Setter Property="Padding" Value="14,7"/>
+            <Setter Property="CornerRadius" Value="18"/>
+            <Setter Property="FontSize" Value="{StaticResource AFontSizeSm}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+
+        <Style x:Key="BulkActionComboBoxStyle" TargetType="ComboBox">
+            <Setter Property="MinHeight" Value="34"/>
+            <Setter Property="MinWidth" Value="160"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="CornerRadius" Value="18"/>
+            <Setter Property="Background" Value="{ThemeResource ABulkActionButtonHover}"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="{ThemeResource AText}"/>
+            <Setter Property="FontSize" Value="{StaticResource AFontSizeSm}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+    </Page.Resources>
+
+    <Grid x:Name="GalleryRoot" Background="{ThemeResource ASurface}">
+
+        <!-- Main column: stage + floating bulk operation bar -->
+        <galleryControls:GalleryGridStage x:Name="GridStage"/>
+
+        <Border x:Name="BulkOpBar"
+                Visibility="Collapsed"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom"
+                Margin="16,0,72,22"
+                Padding="8,7"
+                MaxWidth="880"
+                MinHeight="56"
+                CornerRadius="26"
+                BorderBrush="{ThemeResource ABulkActionSeparator}"
+                BorderThickness="1"
+                Background="{ThemeResource ABulkActionBar}"
+                PointerPressed="BulkOpBar_PointerPressed"
+                Tapped="BulkOpBar_Tapped">
                 <shared:WrapPanel HorizontalSpacing="8" VerticalSpacing="6" VerticalAlignment="Center">
-                        <TextBlock x:Name="SelectionCountLabel"
-                                   VerticalAlignment="Center"
-                                   FontWeight="ExtraBold"
-                                   Foreground="{ThemeResource AText}"/>
-                        <Button Content="選択解除" Style="{StaticResource GhostButtonStyle}" Click="ExitMultiSelect_Click"/>
-                        <Button Content="&#x2665; 追加" Style="{StaticResource GhostButtonStyle}" Click="BulkFavorite_Click"/>
-                        <Button Content="&#x2665; 解除" Style="{StaticResource GhostButtonStyle}" Click="BulkUnfavorite_Click"/>
-                        <ComboBox x:Name="BulkTagCombo" PlaceholderText="タグを追加..." MinWidth="160"
-                                  SelectionChanged="BulkTagCombo_SelectionChanged"/>
-                        <Button Content="コピー" Style="{StaticResource GhostButtonStyle}" Click="BulkCopy_Click"/>
+                    <Border Padding="9,4,12,4"
+                            CornerRadius="18"
+                            Background="{ThemeResource ABulkActionCount}"
+                            BorderBrush="{ThemeResource ABulkActionCountBorder}"
+                            BorderThickness="1"
+                            VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock x:Name="SelectionCountLabel"
+                                       Text="0"
+                                       FontSize="16"
+                                       FontWeight="ExtraBold"
+                                       Foreground="{ThemeResource APrimaryHover}"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock Text="枚選択中"
+                                       FontSize="{StaticResource AFontSizeXs}"
+                                       FontWeight="Bold"
+                                       Foreground="{ThemeResource ABulkActionFaintText}"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Width="1" Height="22" Background="{ThemeResource ABulkActionSeparator}" VerticalAlignment="Center"/>
+
+                    <Button Style="{StaticResource BulkActionGhostButtonStyle}" Click="ExitMultiSelect_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <shared:AppIcon IconName="close" IconSize="12" Foreground="{ThemeResource ABulkActionMutedText}"/>
+                            <TextBlock Text="解除" Foreground="{ThemeResource ABulkActionMutedText}"/>
+                        </StackPanel>
+                    </Button>
+
+                    <Border Width="1" Height="22" Background="{ThemeResource ABulkActionSeparator}" VerticalAlignment="Center"/>
+
+                    <Button Style="{StaticResource BulkActionFavoriteButtonStyle}" Click="BulkFavorite_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="&#x2665;" FontSize="14" Foreground="White"/>
+                            <TextBlock Text="追加" Foreground="White"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource BulkActionGhostButtonStyle}" Click="BulkUnfavorite_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="&#x2661;" FontSize="14" Foreground="{ThemeResource ABulkActionMutedText}"/>
+                            <TextBlock Text="解除" Foreground="{ThemeResource ABulkActionMutedText}"/>
+                        </StackPanel>
+                    </Button>
+
+                    <Border Width="1" Height="22" Background="{ThemeResource ABulkActionSeparator}" VerticalAlignment="Center"/>
+
+                    <Button x:Name="BulkTagButton"
+                            Style="{StaticResource BulkActionGhostButtonStyle}"
+                            Click="BulkTagButton_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <shared:AppIcon IconName="tag" IconSize="13" Foreground="{ThemeResource ABulkActionMutedText}"/>
+                            <TextBlock Text="タグを追加" Foreground="{ThemeResource ABulkActionMutedText}"/>
+                        </StackPanel>
+                    </Button>
+
+                    <Border Width="1" Height="22" Background="{ThemeResource ABulkActionSeparator}" VerticalAlignment="Center"/>
+
+                    <Button Style="{StaticResource BulkActionPrimaryButtonStyle}" Click="BulkCopy_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE8C8;" FontSize="13" Foreground="White"/>
+                            <TextBlock Text="コピー" Foreground="White"/>
+                        </StackPanel>
+                    </Button>
                 </shared:WrapPanel>
+        </Border>
+
+        <Grid x:Name="BulkTagConfirmOverlay"
+              Visibility="Collapsed"
+              Background="{ThemeResource AOverlay}"
+              Tapped="BulkTagConfirmOverlay_Tapped">
+            <Border Width="540"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Padding="24"
+                    CornerRadius="{StaticResource ARadiusModal}"
+                    Background="{ThemeResource ASurface}"
+                    BorderBrush="{ThemeResource ABorder}"
+                    BorderThickness="1"
+                    Tapped="BulkTagConfirmContent_Tapped">
+                <StackPanel Spacing="14">
+                    <TextBlock Text="タグ追加の確認"
+                               Style="{StaticResource SectionTitleStyle}"/>
+                    <TextBlock x:Name="BulkTagConfirmTagLabel"
+                               FontSize="{StaticResource AFontSizeMd}"
+                               FontWeight="ExtraBold"
+                               Foreground="{ThemeResource APrimary}"
+                               TextWrapping="Wrap"/>
+                    <Border MaxHeight="180"
+                            Padding="6"
+                            CornerRadius="{StaticResource ARadius}"
+                            Background="{ThemeResource ASurfaceSoft}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="BulkTagSelectionList"
+                                        Spacing="4"/>
+                        </ScrollViewer>
+                    </Border>
+                    <TextBlock x:Name="BulkTagConfirmSummaryLabel"
+                               FontSize="{StaticResource AFontSizeSm}"
+                               Foreground="{ThemeResource ATextDim}"
+                               TextWrapping="Wrap"/>
+                    <Border MaxHeight="240"
+                            Padding="10"
+                            CornerRadius="{StaticResource ARadius}"
+                            Background="{ThemeResource ASurfaceSoft}"
+                            BorderBrush="{ThemeResource ABorder}"
+                            BorderThickness="1">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{x:Bind BulkTagConfirmationTargets, Mode=OneWay}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Spacing="6"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}"
+                                                   FontSize="{StaticResource AFontSizeSm}"
+                                                   Foreground="{ThemeResource AText}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Border>
+                    <StackPanel Orientation="Horizontal"
+                                HorizontalAlignment="Right"
+                                Spacing="8">
+                        <Button Content="キャンセル"
+                                Style="{StaticResource GhostButtonStyle}"
+                                Click="CancelBulkTagConfirm_Click"/>
+                        <Button x:Name="BulkTagConfirmButton"
+                                Content="タグを追加"
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                FontWeight="ExtraBold"
+                                Click="ConfirmBulkTag_Click"/>
+                    </StackPanel>
+                </StackPanel>
             </Border>
         </Grid>
 

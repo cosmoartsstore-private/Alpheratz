@@ -65,7 +65,7 @@ internal static class GalleryFilterPanelLogic
     /// <summary>active ボタンに適用するテーマキーと枠線幅を返す。</summary>
     public static FilterPanelButtonStyle ActiveButtonStyle(bool active)
         => active
-            ? new FilterPanelButtonStyle("APrimarySoft", "APrimary", "ABorderStrong", 1, false)
+            ? new FilterPanelButtonStyle("APrimary", "ATextOnPrimary", null, 0, true)
             : new FilterPanelButtonStyle("ASurfaceSoft", "ATextDim", null, 0, true);
 
     /// <summary>現在のフィルタ値から、各選択ボタンの active 状態を作る。</summary>
@@ -87,7 +87,7 @@ internal static class GalleryFilterPanelLogic
             GroupWorld: groupingMode == GroupingMode.world);
 
     /// <summary>active 状態からアイコンの前景色リソースキーを返す。</summary>
-    public static string IconForegroundKey(bool active) => active ? "APrimary" : "ATextFaint";
+    public static string IconForegroundKey(bool active) => active ? "ATextOnPrimary" : "ATextFaint";
 
     /// <summary>有効フィルタ数からバッジ表示状態を作る。</summary>
     public static FilterBadgeDisplay Badge(int count)
@@ -373,12 +373,12 @@ internal static class GalleryFilterPanelLogic
         => new(
             NameForegroundKey: isChecked ? "APrimary" : "ATextFaint",
             CountForegroundKey: "ATextDisabled",
-            CheckBorderKey: isChecked ? "ABorderStrong" : "ABorder",
-            CheckBackgroundKey: isChecked ? "APrimarySoft" : "ASurfaceSoft",
-            ItemBackgroundKey: isChecked ? "APrimarySoft" : null,
-            ItemBorderKey: isChecked ? "ABorderStrong" : null,
-            CheckmarkForegroundKey: "APrimary",
-            CheckColumn: hasCountText ? 2 : 1,
+            CheckBorderKey: isChecked ? "APrimary" : "ABorder",
+            CheckBackgroundKey: isChecked ? "APrimary" : "ASurface",
+            ItemBackgroundKey: null,
+            ItemBorderKey: null,
+            CheckmarkForegroundKey: "ATextOnPrimary",
+            CheckColumn: 0,
             CheckmarkVisible: isChecked);
 }
 

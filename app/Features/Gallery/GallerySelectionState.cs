@@ -33,6 +33,7 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
     private readonly PhotoService photoService;
     private readonly ToastService toastService;
     private readonly DispatcherService dispatcherService;
+    private readonly Dictionary<string, PhotoThumbnailItem> selectedPhotoVisuals = new(StringComparer.Ordinal);
     private CancellationTokenSource? selectedPhotoRefsCancellation;
 
     [ObservableProperty] private bool isMultiSelectMode;
@@ -85,17 +86,19 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
                 {
                     var startIndex = Math.Min(anchorIndex, targetIndex);
                     var endIndex = Math.Max(anchorIndex, targetIndex);
-                    var rangePhotoPaths = displayPhotoItems
+                    var rangeItems = displayPhotoItems
                         .Skip(startIndex)
                         .Take(endIndex - startIndex + 1)
-                        .Select(entry => entry.Photo.PhotoPath);
+                        .ToArray();
 
-                    foreach (var path in rangePhotoPaths)
+                    foreach (var rangeItem in rangeItems)
                     {
+                        var path = rangeItem.Photo.PhotoPath;
                         if (!selectedPhotoPaths.Contains(path))
                         {
                             selectedPhotoPaths.Add(path);
                         }
+                        setPhotoSelected(path, rangeItem.Photo, true);
                     }
 
                     SelectionAnchorPhotoPath = photoPath;
@@ -108,6 +111,7 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
             {
                 AppLogger.Trace("GallerySelectionState.toggleSelectedPhoto: branch=remove");
                 selectedPhotoPaths.Remove(photoPath);
+                setPhotoSelected(photoPath, item.Photo, false);
                 if (selectedPhotoPaths.Count == 0)
                 {
                     SelectionAnchorPhotoPath = null;
@@ -119,6 +123,7 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
             {
                 AppLogger.Trace("GallerySelectionState.toggleSelectedPhoto: branch=add");
                 selectedPhotoPaths.Add(photoPath);
+                setPhotoSelected(photoPath, item.Photo, true);
             }
 
             SelectionAnchorPhotoPath = photoPath;
@@ -136,6 +141,9 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
         AppLogger.Trace($"GallerySelectionState.clearSelectedPhotos: enter count={selectedPhotoPaths.Count}");
         try
         {
+            foreach (var photo in selectedPhotoVisuals.Values.Distinct())
+                photo.IsSelected = false;
+            selectedPhotoVisuals.Clear();
             selectedPhotoPaths.Clear();
             SelectionAnchorPhotoPath = null;
         }
@@ -144,6 +152,69 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
             AppLogger.Error($"GallerySelectionState.clearSelectedPhotos: threw: {ex}");
         }
         AppLogger.Trace("GallerySelectionState.clearSelectedPhotos: exit");
+    }
+
+    /// <summary>現在表示中の写真へ選択状態を再同期し、表示外になった選択パスは外す。</summary>
+    public void syncSelectionWithVisiblePhotos(IEnumerable<PhotoThumbnailItem> visiblePhotos)
+    {
+        AppLogger.Trace("GallerySelectionState.syncSelectionWithVisiblePhotos: enter");
+        try
+        {
+            var visibleList = visiblePhotos.ToArray();
+            var visiblePathSet = visibleList
+                .Select(photo => photo.PhotoPath)
+                .Where(path => !string.IsNullOrEmpty(path))
+                .ToHashSet(StringComparer.Ordinal);
+
+            foreach (var path in selectedPhotoPaths.ToArray())
+            {
+                if (!visiblePathSet.Contains(path))
+                    selectedPhotoPaths.Remove(path);
+            }
+
+            var selectedPathSet = selectedPhotoPaths.ToHashSet(StringComparer.Ordinal);
+            selectedPhotoVisuals.Clear();
+            foreach (var photo in visibleList)
+            {
+                var selected = selectedPathSet.Contains(photo.PhotoPath);
+                photo.IsSelected = selected;
+                if (selected)
+                    selectedPhotoVisuals[photo.PhotoPath] = photo;
+            }
+
+            if (SelectionAnchorPhotoPath is not null && !visiblePathSet.Contains(SelectionAnchorPhotoPath))
+                SelectionAnchorPhotoPath = null;
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"GallerySelectionState.syncSelectionWithVisiblePhotos: threw: {ex}");
+        }
+        AppLogger.Trace("GallerySelectionState.syncSelectionWithVisiblePhotos: exit");
+    }
+
+    private void setPhotoSelected(string photoPath, PhotoThumbnailItem? photo, bool selected)
+    {
+        try
+        {
+            if (photo is not null)
+            {
+                photo.IsSelected = selected;
+                if (selected)
+                    selectedPhotoVisuals[photoPath] = photo;
+                else
+                    selectedPhotoVisuals.Remove(photoPath);
+                return;
+            }
+
+            if (selectedPhotoVisuals.TryGetValue(photoPath, out var trackedPhoto))
+                trackedPhoto.IsSelected = selected;
+            if (!selected)
+                selectedPhotoVisuals.Remove(photoPath);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"GallerySelectionState.setPhotoSelected: threw: {ex}");
+        }
     }
 
     /// <summary>マルチセレクトモードを切り替える。終了時は残った選択をクリアする。</summary>
@@ -183,6 +254,32 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
 
     /// <summary>マルチセレクトモードを終了する。既に終了済みなら選択クリアだけを保証する。</summary>
     public void exitMultiSelectMode() => setMultiSelectMode(false);
+
+    /// <summary>一括操作直前に、現在の選択パスから最新の写真参照を取得する。</summary>
+    public async Task<IReadOnlyList<SelectedPhotoRefDto>> getSelectedPhotoRefsSnapshot()
+    {
+        AppLogger.Trace("GallerySelectionState.getSelectedPhotoRefsSnapshot: enter");
+        if (selectedPhotoPaths.Count == 0)
+        {
+            AppLogger.Trace("GallerySelectionState.getSelectedPhotoRefsSnapshot: fallback cached refs");
+            return selectedPhotoRefs.ToArray();
+        }
+
+        var photoPaths = selectedPhotoPaths.ToArray();
+        try
+        {
+            var refs = await photoService.GetSelectedPhotoRefsAsync(photoPaths).ConfigureAwait(false);
+            await dispatcherService.RunOnUiThread(() => setSelectedPhotoRefs(refs)).ConfigureAwait(false);
+            AppLogger.Trace($"GallerySelectionState.getSelectedPhotoRefsSnapshot: exit count={refs.Count}");
+            return refs;
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"GallerySelectionState.getSelectedPhotoRefsSnapshot: threw: {ex}");
+            toastService.addToast($"選択写真情報の取得に失敗しました: {ex}", ToastType.error);
+            return [];
+        }
+    }
 
     /// <summary>一括操作に使う写真参照リストを現在の選択内容で置き換える。</summary>
     public void setSelectedPhotoRefs(IEnumerable<SelectedPhotoRefDto> refsToSet)

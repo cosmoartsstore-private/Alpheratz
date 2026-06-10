@@ -39,9 +39,12 @@ public sealed class CustomScrollbarLogicTests
     public void PointerNotifications_ReturnTrackYOnlyWhenInteractionRequiresScroll()
     {
         Assert.Equal(240, CustomScrollbarLogic.TrackClickPosition(240));
-        Assert.Equal(300, CustomScrollbarLogic.DragPosition(isDragging: true, trackY: 300));
-        Assert.Null(CustomScrollbarLogic.DragPosition(isDragging: false, trackY: 300));
+        Assert.Equal(300, CustomScrollbarLogic.DragPosition(isDragging: true, leftButtonPressed: true, trackY: 300));
+        Assert.Null(CustomScrollbarLogic.DragPosition(isDragging: true, leftButtonPressed: false, trackY: 300));
+        Assert.Null(CustomScrollbarLogic.DragPosition(isDragging: false, leftButtonPressed: true, trackY: 300));
         Assert.False(CustomScrollbarLogic.DraggingAfterRelease());
+        Assert.True(CustomScrollbarLogic.ShouldContinueDragging(isDragging: true, leftButtonPressed: true));
+        Assert.False(CustomScrollbarLogic.ShouldContinueDragging(isDragging: true, leftButtonPressed: false));
     }
 
     /// <summary>

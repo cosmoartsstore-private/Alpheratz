@@ -1,13 +1,19 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Threading.Tasks;
 using Alpheratz.Core;
+using Alpheratz.Models;
 using Alpheratz.Shared.Models;
 using Alpheratz.Shared.Services;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.Foundation;
 using Windows.System;
 
 namespace Alpheratz.Features.Shell.Controls;
@@ -43,6 +49,16 @@ public sealed partial class ShellHeaderBar : UserControl
     private bool isMultiSelectActive;
     private GroupingMode currentGroupingMode = GroupingMode.none;
     private ViewMode currentViewMode = ViewMode.standard;
+    private UiObservableCollection<WorldFilterOptionDto>? boundWorldOptions;
+    private List<WorldFilterOptionDto> allWorldOptions = [];
+    private IReadOnlyList<HeaderWorldSuggestion> lastWorldNameSuggestions = [];
+    private int highlightedWorldSuggestionIndex = -1;
+    private string activeSearchQueryText = string.Empty;
+    private string pendingSuggestionQuery = string.Empty;
+    private bool isSearchTextBoxFocused;
+    private bool suppressSearchTextChange;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? searchSuggestionTimer;
+    public UiObservableCollection<HeaderWorldSuggestion> WorldNameSuggestions { get; } = [];
 
     // ヘッダー UI を初期化し、現在状態に合わせたトグル表示へ同期する。
     public ShellHeaderBar()
@@ -61,7 +77,12 @@ public sealed partial class ShellHeaderBar : UserControl
         SyncGroupingStyle();
         SyncViewModeStyle();
         ActualThemeChanged += OnActualThemeChanged;
-        Unloaded += (_, _) => ActualThemeChanged -= OnActualThemeChanged;
+        Unloaded += (_, _) =>
+        {
+            ActualThemeChanged -= OnActualThemeChanged;
+            DetachWorldFilterOptions();
+            searchSuggestionTimer?.Stop();
+        };
         AppLogger.Trace("ShellHeaderBar.ctor: exit");
     }
 
@@ -127,6 +148,40 @@ public sealed partial class ShellHeaderBar : UserControl
             ContentRoot.IsHitTestVisible = interactive;
         }
         catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.SetControlsInteractive: threw: {ex}"); }
+    }
+
+    /// <summary>ヘッダー検索の候補に使うワールド一覧を購読し、検索語に応じた候補を更新する。</summary>
+    public void SetWorldFilterOptions(UiObservableCollection<WorldFilterOptionDto> options)
+    {
+        try
+        {
+            DetachWorldFilterOptions();
+            boundWorldOptions = options;
+            boundWorldOptions.CollectionChanged += OnWorldOptionsChanged;
+            allWorldOptions = options.ToList();
+            RefreshWorldNameSuggestions();
+        }
+        catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.SetWorldFilterOptions: threw: {ex}"); }
+    }
+
+    private void DetachWorldFilterOptions()
+    {
+        if (boundWorldOptions is not null)
+        {
+            boundWorldOptions.CollectionChanged -= OnWorldOptionsChanged;
+            boundWorldOptions = null;
+        }
+    }
+
+    private void OnWorldOptionsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        try
+        {
+            if (boundWorldOptions is not null)
+                allWorldOptions = boundWorldOptions.ToList();
+            RefreshWorldNameSuggestions();
+        }
+        catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.OnWorldOptionsChanged: threw: {ex}"); }
     }
 
     // -----------------------------------------------------------------------
@@ -247,6 +302,8 @@ public sealed partial class ShellHeaderBar : UserControl
     {
         try
         {
+            isSearchTextBoxFocused = true;
+            activeSearchQueryText = SearchTextBox.Text ?? string.Empty;
             SyncSearchBoxChrome(focused: true);
         }
         catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.SearchTextBox_GotFocus: threw: {ex}"); }
@@ -257,6 +314,7 @@ public sealed partial class ShellHeaderBar : UserControl
     {
         try
         {
+            isSearchTextBoxFocused = false;
             SyncSearchBoxChrome(focused: false);
         }
         catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.SearchTextBox_LostFocus: threw: {ex}"); }
@@ -271,7 +329,7 @@ public sealed partial class ShellHeaderBar : UserControl
     }
 
     private bool IsSearchBoxFocused()
-        => ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), SearchTextBox);
+        => isSearchTextBoxFocused || SearchTextBox.FocusState != FocusState.Unfocused;
 
     private void SyncSearchBoxChrome(bool focused)
     {
@@ -282,17 +340,154 @@ public sealed partial class ShellHeaderBar : UserControl
             SearchBoxBorder.Background = fill;
     }
 
-    // Enter キーで検索テキストのバインディングを確定し、即時検索を要求する。
+    private void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        try
+        {
+            if (suppressSearchTextChange) return;
+            activeSearchQueryText = SearchTextBox.Text ?? string.Empty;
+            if (!IsSearchBoxFocused())
+            {
+                CloseSearchSuggestions();
+                return;
+            }
+            ScheduleWorldNameSuggestions(activeSearchQueryText);
+        }
+        catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.SearchTextBox_TextChanged: threw: {ex}"); }
+    }
+
     private void SearchTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         try
         {
-            if (!ShellHeaderBarLogic.ShouldSubmitSearch(e.Key)) return;
-            e.Handled = true;
-            SearchTextBox.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
-            OnSearchSubmit?.Invoke();
+            if (e.Key is VirtualKey.Down or VirtualKey.Up)
+            {
+                MoveHighlightedWorldSuggestion(e.Key == VirtualKey.Down ? 1 : -1);
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == VirtualKey.Escape)
+            {
+                CloseSearchSuggestions();
+                e.Handled = true;
+                return;
+            }
+            if (ShellHeaderBarLogic.ShouldSubmitSearch(e.Key))
+            {
+                SubmitSearch(SearchSuggestionListView.SelectedItem as HeaderWorldSuggestion);
+                e.Handled = true;
+            }
         }
         catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.SearchTextBox_KeyDown: threw: {ex}"); }
+    }
+
+    private void SearchSuggestionListView_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        try
+        {
+            SubmitSearch(e.ClickedItem as HeaderWorldSuggestion);
+        }
+        catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.SearchSuggestionListView_ItemClick: threw: {ex}"); }
+    }
+
+    private void SearchSuggestionPopup_Closed(object sender, object e)
+    {
+        highlightedWorldSuggestionIndex = -1;
+        SearchSuggestionListView.SelectedIndex = -1;
+    }
+
+    /// <summary>入力確定後だけ候補を再計算するため、IME 変換中の細かい TextChanged を短く待つ。</summary>
+    private void ScheduleWorldNameSuggestions(string query)
+    {
+        pendingSuggestionQuery = query;
+        if (!ShellHeaderBarLogic.ShouldShowWorldSuggestions(query))
+        {
+            searchSuggestionTimer?.Stop();
+            RefreshWorldNameSuggestions(query, open: false);
+            return;
+        }
+
+        searchSuggestionTimer ??= CreateSearchSuggestionTimer();
+        searchSuggestionTimer.Stop();
+        searchSuggestionTimer.Start();
+    }
+
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer CreateSearchSuggestionTimer()
+    {
+        var timer = DispatcherQueue.CreateTimer();
+        timer.Interval = TimeSpan.FromMilliseconds(220);
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            RefreshWorldNameSuggestions(pendingSuggestionQuery, open: true);
+        };
+        return timer;
+    }
+
+    private void RefreshWorldNameSuggestions(string? query = null, bool open = false)
+    {
+        var sourceQuery = query ?? SearchTextBox.Text;
+        var suggestions = ShellHeaderBarLogic.BuildWorldNameSuggestions(allWorldOptions, sourceQuery, maxCount: 5);
+        lastWorldNameSuggestions = suggestions;
+        WorldNameSuggestions.ReplaceAll(suggestions);
+        highlightedWorldSuggestionIndex = -1;
+        SearchSuggestionListView.SelectedIndex = -1;
+        if (open && suggestions.Count > 0 && IsSearchBoxFocused())
+        {
+            OpenSearchSuggestions();
+            return;
+        }
+        CloseSearchSuggestions();
+    }
+
+    /// <summary>候補 Popup の位置を検索ボックス直下に合わせる。</summary>
+    private void OpenSearchSuggestions()
+    {
+        if (SearchBoxBorder.ActualWidth > 0)
+            SearchSuggestionSurface.Width = SearchBoxBorder.ActualWidth;
+
+        var point = SearchBoxBorder.TransformToVisual(null)
+            .TransformPoint(new Point(0, SearchBoxBorder.ActualHeight + 6));
+        SearchSuggestionPopup.HorizontalOffset = point.X;
+        SearchSuggestionPopup.VerticalOffset = point.Y;
+        SearchSuggestionPopup.IsOpen = true;
+    }
+
+    private void CloseSearchSuggestions()
+    {
+        SearchSuggestionPopup.IsOpen = false;
+        highlightedWorldSuggestionIndex = -1;
+        SearchSuggestionListView.SelectedIndex = -1;
+    }
+
+    /// <summary>上下キーの候補移動を ListView 選択だけに反映し、検索欄の文字列は変更しない。</summary>
+    private void MoveHighlightedWorldSuggestion(int delta)
+    {
+        if (WorldNameSuggestions.Count == 0) return;
+        if (!SearchSuggestionPopup.IsOpen)
+            OpenSearchSuggestions();
+
+        highlightedWorldSuggestionIndex = highlightedWorldSuggestionIndex < 0
+            ? (delta > 0 ? 0 : WorldNameSuggestions.Count - 1)
+            : (highlightedWorldSuggestionIndex + delta + WorldNameSuggestions.Count) % WorldNameSuggestions.Count;
+        SearchSuggestionListView.SelectedIndex = highlightedWorldSuggestionIndex;
+        SearchSuggestionListView.ScrollIntoView(WorldNameSuggestions[highlightedWorldSuggestionIndex]);
+    }
+
+    /// <summary>候補クリックまたは Enter による検索確定を処理する。</summary>
+    private void SubmitSearch(HeaderWorldSuggestion? suggestion)
+    {
+        if (suggestion is not null)
+        {
+            suppressSearchTextChange = true;
+            SearchTextBox.Text = suggestion.DisplayName;
+            suppressSearchTextChange = false;
+        }
+
+        activeSearchQueryText = SearchTextBox.Text ?? string.Empty;
+        CloseSearchSuggestions();
+        SearchTextBox.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
+        OnSearchSubmit?.Invoke();
     }
 
     private Brush? ResolveThemeBrush(string key) => ThemeHelper.Brush(this, key);

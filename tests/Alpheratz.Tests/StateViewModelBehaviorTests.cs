@@ -196,6 +196,51 @@ public sealed class StateViewModelBehaviorTests : IDisposable
     }
 
     /// <summary>
+    /// 選択操作が PhotoThumbnailItem.IsSelected に反映され、表示側のリング/バッジが同期できることを確認する。
+    /// </summary>
+    [Fact]
+    public void GallerySelectionState_UpdatesVisibleSelectionFlags()
+    {
+        using var state = new GallerySelectionState(photoService, toastService);
+        var items = new[]
+        {
+            GridItem("/photo/a.jpg"),
+            GridItem("/photo/b.jpg"),
+            GridItem("/photo/c.jpg"),
+        };
+
+        state.toggleSelectedPhoto(items[0], shiftKey: false, items);
+        state.toggleSelectedPhoto(items[2], shiftKey: true, items);
+
+        Assert.All(items, item => Assert.True(item.Photo.IsSelected));
+
+        state.clearSelectedPhotos();
+
+        Assert.All(items, item => Assert.False(item.Photo.IsSelected));
+    }
+
+    /// <summary>
+    /// フィルタ変更などで表示写真が差し替わったとき、消えた写真の選択を外し残った写真へ表示状態を戻す。
+    /// </summary>
+    [Fact]
+    public void GallerySelectionState_SyncSelectionWithVisiblePhotosPrunesHiddenPhotos()
+    {
+        using var state = new GallerySelectionState(photoService, toastService);
+        var first = Thumb("/photo/a.jpg", "a.jpg", "Alpha");
+        var second = Thumb("/photo/b.jpg", "b.jpg", "Beta");
+        state.selectedPhotoPaths.Add("/photo/a.jpg");
+        state.selectedPhotoPaths.Add("/photo/missing.jpg");
+        state.SelectionAnchorPhotoPath = "/photo/missing.jpg";
+
+        state.syncSelectionWithVisiblePhotos([first, second]);
+
+        Assert.Equal(["/photo/a.jpg"], state.selectedPhotoPaths.ToArray());
+        Assert.True(first.IsSelected);
+        Assert.False(second.IsSelected);
+        Assert.Null(state.SelectionAnchorPhotoPath);
+    }
+
+    /// <summary>
     /// マルチセレクトモードを閉じると選択状態とアンカーが消えることを確認する。
     ///
     /// 一括操作ツールバーは IsMultiSelectMode=false のとき選択が残っていない前提で描画される。

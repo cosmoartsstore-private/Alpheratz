@@ -35,8 +35,12 @@ internal static class SettingsPageLogic
     /// <summary>テンプレートカードの状態ラベルとテーマリソースキーを返す。</summary>
     public static TemplateCardDisplay TemplateCard(bool isActive)
         => isActive
-            ? new TemplateCardDisplay("使用中", "ABorderStrong", "AAccentSoft", "APrimary")
-            : new TemplateCardDisplay("テンプレート", "ABorder", "ASurfaceSoft", "ATextDim");
+            ? new TemplateCardDisplay("使用中", "APrimary", "ASurfaceSoft", "APrimary", "AText")
+            : new TemplateCardDisplay("テンプレート", "ABorder", "ASurfaceSoft", "ATextDim", "AText");
+
+    /// <summary>設定ページで表示できるセクション ID かを返す。</summary>
+    public static bool IsKnownSection(string? section)
+        => section is "general" or "tags" or "templates" or "credits";
 
     /// <summary>StellaRecord 登録に必要な exe と icon のパスを返す。未導入なら null。</summary>
     public static StellaRecordRegistrationRequest? StellaRecordRegistration(
@@ -71,7 +75,12 @@ internal static class SettingsPageLogic
 internal sealed record TemplateEditorDisplay(bool CancelVisible, string SaveButtonText, string ModeLabel);
 
 /// <summary>テンプレートカードの表示状態。</summary>
-internal sealed record TemplateCardDisplay(string Label, string BorderKey, string BackgroundKey, string LabelForegroundKey);
+internal sealed record TemplateCardDisplay(
+    string Label,
+    string BorderKey,
+    string BackgroundKey,
+    string LabelForegroundKey,
+    string BodyForegroundKey);
 
 /// <summary>StellaRecord ランチャー登録に渡すパス。</summary>
 internal sealed record StellaRecordRegistrationRequest(string ExePath, string IconPath);

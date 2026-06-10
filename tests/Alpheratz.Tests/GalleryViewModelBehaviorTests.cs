@@ -160,6 +160,7 @@ public sealed class GalleryViewModelBehaviorTests : IDisposable
         await viewModel.addTag("/photo/a.jpg", "   ");
         await viewModel.addTag("/photo/a.jpg", new string('x', 41));
         await viewModel.addTag("/photo/a.jpg", "exists");
+        await viewModel.addTag("/photo/a.jpg", "EXISTS");
         var tags = await db.GetPhotoTagsAsync("/photo/a.jpg");
 
         Assert.Empty(tags);
@@ -192,11 +193,36 @@ public sealed class GalleryViewModelBehaviorTests : IDisposable
 
         await viewModel.bulkSetFavorite(true);
         await viewModel.bulkAddTag("bulk");
+        await viewModel.bulkAddTags(["Bulk", "extra", " extra "]);
 
         Assert.True(first.IsFavorite);
         Assert.True(second.IsFavorite);
-        Assert.Equal(["bulk"], first.Tags);
-        Assert.Equal(["bulk"], second.Tags);
+        Assert.Equal(["bulk", "extra"], first.Tags);
+        Assert.Equal(["bulk", "extra"], second.Tags);
+    }
+
+    /// <summary>
+    /// 選択直後でも、一括操作が selectedPhotoRefs の非同期更新待ちに依存せず選択写真へ反映されることを確認する。
+    /// </summary>
+    [Fact]
+    public async Task BulkMutations_ResolveRefsFromSelectedPathsAtExecutionTime()
+    {
+        await db.UpsertPhotoAsync(Photo("/photo/a.jpg", "a.jpg", "2026-06-05 10:00:00"));
+        await db.UpsertPhotoAsync(Photo("/photo/b.jpg", "b.jpg", "2026-06-05 11:00:00"));
+        var first = Thumb("/photo/a.jpg", "a.jpg");
+        var second = Thumb("/photo/b.jpg", "b.jpg");
+        viewModel.photosState.setPhotos([first, second], autoGenerateThumbnails: false);
+        viewModel.photosState.rebuildDisplayItems(GroupingMode.none);
+        viewModel.selectionState.selectedPhotoPaths.Add("/photo/a.jpg");
+        viewModel.selectionState.selectedPhotoPaths.Add("/photo/b.jpg");
+
+        await viewModel.bulkSetFavorite(true);
+        await viewModel.bulkAddTag("instant");
+
+        Assert.True(first.IsFavorite);
+        Assert.True(second.IsFavorite);
+        Assert.Equal(["instant"], first.Tags);
+        Assert.Equal(["instant"], second.Tags);
     }
 
     /// <summary>

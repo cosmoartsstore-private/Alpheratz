@@ -11,14 +11,9 @@ if (Test-Path $AppPublishRoot) {
     Remove-Item $AppPublishRoot -Recurse -Force
 }
 
-# Self-contained 配布 (csproj 側で SelfContained / WindowsAppSDKSelfContained を有効化済み)。
-# CLI 引数でも --self-contained true を明示してフェイルセーフ。
-dotnet publish $FrontendProjectPath `
-    -c Release `
-    -p:Platform=x64 `
-    -r win-x64 `
-    --self-contained true `
-    -o $AppPublishRoot
+# Build a self-contained frontend package.
+# The CLI flag keeps the script explicit even when the project file already sets it.
+& dotnet publish $FrontendProjectPath -c Release -p:Platform=x64 -r win-x64 --self-contained true -o $AppPublishRoot
 
 $FrontendExe = Join-Path $AppPublishRoot "Alpheratz.Frontend.exe"
 if (!(Test-Path $FrontendExe)) {

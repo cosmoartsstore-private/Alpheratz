@@ -25,7 +25,7 @@
     <Grid Background="Transparent" Tapped="Backdrop_Tapped">
         <Border MaxWidth="1560" MaxHeight="920" MinWidth="0" Margin="16"
                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                CornerRadius="{StaticResource ARadiusModal}"
+                CornerRadius="{StaticResource ARadius}"
                 Background="{ThemeResource ASurface}"
                 BorderBrush="{ThemeResource ABorder}"
                 BorderThickness="1"
@@ -36,53 +36,100 @@
                     <ColumnDefinition Width="300"/>
                 </Grid.ColumnDefinitions>
                 <Grid x:Name="ImagePanel" Grid.Column="0" Background="{ThemeResource AMediaBg}"
-                      CornerRadius="{StaticResource ARadiusModalRight}"
+                      CornerRadius="12,0,0,12"
                       PointerMoved="ImagePanel_PointerMoved"
                       PointerExited="ImagePanel_PointerExited">
                     <Image x:Name="ModalImage" Stretch="Uniform"/>
+                    <Border x:Name="PrevPhotoEdgeVisual"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Stretch"
+                            Width="96"
+                            Opacity="0"
+                            IsHitTestVisible="False">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
+                                <GradientStop Color="#6A000000" Offset="0"/>
+                                <GradientStop Color="#36000000" Offset="0.48"/>
+                                <GradientStop Color="#00000000" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Border.Background>
+                        <TextBlock Text="&#x2039;"
+                                   FontSize="58"
+                                   FontWeight="Normal"
+                                   Foreground="White"
+                                   Opacity="0.72"
+                                   HorizontalAlignment="Left"
+                                   Margin="18,0,0,0"
+                                   VerticalAlignment="Center"/>
+                    </Border>
+                    <Border x:Name="NextPhotoEdgeVisual"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Stretch"
+                            Width="96"
+                            Opacity="0"
+                            IsHitTestVisible="False">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="1,0.5" EndPoint="0,0.5">
+                                <GradientStop Color="#6A000000" Offset="0"/>
+                                <GradientStop Color="#36000000" Offset="0.48"/>
+                                <GradientStop Color="#00000000" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Border.Background>
+                        <TextBlock Text="&#x203A;"
+                                   FontSize="58"
+                                   FontWeight="Normal"
+                                   Foreground="White"
+                                   Opacity="0.72"
+                                   HorizontalAlignment="Right"
+                                   Margin="0,0,18,0"
+                                   VerticalAlignment="Center"/>
+                    </Border>
                     <Button x:Name="PrevPhotoButton" HorizontalAlignment="Left" VerticalAlignment="Stretch"
-                            Width="148"
-                            Padding="22,0,0,0"
+                            Width="96"
+                            Padding="0"
                             CornerRadius="0"
-                            HorizontalContentAlignment="Left"
+                            HorizontalContentAlignment="Center"
                             VerticalContentAlignment="Center"
                             AutomationProperties.Name="前の写真"
                             Background="Transparent"
                             BorderBrush="Transparent"
                             BorderThickness="0"
                             Template="{StaticResource PhotoEdgeButtonTemplate}"
-                            IsEnabled="{Binding state.CanGoPrev}"
                             PointerEntered="PhotoEdgeButton_PointerEntered"
+                            PointerMoved="PhotoEdgeButton_PointerMoved"
                             PointerExited="PhotoEdgeButton_PointerExited"
-                            Click="PrevPhoto_Click">
-                        <TextBlock x:Name="PrevPhotoChevron" Text="&lt;" Opacity="0" FontSize="46" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/>
-                    </Button>
+                            Click="PrevPhoto_Click"/>
                     <Button x:Name="NextPhotoButton" HorizontalAlignment="Right" VerticalAlignment="Stretch"
-                            Width="148"
-                            Padding="0,0,22,0"
+                            Width="96"
+                            Padding="0"
                             CornerRadius="0"
-                            HorizontalContentAlignment="Right"
+                            HorizontalContentAlignment="Center"
                             VerticalContentAlignment="Center"
                             AutomationProperties.Name="次の写真"
                             Background="Transparent"
                             BorderBrush="Transparent"
                             BorderThickness="0"
                             Template="{StaticResource PhotoEdgeButtonTemplate}"
-                            IsEnabled="{Binding state.CanGoNext}"
                             PointerEntered="PhotoEdgeButton_PointerEntered"
+                            PointerMoved="PhotoEdgeButton_PointerMoved"
                             PointerExited="PhotoEdgeButton_PointerExited"
-                            Click="NextPhoto_Click">
-                        <TextBlock x:Name="NextPhotoChevron" Text="&gt;" Opacity="0" FontSize="46" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/>
-                    </Button>
-                    <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="14" MaxWidth="500"
-                            Padding="10,6" CornerRadius="{StaticResource ARadiusMd}"
+                            Click="NextPhoto_Click"/>
+                    <Border HorizontalAlignment="Right"
+                            VerticalAlignment="Bottom"
+                            Margin="14"
+                            MaxWidth="500"
+                            Padding="10,6"
+                            CornerRadius="{StaticResource ARadiusMd}"
                             Background="{ThemeResource ASurface}"
                             BorderBrush="{ThemeResource ABorderMid}"
                             BorderThickness="1">
-                        <TextBlock Text="{Binding state.SelectedPhoto.PhotoFilename}" Foreground="{ThemeResource ATextDim}" FontSize="{StaticResource AFontSizeXs}" TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding state.SelectedPhoto.PhotoFilename}"
+                                   Foreground="{ThemeResource ATextDim}"
+                                   FontSize="{StaticResource AFontSizeXs}"
+                                   TextWrapping="Wrap"/>
                     </Border>
                 </Grid>
-                <Grid Grid.Column="1" Background="{ThemeResource ASurface}" CornerRadius="0,28,28,0"
+                <Grid Grid.Column="1" Background="{ThemeResource ASurface}" CornerRadius="0,12,12,0"
                       BorderBrush="{ThemeResource ABorderMid}" BorderThickness="1,0,0,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -118,35 +165,52 @@
                     <ScrollViewer Grid.Row="2" Padding="20,16,20,24" VerticalScrollBarVisibility="Auto">
                         <StackPanel Spacing="10">
                             <TextBlock Text="タグ" FontSize="{StaticResource AFontSizeSm}" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}" CharacterSpacing="60"/>
-                            <Grid x:Name="TagAddRow" ColumnSpacing="10">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <ComboBox x:Name="ExistingTagCombo" HorizontalAlignment="Stretch" PlaceholderText="タグを選択..." CornerRadius="{StaticResource ARadiusLg}"/>
-                                <Button Grid.Column="1" Content="追加" Style="{StaticResource PrimaryButtonStyle}" Padding="14,10" CornerRadius="{StaticResource ARadius}" FontWeight="ExtraBold" Click="AddExistingTag_Click"/>
-                            </Grid>
+                            <Border MinHeight="78"
+                                    Padding="10"
+                                    CornerRadius="{StaticResource ARadius}"
+                                    Background="{ThemeResource ASurfaceSoft}"
+                                    BorderBrush="{ThemeResource ABorder}"
+                                    BorderThickness="1">
+                                <Grid>
+                                    <TextBlock x:Name="AssignedTagEmptyNote"
+                                               Text="タグなし"
+                                               Visibility="Collapsed"
+                                               FontSize="{StaticResource AFontSizeSm}"
+                                               FontWeight="SemiBold"
+                                               Foreground="{ThemeResource ATextFaint}"
+                                               VerticalAlignment="Center"
+                                               HorizontalAlignment="Center"/>
+                                    <ItemsControl ItemsSource="{Binding state.SelectedPhoto.Tags}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <shared:WrapPanel HorizontalSpacing="6" VerticalSpacing="6"/>
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Button Tag="{Binding}" Click="RemoveTag_Click" Style="{StaticResource ChipButtonStyle}">
+                                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                                        <TextBlock Text="{Binding}" FontSize="{StaticResource AFontSizeXs}" FontWeight="Bold"
+                                                                   Foreground="{ThemeResource APrimary}" VerticalAlignment="Center"
+                                                                   MaxWidth="210" TextTrimming="CharacterEllipsis"/>
+                                                        <TextBlock Text="×" FontSize="{StaticResource AFontSizeXs}" Foreground="{ThemeResource ATextFaint}" VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                </Button>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Grid>
+                            </Border>
+                            <Button x:Name="TagAddRow"
+                                    Content="タグを追加"
+                                    Style="{StaticResource PrimaryButtonStyle}"
+                                    HorizontalAlignment="Stretch"
+                                    Padding="14,10"
+                                    CornerRadius="{StaticResource ARadius}"
+                                    FontWeight="ExtraBold"
+                                    Click="OpenTagAddModal_Click"/>
                             <TextBlock x:Name="EmptyTagNote" Visibility="Collapsed" Text="追加できるタグがありません。" FontSize="{StaticResource AFontSizeMd}" Foreground="{ThemeResource ATextFaint}" Margin="0,4,0,0"/>
                             <Button x:Name="OpenTagMasterButton" Content="タグマスタを開く" Style="{StaticResource GhostButtonStyle}" HorizontalAlignment="Left" Click="OpenTagMaster_Click"/>
-                            <ItemsControl ItemsSource="{Binding state.SelectedPhoto.Tags}">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <shared:WrapPanel HorizontalSpacing="6" VerticalSpacing="6"/>
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Button Tag="{Binding}" Click="RemoveTag_Click" Style="{StaticResource ChipButtonStyle}">
-                                            <StackPanel Orientation="Horizontal" Spacing="4">
-                                                <TextBlock Text="{Binding}" FontSize="{StaticResource AFontSizeXs}" FontWeight="Bold"
-                                                           Foreground="{ThemeResource APrimary}" VerticalAlignment="Center"
-                                                           MaxWidth="210" TextTrimming="CharacterEllipsis"/>
-                                                <TextBlock Text="×" FontSize="{StaticResource AFontSizeXs}" Foreground="{ThemeResource ATextFaint}" VerticalAlignment="Center"/>
-                                            </StackPanel>
-                                        </Button>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
                         </StackPanel>
                     </ScrollViewer>
                     <Grid Grid.Row="3" BorderBrush="{ThemeResource ABorder}" BorderThickness="0,1,0,0">
@@ -208,6 +272,46 @@
             <Border HorizontalAlignment="Center" VerticalAlignment="Center" Padding="32,18" CornerRadius="{StaticResource ARadiusXl}"
                     Background="{ThemeResource ASurfaceSoft}" BorderBrush="{ThemeResource ABorder}" BorderThickness="1">
                 <TextBlock Text="クリップボードにコピーしました" FontSize="{StaticResource AFontSizeLg}" FontWeight="Bold" Foreground="{ThemeResource AText}"/>
+            </Border>
+        </Grid>
+        <Grid x:Name="TagAddOverlay"
+              Visibility="Collapsed"
+              Background="{ThemeResource AOverlay}"
+              Tapped="TagAddOverlay_Tapped">
+            <Border Width="360"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Padding="22"
+                    CornerRadius="{StaticResource ARadiusModal}"
+                    Background="{ThemeResource ASurface}"
+                    BorderBrush="{ThemeResource ABorder}"
+                    BorderThickness="1"
+                    Tapped="TagAddModalContent_Tapped">
+                <StackPanel Spacing="14">
+                    <TextBlock Text="タグを追加"
+                               Style="{StaticResource SectionTitleStyle}"/>
+                    <Border MaxHeight="260"
+                            Padding="6"
+                            CornerRadius="{StaticResource ARadius}"
+                            Background="{ThemeResource ASurfaceSoft}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="ExistingTagList"
+                                        Spacing="4"/>
+                        </ScrollViewer>
+                    </Border>
+                    <StackPanel Orientation="Horizontal"
+                                HorizontalAlignment="Right"
+                                Spacing="8">
+                        <Button Content="キャンセル"
+                                Style="{StaticResource GhostButtonStyle}"
+                                Click="CloseTagAddModal_Click"/>
+                        <Button x:Name="TagAddConfirmButton"
+                                Content="追加"
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                FontWeight="ExtraBold"
+                                Click="AddExistingTag_Click"/>
+                    </StackPanel>
+                </StackPanel>
             </Border>
         </Grid>
     </Grid>

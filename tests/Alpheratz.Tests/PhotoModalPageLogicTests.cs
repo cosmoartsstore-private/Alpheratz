@@ -106,6 +106,8 @@ public sealed class PhotoModalPageLogicTests
             PhotoModalPageLogic.TagAddDisplay(["night", "city", "avatar"], ["night", "avatar"]));
         Assert.Equal(new TagAddDisplay(false, 0),
             PhotoModalPageLogic.TagAddDisplay(["night"], ["night"]));
+        Assert.Equal(new TagAddDisplay(false, 0),
+            PhotoModalPageLogic.TagAddDisplay(["Night"], ["night"]));
     }
 
     /// <summary>

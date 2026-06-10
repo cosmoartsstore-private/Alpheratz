@@ -280,7 +280,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         }
 
         var currentPhoto = photosState.photos.FirstOrDefault(photo => photo.PhotoPath == photoPath);
-        if (currentPhoto?.Tags.Contains(normalized) == true)
+        if (currentPhoto?.Tags.Contains(normalized, StringComparer.OrdinalIgnoreCase) == true)
         {
             AppLogger.Trace("GalleryViewModel.addTag: skip (duplicate)");
             return;
@@ -292,6 +292,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
             await dispatcherService.RunOnUiThread(() =>
                 updatePhoto(photoPath, photo => photo.Tags = photo.Tags
                     .Concat([normalized])
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
                     .OrderBy(item => item, StringComparer.Create(new CultureInfo("ja-JP"), false))
                     .ToArray())).ConfigureAwait(false);
             await loadTagFilterCounts().ConfigureAwait(false);
@@ -303,6 +304,55 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
             toastService.addToast($"タグの追加に失敗しました: {err}", ToastType.error);
         }
         AppLogger.Trace("GalleryViewModel.addTag: exit");
+    }
+
+    // 対象写真に複数タグをまとめて追加し、入力重複と既存タグ重複をまとめて除外する。
+    public async Task addTags(string photoPath, IEnumerable<string> tags)
+    {
+        var normalizedTags = tags
+            .Select(tag => tag.Trim())
+            .Where(tag => !string.IsNullOrEmpty(tag))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        AppLogger.Trace($"GalleryViewModel.addTags: enter photoPath={photoPath} count={normalizedTags.Length}");
+        if (normalizedTags.Length == 0) return;
+
+        if (normalizedTags.Any(tag => tag.Length > MAX_TAG_LENGTH))
+        {
+            toastService.addToast($"タグは{MAX_TAG_LENGTH}文字以内で入力してください。", ToastType.error);
+            return;
+        }
+
+        var currentPhoto = photosState.photos.FirstOrDefault(photo => photo.PhotoPath == photoPath);
+        var additions = normalizedTags
+            .Where(tag => currentPhoto?.Tags.Contains(tag, StringComparer.OrdinalIgnoreCase) != true)
+            .ToArray();
+        if (additions.Length == 0)
+        {
+            AppLogger.Trace("GalleryViewModel.addTags: skip (duplicate)");
+            return;
+        }
+
+        try
+        {
+            foreach (var tag in additions)
+                await photoService.AddPhotoTagAsync(photoPath, tag, currentPhoto?.SourceSlot ?? 1).ConfigureAwait(false);
+
+            await dispatcherService.RunOnUiThread(() =>
+                updatePhoto(photoPath, photo => photo.Tags = photo.Tags
+                    .Concat(additions)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(item => item, StringComparer.Create(new CultureInfo("ja-JP"), false))
+                    .ToArray())).ConfigureAwait(false);
+            await loadTagFilterCounts().ConfigureAwait(false);
+            toastService.addToast(additions.Length == 1 ? "タグを追加しました。" : $"{additions.Length} 件のタグを追加しました。");
+        }
+        catch (Exception err)
+        {
+            AppLogger.Error($"GalleryViewModel.addTags: threw: {err}");
+            toastService.addToast($"タグの追加に失敗しました: {err}", ToastType.error);
+        }
+        AppLogger.Trace("GalleryViewModel.addTags: exit");
     }
 
     // 対象写真からタグを削除し、タグ件数と表示中データを更新する。
@@ -429,7 +479,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
     public async Task bulkSetFavorite(bool isFavorite)
     {
         AppLogger.Trace($"GalleryViewModel.bulkSetFavorite: enter isFavorite={isFavorite}");
-        var refs = selectionState.selectedPhotoRefs.ToList();
+        var refs = (await selectionState.getSelectedPhotoRefsSnapshot().ConfigureAwait(false)).ToList();
         if (refs.Count == 0) return;
         try
         {
@@ -451,57 +501,75 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
 
     // 選択中写真へタグを一括追加し、各写真のタグ配列を重複なく更新する。
     public async Task bulkAddTag(string tag)
+        => await bulkAddTags([tag]).ConfigureAwait(false);
+
+    // 選択中写真へ複数タグを一括追加し、入力重複と既存タグ重複をまとめて除外する。
+    public async Task bulkAddTags(IEnumerable<string> tags)
     {
-        AppLogger.Trace($"GalleryViewModel.bulkAddTag: enter tag={tag}");
-        var normalized = tag.Trim();
-        if (string.IsNullOrEmpty(normalized))
+        var normalizedTags = tags
+            .Select(tag => tag.Trim())
+            .Where(tag => !string.IsNullOrEmpty(tag))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        AppLogger.Trace($"GalleryViewModel.bulkAddTags: enter count={normalizedTags.Length}");
+        if (normalizedTags.Length == 0)
         {
-            AppLogger.Trace("GalleryViewModel.bulkAddTag: skip (empty)");
+            AppLogger.Trace("GalleryViewModel.bulkAddTags: skip (empty)");
             return;
         }
 
-        if (normalized.Length > MAX_TAG_LENGTH)
+        if (normalizedTags.Any(tag => tag.Length > MAX_TAG_LENGTH))
         {
-            AppLogger.Trace("GalleryViewModel.bulkAddTag: skip (too long)");
+            AppLogger.Trace("GalleryViewModel.bulkAddTags: skip (too long)");
             toastService.addToast($"タグは{MAX_TAG_LENGTH}文字以内で入力してください。", ToastType.error);
             return;
         }
 
-        var refs = selectionState.selectedPhotoRefs.ToList();
+        var refs = (await selectionState.getSelectedPhotoRefsSnapshot().ConfigureAwait(false)).ToList();
         if (refs.Count == 0) return;
         try
         {
-            await photoService.BulkAddPhotoTagAsync(refs, normalized).ConfigureAwait(false);
+            foreach (var normalized in normalizedTags)
+                await photoService.BulkAddPhotoTagAsync(refs, normalized).ConfigureAwait(false);
+
             await dispatcherService.RunOnUiThread(() =>
             {
                 foreach (var r in refs)
                 {
                     updatePhoto(r.photo_path, photo =>
                     {
-                        if (photo.Tags.Contains(normalized)) return;
+                        var additions = normalizedTags
+                            .Where(tag => !photo.Tags.Contains(tag, StringComparer.OrdinalIgnoreCase))
+                            .ToArray();
+                        if (additions.Length == 0) return;
+
                         photo.Tags = photo.Tags
-                            .Concat([normalized])
+                            .Concat(additions)
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
                             .OrderBy(item => item, StringComparer.Create(new CultureInfo("ja-JP"), false))
                             .ToArray();
                     });
                 }
             }).ConfigureAwait(false);
             await loadTagFilterCounts().ConfigureAwait(false);
-            toastService.addToast($"タグ \"{normalized}\" を {refs.Count} 枚に追加しました");
+            var label = normalizedTags.Length == 1
+                ? $"タグ \"{normalizedTags[0]}\""
+                : $"{normalizedTags.Length} 件のタグ";
+            toastService.addToast($"{label} を {refs.Count} 枚に追加しました");
         }
         catch (Exception err)
         {
-            AppLogger.Error($"GalleryViewModel.bulkAddTag: threw: {err}");
+            AppLogger.Error($"GalleryViewModel.bulkAddTags: threw: {err}");
             toastService.addToast($"タグの追加に失敗しました: {err}", ToastType.error);
         }
-        AppLogger.Trace("GalleryViewModel.bulkAddTag: exit");
+        AppLogger.Trace("GalleryViewModel.bulkAddTags: exit");
     }
 
     // 選択中写真を指定フォルダへコピーし、コピー件数とスキップ件数を通知する。
     public async Task bulkCopyPhotos(string destinationFolder)
     {
         AppLogger.Trace($"GalleryViewModel.bulkCopyPhotos: enter destinationFolder={destinationFolder}");
-        var refs = selectionState.selectedPhotoRefs.ToList();
+        var refs = (await selectionState.getSelectedPhotoRefsSnapshot().ConfigureAwait(false)).ToList();
         if (refs.Count == 0 || string.IsNullOrWhiteSpace(destinationFolder)) return;
         try
         {

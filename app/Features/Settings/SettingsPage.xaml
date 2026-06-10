@@ -6,6 +6,18 @@
     Background="Transparent"
     IsTabStop="True"
     KeyDown="Page_KeyDown">
+    <Page.Resources>
+        <ControlTemplate x:Key="ThemeSegmentButtonTemplate" TargetType="Button">
+            <ContentPresenter
+                Content="{TemplateBinding Content}"
+                ContentTemplate="{TemplateBinding ContentTemplate}"
+                Foreground="{TemplateBinding Foreground}"
+                Padding="{TemplateBinding Padding}"
+                HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                AutomationProperties.AccessibilityView="Raw"/>
+        </ControlTemplate>
+    </Page.Resources>
     <Grid Background="Transparent" Tapped="Backdrop_Tapped">
         <Border MaxWidth="1120" MaxHeight="820" MinWidth="0" Margin="24"
                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
@@ -204,10 +216,57 @@
                                     <TextBlock Text="テーマ" FontWeight="SemiBold"/>
                                     <TextBlock Text="アプリの外観テーマを切り替えます。" Style="{StaticResource HintTextStyle}"/>
                                 </StackPanel>
-                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                    <Button Content="ライト" Style="{StaticResource GhostButtonStyle}" Click="ThemeLight_Click"/>
-                                    <Button Content="ダーク" Style="{StaticResource GhostButtonStyle}" Click="ThemeDark_Click"/>
-                                </StackPanel>
+                                <Grid Grid.Column="1"
+                                      x:Name="ThemeSegment"
+                                      Width="204"
+                                      Height="40"
+                                      Padding="4"
+                                      VerticalAlignment="Center"
+                                      Background="{ThemeResource ASurfaceSoft}"
+                                      BorderBrush="{ThemeResource ABorder}"
+                                      BorderThickness="1"
+                                      CornerRadius="{StaticResource ARadiusMd}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Border x:Name="ThemeSelectionPill"
+                                            Grid.Column="0"
+                                            CornerRadius="6"
+                                            Background="{ThemeResource APrimary}"/>
+                                    <Button x:Name="ThemeLightButton"
+                                            Grid.Column="0"
+                                            Content="ライト"
+                                            Background="Transparent"
+                                            BorderBrush="Transparent"
+                                            BorderThickness="0"
+                                            MinWidth="0"
+                                            MinHeight="0"
+                                            Foreground="{ThemeResource ATextDim}"
+                                            FontSize="{StaticResource AFontSizeSm}"
+                                            FontWeight="Bold"
+                                            HorizontalContentAlignment="Center"
+                                            VerticalContentAlignment="Center"
+                                            Padding="0"
+                                            Template="{StaticResource ThemeSegmentButtonTemplate}"
+                                            Click="ThemeLight_Click"/>
+                                    <Button x:Name="ThemeDarkButton"
+                                            Grid.Column="1"
+                                            Content="ダーク"
+                                            Background="Transparent"
+                                            BorderBrush="Transparent"
+                                            BorderThickness="0"
+                                            MinWidth="0"
+                                            MinHeight="0"
+                                            Foreground="{ThemeResource ATextDim}"
+                                            FontSize="{StaticResource AFontSizeSm}"
+                                            FontWeight="Bold"
+                                            HorizontalContentAlignment="Center"
+                                            VerticalContentAlignment="Center"
+                                            Padding="0"
+                                            Template="{StaticResource ThemeSegmentButtonTemplate}"
+                                            Click="ThemeDark_Click"/>
+                                </Grid>
                             </Grid>
 
                             <Grid>
@@ -405,69 +464,178 @@
                         </StackPanel>
 
                         <!-- ============ クレジット ============ -->
-                        <StackPanel x:Name="CreditsSection" Grid.Row="3" Grid.Column="0" Spacing="18" Visibility="Collapsed">
+                        <StackPanel x:Name="CreditsSection"
+                                    Grid.Row="3"
+                                    Grid.Column="0"
+                                    Spacing="18"
+                                    Visibility="Collapsed"
+                                    MaxWidth="980">
                             <TextBlock Text="クレジット" Style="{StaticResource SectionTitleStyle}"/>
-                            <Border Style="{StaticResource SectionCardBorderStyle}">
-                                <StackPanel Spacing="16">
-                                    <Grid ColumnSpacing="14">
+                            <Border Padding="26"
+                                    CornerRadius="{StaticResource ARadius}"
+                                    Background="{ThemeResource ASurfaceSoft}"
+                                    BorderBrush="{ThemeResource ABorder}"
+                                    BorderThickness="1">
+                                <StackPanel>
+                                    <Grid ColumnSpacing="16">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
-                                        <Border Width="52"
-                                                Height="52"
-                                                CornerRadius="26"
-                                                Background="{ThemeResource ASurfaceSoft}"
-                                                BorderBrush="{ThemeResource ABorder}"
+
+                                        <Border Grid.Column="0"
+                                                Width="56"
+                                                Height="56"
+                                                CornerRadius="28"
+                                                Background="{ThemeResource ASurface}"
+                                                BorderBrush="{ThemeResource ABorderMid}"
                                                 BorderThickness="1">
                                             <Image Source="ms-appx:///Assets/avatar.jpg"
                                                    Stretch="UniformToFill"
-                                                   Width="52"
-                                                   Height="52"/>
+                                                   Width="56"
+                                                   Height="56"/>
                                         </Border>
-                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                                            <TextBlock Text="CosmoArtsStore" FontSize="{StaticResource AFontSizeLg}" FontWeight="SemiBold"/>
-                                            <TextBlock Text="by ぷらねっと" Style="{StaticResource HintTextStyle}"/>
-                                            <TextBlock Text="Alpheratz 制作・配布" Style="{StaticResource HintTextStyle}"/>
+
+                                        <StackPanel Grid.Column="1"
+                                                    VerticalAlignment="Center"
+                                                    Spacing="3">
+                                            <TextBlock Text="CosmoArtsStore"
+                                                       FontSize="{StaticResource AFontSizeXl}"
+                                                       FontWeight="ExtraBold"
+                                                       Foreground="{ThemeResource AText}"/>
+                                            <TextBlock Text="Creator:ぷらねっと/planet"
+                                                       FontSize="{StaticResource AFontSizeSm}"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{ThemeResource ATextFaint}"/>
                                         </StackPanel>
                                     </Grid>
-                                    <StackPanel Spacing="8">
-                                        <Button Content="Lit.Link"
-                                                Tag="https://lit.link/planet_vrc"
-                                                Style="{StaticResource GhostButtonStyle}"
-                                                Background="{ThemeResource ASurface}"
-                                                BorderBrush="{ThemeResource ABorder}"
-                                                BorderThickness="1"
-                                                CornerRadius="{StaticResource ARadiusSm}"
-                                                Foreground="{ThemeResource AText}"
-                                                FontWeight="SemiBold"
-                                                HorizontalAlignment="Stretch"
-                                                HorizontalContentAlignment="Left"
-                                                Click="CreditLink_Click"/>
-                                        <Button Content="X / Twitter"
-                                                Tag="https://x.com/planet_vrc"
-                                                Style="{StaticResource GhostButtonStyle}"
-                                                Background="{ThemeResource ASurface}"
-                                                BorderBrush="{ThemeResource ABorder}"
-                                                BorderThickness="1"
-                                                CornerRadius="{StaticResource ARadiusSm}"
-                                                Foreground="{ThemeResource AText}"
-                                                FontWeight="SemiBold"
-                                                HorizontalAlignment="Stretch"
-                                                HorizontalContentAlignment="Left"
-                                                Click="CreditLink_Click"/>
-                                        <Button Content="BOOTH"
-                                                Tag="https://cosmo-arts-store.booth.pm/"
-                                                Style="{StaticResource GhostButtonStyle}"
-                                                Background="{ThemeResource ASurface}"
-                                                BorderBrush="{ThemeResource ABorder}"
-                                                BorderThickness="1"
-                                                CornerRadius="{StaticResource ARadiusSm}"
-                                                Foreground="{ThemeResource AText}"
-                                                FontWeight="SemiBold"
-                                                HorizontalAlignment="Stretch"
-                                                HorizontalContentAlignment="Left"
-                                                Click="CreditLink_Click"/>
+
+                                    <Border Height="1"
+                                            Margin="0,16,0,14"
+                                            Background="{ThemeResource ABorder}"/>
+
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="1"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="1"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <HyperlinkButton Grid.Column="0"
+                                                         NavigateUri="https://lit.link/planet_vrc"
+                                                         Padding="0"
+                                                         HorizontalAlignment="Stretch">
+                                            <StackPanel Padding="8,4"
+                                                        Spacing="4"
+                                                        HorizontalAlignment="Center">
+                                                <TextBlock Text="Lit.Link"
+                                                           FontWeight="Bold"
+                                                           Foreground="{ThemeResource AText}"
+                                                           HorizontalAlignment="Center"/>
+                                                <TextBlock Text="lit.link/planet_vrc"
+                                                           FontSize="{StaticResource AFontSizeXs}"
+                                                           Foreground="{ThemeResource ATextFaint}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           HorizontalAlignment="Center"/>
+                                            </StackPanel>
+                                        </HyperlinkButton>
+
+                                        <Border Grid.Column="1" Background="{ThemeResource ABorder}"/>
+
+                                        <HyperlinkButton Grid.Column="2"
+                                                         NavigateUri="https://x.com/planet_vrc"
+                                                         Padding="0"
+                                                         HorizontalAlignment="Stretch">
+                                            <StackPanel Padding="8,4"
+                                                        Spacing="4"
+                                                        HorizontalAlignment="Center">
+                                                <TextBlock Text="X / Twitter"
+                                                           FontWeight="Bold"
+                                                           Foreground="{ThemeResource AText}"
+                                                           HorizontalAlignment="Center"/>
+                                                <TextBlock Text="@planet_vrc"
+                                                           FontSize="{StaticResource AFontSizeXs}"
+                                                           Foreground="{ThemeResource ATextFaint}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           HorizontalAlignment="Center"/>
+                                            </StackPanel>
+                                        </HyperlinkButton>
+
+                                        <Border Grid.Column="3" Background="{ThemeResource ABorder}"/>
+
+                                        <HyperlinkButton Grid.Column="4"
+                                                         NavigateUri="https://cosmo-arts-store.booth.pm/"
+                                                         Padding="0"
+                                                         HorizontalAlignment="Stretch">
+                                            <StackPanel Padding="8,4"
+                                                        Spacing="4"
+                                                        HorizontalAlignment="Center">
+                                                <TextBlock Text="BOOTH"
+                                                           FontWeight="Bold"
+                                                           Foreground="{ThemeResource AText}"
+                                                           HorizontalAlignment="Center"/>
+                                                <TextBlock Text="cosmo-arts-store.booth.pm"
+                                                           FontSize="{StaticResource AFontSizeXs}"
+                                                           Foreground="{ThemeResource ATextFaint}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           HorizontalAlignment="Center"/>
+                                            </StackPanel>
+                                        </HyperlinkButton>
+                                    </Grid>
+
+                                    <Border Height="1"
+                                            Margin="0,16,0,14"
+                                            Background="{ThemeResource ABorder}"/>
+
+                                    <StackPanel Spacing="10">
+                                        <TextBlock Text="使用素材"
+                                                   FontSize="{StaticResource AFontSizeMd}"
+                                                   FontWeight="ExtraBold"
+                                                   Foreground="{ThemeResource AText}"/>
+                                        <Grid RowSpacing="9" ColumnSpacing="10">
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <shared:AppIcon Grid.Row="0"
+                                                            IconName="photo"
+                                                            IconSize="14"
+                                                            Foreground="{ThemeResource ATextFaint}"
+                                                            VerticalAlignment="Center"/>
+                                            <StackPanel Grid.Row="0"
+                                                        Grid.Column="1"
+                                                        Spacing="2">
+                                                <TextBlock Text="プロフィール画像"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{ThemeResource ATextDim}"/>
+                                                <TextBlock Text="CosmoArtsStore"
+                                                           FontSize="{StaticResource AFontSizeXs}"
+                                                           Foreground="{ThemeResource ATextFaint}"/>
+                                            </StackPanel>
+
+                                            <shared:AppIcon Grid.Row="1"
+                                                            IconName="grid"
+                                                            IconSize="14"
+                                                            Foreground="{ThemeResource ATextFaint}"
+                                                            VerticalAlignment="Center"/>
+                                            <StackPanel Grid.Row="1"
+                                                        Grid.Column="1"
+                                                        Spacing="2">
+                                                <TextBlock Text="UIアイコン"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{ThemeResource ATextDim}"/>
+                                                <TextBlock Text="Bootstrap Icons / MIT License / Copyright (c) 2019-2024 The Bootstrap Authors"
+                                                           FontSize="{StaticResource AFontSizeXs}"
+                                                           Foreground="{ThemeResource ATextFaint}"/>
+                                            </StackPanel>
+                                        </Grid>
                                     </StackPanel>
                                 </StackPanel>
                             </Border>

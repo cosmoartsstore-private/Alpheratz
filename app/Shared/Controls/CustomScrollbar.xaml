@@ -9,7 +9,9 @@
           PointerExited="Track_PointerExited"
           PointerPressed="Track_PointerPressed"
           PointerMoved="Track_PointerMoved"
-          PointerReleased="Track_PointerReleased">
+          PointerReleased="Track_PointerReleased"
+          PointerCanceled="Track_PointerCanceled"
+          PointerCaptureLost="Track_PointerCaptureLost">
         <!-- Track rail (subtle rounded background behind the thumb) -->
         <Border x:Name="TrackRail"
                 Margin="4,0"
@@ -18,7 +20,7 @@
                 Opacity="0"/>
         <!-- Thumb (rounded, animated to thicker on hover) -->
         <Border x:Name="Thumb"
-                Width="6"
+                Width="4"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Top"
                 CornerRadius="{StaticResource ARadiusPill}"

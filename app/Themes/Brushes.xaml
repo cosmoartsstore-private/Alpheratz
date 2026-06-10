@@ -100,6 +100,10 @@
             <SolidColorBrush x:Key="ASurfaceSide" Color="#F1F3F5"/>
             <SolidColorBrush x:Key="ASurfaceVeil" Color="#FFFFFF"/>
             <SolidColorBrush x:Key="AMediaBg" Color="#111318"/>
+            <SolidColorBrush x:Key="AFilterPanelBackground" Color="#EBEBEF"/>
+            <SolidColorBrush x:Key="AFilterPanelCard" Color="#FFFFFF"/>
+            <SolidColorBrush x:Key="AFilterPanelBorder" Color="#DADDE3"/>
+            <SolidColorBrush x:Key="AFilterPanelSectionLine" Color="#D1D5DB"/>
 
             <!-- Borders -->
             <!-- ライトは白系サーフェス上で薄すぎて縁が見えないため一段濃く。
@@ -115,6 +119,7 @@
             <SolidColorBrush x:Key="ATextFaint" Color="#9CA3AF"/>
             <SolidColorBrush x:Key="ATextDisabled" Color="#D1D5DB"/>
             <SolidColorBrush x:Key="ATextOnMedia" Color="#F9FAFB"/>
+            <SolidColorBrush x:Key="ATextOnPrimary" Color="#FFFFFF"/>
 
             <!-- Primary / Accent -->
             <SolidColorBrush x:Key="APrimary" Color="#1D9BF0"/>
@@ -137,13 +142,26 @@
             <SolidColorBrush x:Key="AFavorite" Color="#D97706"/>
             <SolidColorBrush x:Key="AFavoriteSoft" Color="#FFFBEB"/>
             <SolidColorBrush x:Key="AFavoriteBorder" Color="#FDE68A"/>
+            <SolidColorBrush x:Key="ABulkActionBar" Color="#FFFFFF"/>
+            <SolidColorBrush x:Key="ABulkActionButtonHover" Color="#F3F4F6"/>
+            <SolidColorBrush x:Key="ABulkActionButtonPressed" Color="#E5E7EB"/>
+            <SolidColorBrush x:Key="ABulkActionSeparator" Color="#D1D5DB"/>
+            <SolidColorBrush x:Key="ABulkActionMutedText" Color="#536471"/>
+            <SolidColorBrush x:Key="ABulkActionFaintText" Color="#6B7280"/>
+            <SolidColorBrush x:Key="ABulkActionCount" Color="#EFF6FF"/>
+            <SolidColorBrush x:Key="ABulkActionCountBorder" Color="#BFDBFE"/>
+            <SolidColorBrush x:Key="ABulkFavoriteAccent" Color="#EC4899"/>
+            <SolidColorBrush x:Key="ABulkFavoriteAccentHover" Color="#DB2777"/>
+            <SolidColorBrush x:Key="ABulkFavoriteAccentPressed" Color="#BE185D"/>
+            <SolidColorBrush x:Key="APhotoSelectionTint" Color="#00000000"/>
+            <SolidColorBrush x:Key="APhotoSelectionBadgeBorder" Color="#FFFFFFFF"/>
 
             <!-- Overlay -->
             <SolidColorBrush x:Key="AOverlay" Color="#66000000"/>
             <SolidColorBrush x:Key="ADarkOverlay" Color="#B3000000"/>
-            <SolidColorBrush x:Key="AScrollbarTrack" Color="#F3F4F6"/>
-            <SolidColorBrush x:Key="AScrollbarThumb" Color="#D1D5DB"/>
-            <SolidColorBrush x:Key="AScrollbarThumbHover" Color="#9CA3AF"/>
+            <SolidColorBrush x:Key="AScrollbarTrack" Color="#E5E7EB"/>
+            <SolidColorBrush x:Key="AScrollbarThumb" Color="#CBD5E1"/>
+            <SolidColorBrush x:Key="AScrollbarThumbHover" Color="#94A3B8"/>
         </ResourceDictionary>
 
         <ResourceDictionary x:Key="Default">
@@ -234,6 +252,10 @@
             <SolidColorBrush x:Key="ASurfaceSide" Color="#13161A"/>
             <SolidColorBrush x:Key="ASurfaceVeil" Color="#16181C"/>
             <SolidColorBrush x:Key="AMediaBg" Color="#0B0D10"/>
+            <SolidColorBrush x:Key="AFilterPanelBackground" Color="#13161A"/>
+            <SolidColorBrush x:Key="AFilterPanelCard" Color="#16181C"/>
+            <SolidColorBrush x:Key="AFilterPanelBorder" Color="#2A2D33"/>
+            <SolidColorBrush x:Key="AFilterPanelSectionLine" Color="#2F3338"/>
 
             <!-- Borders -->
             <SolidColorBrush x:Key="ABorder" Color="#2A2D33"/>
@@ -247,6 +269,7 @@
             <SolidColorBrush x:Key="ATextFaint" Color="#7E8690"/>
             <SolidColorBrush x:Key="ATextDisabled" Color="#3A3D43"/>
             <SolidColorBrush x:Key="ATextOnMedia" Color="#F0F2F3"/>
+            <SolidColorBrush x:Key="ATextOnPrimary" Color="#FFFFFF"/>
 
             <!-- Primary / Accent -->
             <SolidColorBrush x:Key="APrimary" Color="#1D9BF0"/>
@@ -269,13 +292,26 @@
             <SolidColorBrush x:Key="AFavorite" Color="#FBBF24"/>
             <SolidColorBrush x:Key="AFavoriteSoft" Color="#2D2A1A"/>
             <SolidColorBrush x:Key="AFavoriteBorder" Color="#5C4E1F"/>
+            <SolidColorBrush x:Key="ABulkActionBar" Color="#18181E"/>
+            <SolidColorBrush x:Key="ABulkActionButtonHover" Color="#242428"/>
+            <SolidColorBrush x:Key="ABulkActionButtonPressed" Color="#2C2C32"/>
+            <SolidColorBrush x:Key="ABulkActionSeparator" Color="#2E2E38"/>
+            <SolidColorBrush x:Key="ABulkActionMutedText" Color="#A8B0B8"/>
+            <SolidColorBrush x:Key="ABulkActionFaintText" Color="#8A8A9A"/>
+            <SolidColorBrush x:Key="ABulkActionCount" Color="#172849"/>
+            <SolidColorBrush x:Key="ABulkActionCountBorder" Color="#334E7E"/>
+            <SolidColorBrush x:Key="ABulkFavoriteAccent" Color="#EC4899"/>
+            <SolidColorBrush x:Key="ABulkFavoriteAccentHover" Color="#DB2777"/>
+            <SolidColorBrush x:Key="ABulkFavoriteAccentPressed" Color="#BE185D"/>
+            <SolidColorBrush x:Key="APhotoSelectionTint" Color="#00000000"/>
+            <SolidColorBrush x:Key="APhotoSelectionBadgeBorder" Color="#FFFFFFFF"/>
 
             <!-- Overlay -->
             <SolidColorBrush x:Key="AOverlay" Color="#80000000"/>
             <SolidColorBrush x:Key="ADarkOverlay" Color="#B3000000"/>
-            <SolidColorBrush x:Key="AScrollbarTrack" Color="#1A1C20"/>
-            <SolidColorBrush x:Key="AScrollbarThumb" Color="#1A3A5C"/>
-            <SolidColorBrush x:Key="AScrollbarThumbHover" Color="#1D6FA8"/>
+            <SolidColorBrush x:Key="AScrollbarTrack" Color="#2A2D33"/>
+            <SolidColorBrush x:Key="AScrollbarThumb" Color="#3A3E45"/>
+            <SolidColorBrush x:Key="AScrollbarThumbHover" Color="#6B7280"/>
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
 </ResourceDictionary>

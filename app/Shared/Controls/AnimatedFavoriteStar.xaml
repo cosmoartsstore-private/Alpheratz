@@ -3,6 +3,14 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     x:Name="Root">
+    <UserControl.Resources>
+        <ControlTemplate x:Key="FavoriteStarButtonTemplate" TargetType="Button">
+            <ContentPresenter Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+        </ControlTemplate>
+    </UserControl.Resources>
     <Grid>
         <!-- Click animation uses this layer, but the rest state keeps it hidden so the star is not shown with a stray circle. -->
         <Ellipse x:Name="Glow" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
@@ -17,6 +25,7 @@
         </Ellipse>
 
         <Button x:Name="InteractiveButton" Padding="0" BorderThickness="0" Background="Transparent"
+                Template="{StaticResource FavoriteStarButtonTemplate}"
                 HorizontalAlignment="Center" VerticalAlignment="Center"
                 Click="InteractiveButton_Click">
             <Viewbox Width="18" Height="18">

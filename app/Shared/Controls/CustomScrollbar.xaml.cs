@@ -72,9 +72,11 @@ public sealed partial class CustomScrollbar : UserControl
         AppLogger.Trace("CustomScrollbar.Track_PointerPressed: enter");
         try
         {
+            if (!e.GetCurrentPoint(Track).Properties.IsLeftButtonPressed) return;
             isDragging = true;
-            CapturePointer(e.Pointer);
+            Track.CapturePointer(e.Pointer);
             OnTrackClick?.Invoke(CustomScrollbarLogic.TrackClickPosition(e.GetCurrentPoint(Track).Position.Y));
+            e.Handled = true;
         }
         catch (Exception ex) { AppLogger.Error($"CustomScrollbar.Track_PointerPressed: threw: {ex}"); }
         AppLogger.Trace("CustomScrollbar.Track_PointerPressed: exit");
@@ -86,8 +88,16 @@ public sealed partial class CustomScrollbar : UserControl
         // ドラッグ中に高頻度で呼ばれるため、通常ログは出さずエラーだけ記録する。
         try
         {
-            var dragPosition = CustomScrollbarLogic.DragPosition(isDragging, e.GetCurrentPoint(Track).Position.Y);
+            var point = e.GetCurrentPoint(Track);
+            if (!CustomScrollbarLogic.ShouldContinueDragging(isDragging, point.Properties.IsLeftButtonPressed))
+            {
+                EndDrag(e.Pointer);
+                return;
+            }
+
+            var dragPosition = CustomScrollbarLogic.DragPosition(isDragging, point.Properties.IsLeftButtonPressed, point.Position.Y);
             if (dragPosition.HasValue) OnDrag?.Invoke(dragPosition.Value);
+            e.Handled = true;
         }
         catch (Exception ex) { AppLogger.Error($"CustomScrollbar.Track_PointerMoved: threw: {ex}"); }
     }
@@ -98,11 +108,25 @@ public sealed partial class CustomScrollbar : UserControl
         AppLogger.Trace("CustomScrollbar.Track_PointerReleased: enter");
         try
         {
-            isDragging = CustomScrollbarLogic.DraggingAfterRelease();
-            ReleasePointerCapture(e.Pointer);
+            EndDrag(e.Pointer);
+            e.Handled = true;
         }
         catch (Exception ex) { AppLogger.Error($"CustomScrollbar.Track_PointerReleased: threw: {ex}"); }
         AppLogger.Trace("CustomScrollbar.Track_PointerReleased: exit");
+    }
+
+    // ポインタキャンセル時もドラッグ状態を解除する。
+    private void Track_PointerCanceled(object sender, PointerRoutedEventArgs e)
+    {
+        try { EndDrag(e.Pointer); }
+        catch (Exception ex) { AppLogger.Error($"CustomScrollbar.Track_PointerCanceled: threw: {ex}"); }
+    }
+
+    // CapturePointer が外部要因で失われた場合もスクロール追従を止める。
+    private void Track_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        try { EndDrag(null); }
+        catch (Exception ex) { AppLogger.Error($"CustomScrollbar.Track_PointerCaptureLost: threw: {ex}"); }
     }
 
     // ホバー中はトラックと Thumb を強調して操作対象を見やすくする。
@@ -132,5 +156,14 @@ public sealed partial class CustomScrollbar : UserControl
         AnimationHelper.FadeTo(TrackRail, visual.TrackRailOpacity, visual.AnimationDurationMilliseconds);
         Thumb.Width = visual.ThumbWidth;
         Thumb.Background = ThemeHelper.Brush(this, visual.ThumbBrushKey);
+    }
+
+    /// <summary>ドラッグ状態を終了し、保持していればポインタキャプチャを解除する。</summary>
+    private void EndDrag(Pointer? pointer)
+    {
+        isDragging = CustomScrollbarLogic.DraggingAfterRelease();
+        if (pointer is not null && Track.PointerCaptures?.Contains(pointer) == true)
+            Track.ReleasePointerCapture(pointer);
+        ApplyHoverVisual(CustomScrollbarLogic.HoverVisual(ScrollbarPointerState.Exited, isDragging));
     }
 }

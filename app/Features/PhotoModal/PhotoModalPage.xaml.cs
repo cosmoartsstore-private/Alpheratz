@@ -1,19 +1,20 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Alpheratz.Core;
 using Alpheratz.Features.Gallery;
 using Alpheratz.Shared.Animations;
 using Alpheratz.Shared.Services;
+using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
-using Windows.Foundation;
-using Windows.UI;
 
 namespace Alpheratz.Features.PhotoModal;
 
@@ -28,6 +29,8 @@ public sealed partial class PhotoModalPage : Page
     private PhotoModalViewModel viewModel;
     private UiObservableCollection<string>? masterTags;
     private PhotoThumbnailItem? subscribedPhoto;
+    private Button? activePhotoEdgeButton;
+    private readonly HashSet<string> pendingTagSelections = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>モーダルを閉じる操作のフック (× ボタン、背景クリック、ESC キー)。</summary>
     public Action? OnClose { get; set; }
@@ -47,6 +50,8 @@ public sealed partial class PhotoModalPage : Page
     public Func<Task>? OnToggleFavorite { get; set; }
     /// <summary>タグ追加 (photoPath, tag)。</summary>
     public Func<string, string, Task>? OnAddTag { get; set; }
+    /// <summary>複数タグ追加 (photoPath, tags)。</summary>
+    public Func<string, IReadOnlyList<string>, Task>? OnAddTags { get; set; }
     /// <summary>タグ削除 (photoPath, tag)。</summary>
     public Func<string, string, Task>? OnRemoveTag { get; set; }
     /// <summary>タグマスタ画面への遷移（モーダルを閉じてから遷移する想定）。</summary>
@@ -58,7 +63,6 @@ public sealed partial class PhotoModalPage : Page
         try
         {
             masterTags = tags;
-            ExistingTagCombo.ItemsSource = tags;
             syncEmptyTagNote();
         }
         catch (Exception ex)
@@ -190,6 +194,7 @@ public sealed partial class PhotoModalPage : Page
         catch (Exception ex)
         {
             AppLogger.Error($"PhotoModalPage.syncModalImage: threw: {ex}");
+            ModalImage.Source = null;
         }
     }
 
@@ -223,8 +228,13 @@ public sealed partial class PhotoModalPage : Page
     {
         var photo = viewModel.state.SelectedPhoto;
         var display = PhotoModalPageLogic.TagAddDisplay(masterTags, photo?.Tags);
+        AssignedTagEmptyNote.Visibility = photo?.Tags?.Count > 0 ? Visibility.Collapsed : Visibility.Visible;
         TagAddRow.Visibility = display.HasAvailable ? Visibility.Visible : Visibility.Collapsed;
         EmptyTagNote.Visibility = display.HasAvailable ? Visibility.Collapsed : Visibility.Visible;
+        if (!display.HasAvailable)
+            CloseTagAddModal();
+        else if (TagAddOverlay.Visibility == Visibility.Visible)
+            rebuildExistingTagRows();
     }
 
     /// <summary>閉じるボタンからモーダルのクローズ要求を発行する。</summary>
@@ -277,6 +287,13 @@ public sealed partial class PhotoModalPage : Page
     {
         try
         {
+            if (TagAddOverlay.Visibility == Visibility.Visible && e.Key == Windows.System.VirtualKey.Escape)
+            {
+                e.Handled = true;
+                CloseTagAddModal();
+                return;
+            }
+
             var isTextInputFocused = FocusManager.GetFocusedElement(XamlRoot) is TextBox;
             switch (PhotoModalPageLogic.ResolveKeyAction(isTextInputFocused, e.Key))
             {
@@ -378,24 +395,182 @@ public sealed partial class PhotoModalPage : Page
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.Favorite_Click: {ex}"); }
     }
 
-    /// <summary>既存タグボタンから選択写真へタグを追加する。</summary>
+    /// <summary>選択した既存タグを選択写真へまとめて追加する。</summary>
     private async void AddExistingTag_Click(object sender, RoutedEventArgs e)
     {
         try
         {
-            var request = PhotoModalPageLogic.AddExistingTagRequest(
-                ExistingTagCombo.SelectedItem,
-                viewModel.state.SelectedPhoto?.PhotoPath,
-                OnAddTag is not null);
-            if (request is not null)
+            var photoPath = viewModel.state.SelectedPhoto?.PhotoPath;
+            var tags = pendingTagSelections.ToArray();
+            if (!string.IsNullOrWhiteSpace(photoPath) && tags.Length > 0)
             {
-                await OnAddTag!(request.PhotoPath, request.Tag);
-                ExistingTagCombo.SelectedIndex = -1;
+                if (OnAddTags is not null)
+                {
+                    await OnAddTags(photoPath, tags);
+                }
+                else if (OnAddTag is not null)
+                {
+                    foreach (var tag in tags)
+                        await OnAddTag(photoPath, tag);
+                }
+                CloseTagAddModal();
                 syncEmptyTagNote();
             }
         }
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.AddExistingTag_Click: {ex}"); }
     }
+
+    /// <summary>タグ追加用の小モーダルを開き、追加候補の選択へフォーカスを移す。</summary>
+    private void OpenTagAddModal_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            pendingTagSelections.Clear();
+            rebuildExistingTagRows();
+            TagAddOverlay.Visibility = Visibility.Visible;
+            TagAddConfirmButton.Focus(FocusState.Programmatic);
+        }
+        catch (Exception ex) { AppLogger.Error($"PhotoModalPage.OpenTagAddModal_Click: {ex}"); }
+    }
+
+    private void CloseTagAddModal_Click(object sender, RoutedEventArgs e)
+    {
+        try { CloseTagAddModal(); }
+        catch (Exception ex) { AppLogger.Error($"PhotoModalPage.CloseTagAddModal_Click: {ex}"); }
+    }
+
+    private void TagAddOverlay_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        try
+        {
+            e.Handled = true;
+            CloseTagAddModal();
+        }
+        catch (Exception ex) { AppLogger.Error($"PhotoModalPage.TagAddOverlay_Tapped: {ex}"); }
+    }
+
+    private void TagAddModalContent_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        e.Handled = true;
+    }
+
+    /// <summary>タグ追加モーダルを閉じ、未確定の選択を破棄する。</summary>
+    private void CloseTagAddModal()
+    {
+        TagAddOverlay.Visibility = Visibility.Collapsed;
+        pendingTagSelections.Clear();
+        ExistingTagList.Children.Clear();
+        TagAddConfirmButton.IsEnabled = false;
+    }
+
+    /// <summary>現在の写真へ未付与のタグだけを、複数選択行として再描画する。</summary>
+    private void rebuildExistingTagRows()
+    {
+        ExistingTagList.Children.Clear();
+        var currentTags = viewModel.state.SelectedPhoto?.Tags ?? [];
+        var currentSet = currentTags.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var choices = (masterTags ?? [])
+            .Select(tag => tag.Trim())
+            .Where(tag => !string.IsNullOrEmpty(tag) && !currentSet.Contains(tag))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(tag => tag, StringComparer.Create(new System.Globalization.CultureInfo("ja-JP"), false))
+            .ToArray();
+
+        if (choices.Length == 0)
+        {
+            ExistingTagList.Children.Add(new TextBlock
+            {
+                Text = "追加できるタグがありません。",
+                Foreground = themeBrush("ATextFaint"),
+                FontSize = 12,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                Margin = new Thickness(8, 6, 8, 6),
+            });
+            TagAddConfirmButton.IsEnabled = false;
+            return;
+        }
+
+        foreach (var tag in choices)
+            ExistingTagList.Children.Add(createExistingTagChoiceButton(tag));
+
+        TagAddConfirmButton.IsEnabled = pendingTagSelections.Count > 0;
+    }
+
+    /// <summary>写真詳細のタグ追加リストで使う選択行を作成する。</summary>
+    private Button createExistingTagChoiceButton(string tag)
+    {
+        var selected = pendingTagSelections.Contains(tag);
+        var checkBox = new Border
+        {
+            Width = 20,
+            Height = 20,
+            CornerRadius = new CornerRadius(7),
+            Background = selected ? themeBrush("APrimary") : themeBrush("ASurface"),
+            BorderBrush = selected ? themeBrush("APrimary") : themeBrush("ABorder"),
+            BorderThickness = new Thickness(1),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        if (selected)
+        {
+            checkBox.Child = new Alpheratz.Shared.Controls.AppIcon
+            {
+                IconName = "check",
+                IconSize = 12,
+                Foreground = themeBrush("ATextOnPrimary"),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+        }
+
+        var row = new Grid
+        {
+            Padding = new Thickness(10, 8, 10, 8),
+            Background = new SolidColorBrush(Colors.Transparent),
+        };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        Grid.SetColumn(checkBox, 0);
+        row.Children.Add(checkBox);
+
+        var label = new TextBlock
+        {
+            Text = tag,
+            FontSize = 12,
+            FontWeight = Microsoft.UI.Text.FontWeights.Bold,
+            Foreground = selected ? themeBrush("APrimary") : themeBrush("ATextDim"),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(10, 0, 0, 0),
+        };
+        Grid.SetColumn(label, 1);
+        row.Children.Add(label);
+
+        var button = new Button
+        {
+            Content = new Border
+            {
+                CornerRadius = new CornerRadius(8),
+                Background = new SolidColorBrush(Colors.Transparent),
+                BorderThickness = new Thickness(0),
+                Child = row,
+            },
+            Padding = new Thickness(0),
+            Background = new SolidColorBrush(Colors.Transparent),
+            BorderThickness = new Thickness(0),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+        };
+        button.Click += (_, _) =>
+        {
+            if (!pendingTagSelections.Add(tag))
+                pendingTagSelections.Remove(tag);
+            rebuildExistingTagRows();
+        };
+        return button;
+    }
+
+    private Brush themeBrush(string key)
+        => ThemeHelper.Brush(this, key) ?? new SolidColorBrush(Colors.Transparent);
 
     /// <summary>タグマスタ画面の表示を要求する。</summary>
     private void OpenTagMaster_Click(object sender, RoutedEventArgs e)
@@ -457,20 +632,21 @@ public sealed partial class PhotoModalPage : Page
     {
         try
         {
-            if (sender is not Button button || !button.IsEnabled) return;
-
-            if (ReferenceEquals(button, PrevPhotoButton))
-            {
-                ShowPhotoEdgeButton(button, previous: true);
-                return;
-            }
-
-            if (ReferenceEquals(button, NextPhotoButton))
-            {
-                ShowPhotoEdgeButton(button, previous: false);
-            }
+            if (sender is Button button)
+                ShowPhotoEdgeVisual(button);
         }
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.PhotoEdgeButton_PointerEntered: {ex}"); }
+    }
+
+    /// <summary>透明な端ホットゾーン上の移動でも、対応する端フェードとシェブロンを表示する。</summary>
+    private void PhotoEdgeButton_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        try
+        {
+            if (sender is Button button)
+                ShowPhotoEdgeVisual(button);
+        }
+        catch (Exception ex) { AppLogger.Error($"PhotoModalPage.PhotoEdgeButton_PointerMoved: {ex}"); }
     }
 
     private void PhotoEdgeButton_PointerExited(object sender, PointerRoutedEventArgs e)
@@ -478,84 +654,88 @@ public sealed partial class PhotoModalPage : Page
         try
         {
             if (sender is Button button)
-                ResetPhotoEdgeButton(button);
+                HidePhotoEdgeVisual(button);
         }
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.PhotoEdgeButton_PointerExited: {ex}"); }
     }
 
+    /// <summary>写真表示ボックスの左右端に入ったときだけ、端フェードとシェブロンを出す。</summary>
     private void ImagePanel_PointerMoved(object sender, PointerRoutedEventArgs e)
     {
         try
         {
             var point = e.GetCurrentPoint(ImagePanel).Position;
-            var edgeWidth = Math.Max(96, Math.Min(PrevPhotoButton.ActualWidth, ImagePanel.ActualWidth * 0.14));
+            const double edgeWidth = 96;
 
-            if (point.X <= edgeWidth && PrevPhotoButton.IsEnabled)
+            if (point.X <= edgeWidth)
             {
-                ShowPhotoEdgeButton(PrevPhotoButton, previous: true);
-                ResetPhotoEdgeButton(NextPhotoButton);
+                ShowPhotoEdgeVisual(PrevPhotoButton);
                 return;
             }
 
-            if (point.X >= ImagePanel.ActualWidth - edgeWidth && NextPhotoButton.IsEnabled)
+            if (point.X >= ImagePanel.ActualWidth - edgeWidth)
             {
-                ResetPhotoEdgeButton(PrevPhotoButton);
-                ShowPhotoEdgeButton(NextPhotoButton, previous: false);
+                ShowPhotoEdgeVisual(NextPhotoButton);
                 return;
             }
 
-            syncPhotoEdgeButtons();
+            HidePhotoEdgeVisual(PrevPhotoButton);
+            HidePhotoEdgeVisual(NextPhotoButton);
         }
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.ImagePanel_PointerMoved: {ex}"); }
     }
 
+    /// <summary>写真表示セクションから外れたとき、左右の端フェードとシェブロンを消す。</summary>
     private void ImagePanel_PointerExited(object sender, PointerRoutedEventArgs e)
     {
-        try { syncPhotoEdgeButtons(); }
+        try
+        {
+            HidePhotoEdgeVisual(PrevPhotoButton);
+            HidePhotoEdgeVisual(NextPhotoButton);
+        }
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.ImagePanel_PointerExited: {ex}"); }
     }
 
+    /// <summary>写真の差し替えや状態変更時に、端フェード表示を初期状態へ戻す。</summary>
     private void syncPhotoEdgeButtons()
     {
-        ResetPhotoEdgeButton(PrevPhotoButton);
-        ResetPhotoEdgeButton(NextPhotoButton);
+        activePhotoEdgeButton = null;
+        HidePhotoEdgeVisual(PrevPhotoButton);
+        HidePhotoEdgeVisual(NextPhotoButton);
     }
 
-    private void ShowPhotoEdgeButton(Button button, bool previous)
+    private void ShowPhotoEdgeVisual(Button button)
     {
-        button.Background = BuildPhotoEdgeGradient(previous);
+        if (ReferenceEquals(activePhotoEdgeButton, button)) return;
+
         if (ReferenceEquals(button, PrevPhotoButton))
-            PrevPhotoChevron.Opacity = 1;
-        else if (ReferenceEquals(button, NextPhotoButton))
-            NextPhotoChevron.Opacity = 1;
+        {
+            activePhotoEdgeButton = button;
+            NextPhotoEdgeVisual.Opacity = 0;
+            PrevPhotoEdgeVisual.Opacity = 1;
+            return;
+        }
+
+        if (ReferenceEquals(button, NextPhotoButton))
+        {
+            activePhotoEdgeButton = button;
+            PrevPhotoEdgeVisual.Opacity = 0;
+            NextPhotoEdgeVisual.Opacity = 1;
+        }
     }
 
-    private void ResetPhotoEdgeButton(Button button)
+    private void HidePhotoEdgeVisual(Button button)
     {
-        button.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        if (ReferenceEquals(activePhotoEdgeButton, button))
+            activePhotoEdgeButton = null;
+
         if (ReferenceEquals(button, PrevPhotoButton))
-            PrevPhotoChevron.Opacity = 0;
+        {
+            PrevPhotoEdgeVisual.Opacity = 0;
+        }
         else if (ReferenceEquals(button, NextPhotoButton))
-            NextPhotoChevron.Opacity = 0;
-    }
-
-    private static LinearGradientBrush BuildPhotoEdgeGradient(bool previous)
-    {
-        var brush = new LinearGradientBrush
         {
-            StartPoint = previous ? new Point(0, 0.5) : new Point(1, 0.5),
-            EndPoint = previous ? new Point(1, 0.5) : new Point(0, 0.5),
-        };
-        brush.GradientStops.Add(new GradientStop
-        {
-            Color = Color.FromArgb(87, 0, 0, 0),
-            Offset = 0,
-        });
-        brush.GradientStops.Add(new GradientStop
-        {
-            Color = Microsoft.UI.Colors.Transparent,
-            Offset = 0.78,
-        });
-        return brush;
+            NextPhotoEdgeVisual.Opacity = 0;
+        }
     }
 }
