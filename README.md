@@ -24,7 +24,9 @@
 - **Tag Master** — ワールドベースのタグ管理
 - **Template** — テンプレート管理
 - **Duplicate Detection** — PDQ 知覚ハッシュによる重複画像検出
+- **World Resolve** — Polaris archive と PDQ 類似度による世界不明写真の解決
 - **Settings** — テーマ切替、フォルダ設定、表示モード変更
+- **StellaRecord Integration** — StellaRecord ランチャーへの登録
 - **Bootstrap** — 初期化ステータス付きスプラッシュスクリーン
 
 ## Project Structure
@@ -37,6 +39,7 @@ app/
   │   ├── TagMaster/        #   タグ管理
   │   ├── Template/         #   テンプレート管理
   │   ├── Settings/         #   設定
+  │   ├── WorldResolve/     #   世界不明写真の解決 UI
   │   ├── Shell/            #   アプリシェル・ナビゲーション
   │   └── Bootstrap/        #   起動・初期化
   ├── Core/                 # コアロジック
@@ -75,6 +78,14 @@ dotnet publish app/Alpheratz.Frontend.csproj -c Release --self-contained
 # または
 .\BuildWorks\scripts\build-release.ps1
 ```
+
+## Documentation
+
+| Document | Description |
+| --- | --- |
+| [docs/spec.md](docs/spec.md) | 機能仕様、データフロー、主要モジュール |
+| [docs/database.md](docs/database.md) | SQLite スキーマ、マイグレーション、保存先 |
+| [docs/tech-stack.md](docs/tech-stack.md) | 技術スタック、配布方式、設計判断 |
 
 ## License
 

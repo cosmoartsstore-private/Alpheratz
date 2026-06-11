@@ -7,6 +7,9 @@ Read `C:\Users\kaimu\.codex\AGENTS.md` first for common rules. This file only in
 | Document | Audience | Use When |
 | --- | --- | --- |
 | `../README.md` | GitHub users, maintainers | Project overview and repository layout |
+| `../docs/spec.md` | Users, developers | Feature specification and data flow |
+| `../docs/database.md` | Developers | SQLite schema, indexes, and migrations |
+| `../docs/tech-stack.md` | Developers, reviewers | Stack, build, distribution, and design decisions |
 
 ## Agent-Only Documents
 
