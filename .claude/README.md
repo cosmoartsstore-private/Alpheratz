@@ -10,6 +10,7 @@ Read `C:\Users\kaimu\.codex\AGENTS.md` first for common rules. This file only in
 | `../docs/spec.md` | Users, developers | Feature specification and data flow |
 | `../docs/database.md` | Developers | SQLite schema, indexes, and migrations |
 | `../docs/tech-stack.md` | Developers, reviewers | Stack, build, distribution, and design decisions |
+| `../docs/basic-design.html` | Users, developers | Screen layout basic design |
 
 ## Agent-Only Documents
 

@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Alpheratz Basic Design</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --paper: #ffffff;
+      --ink: #1f2933;
+      --muted: #64748b;
+      --line: #d7dde5;
+      --accent: #2563eb;
+      --soft: #e8f0ff;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Segoe UI", "Noto Sans JP", sans-serif; line-height: 1.65; }
+    header { padding: 32px 40px 20px; background: var(--paper); border-bottom: 1px solid var(--line); }
+    main { max-width: 1120px; margin: 0 auto; padding: 28px 24px 48px; }
+    h1, h2, h3 { line-height: 1.25; margin: 0; }
+    h1 { font-size: 30px; }
+    h2 { margin-top: 34px; padding-bottom: 8px; border-bottom: 2px solid var(--line); font-size: 22px; }
+    h3 { margin-top: 24px; font-size: 18px; }
+    p { margin: 10px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 14px 0 22px; background: var(--paper); }
+    th, td { border: 1px solid var(--line); padding: 9px 10px; vertical-align: top; }
+    th { background: #eef2f7; text-align: left; }
+    .meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+    .meta div, .screen { background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 14px; }
+    .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    .value { font-weight: 600; }
+    .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .wireframe { margin: 12px 0 0; padding: 12px; background: #0f172a; color: #dbeafe; border-radius: 6px; overflow-x: auto; font-family: Consolas, "Courier New", monospace; font-size: 12px; line-height: 1.35; }
+    .note { border-left: 4px solid var(--accent); background: var(--soft); padding: 10px 12px; }
+    @media (max-width: 820px) {
+      header { padding: 24px 20px 16px; }
+      main { padding: 20px 14px 36px; }
+      .meta, .layout { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Alpheratz 基本設計書</h1>
+    <p>画面構成、遷移、主要レイアウト、状態表示を外部設計レベルで定義する。</p>
+    <div class="meta">
+      <div><div class="label">Document</div><div class="value">docs/basic-design.html</div></div>
+      <div><div class="label">Target</div><div class="value">Alpheratz</div></div>
+      <div><div class="label">Platform</div><div class="value">Windows / WinUI 3</div></div>
+      <div><div class="label">Status</div><div class="value">Public reference</div></div>
+    </div>
+  </header>
+  <main>
+    <section>
+      <h2>1. Screen List</h2>
+      <table>
+        <thead><tr><th>Screen</th><th>Purpose</th><th>Primary Operations</th><th>Source</th></tr></thead>
+        <tbody>
+          <tr><td>Bootstrap</td><td>起動初期化状態を表示する。</td><td>初期化進捗表示、Shell 遷移</td><td>Features/Bootstrap</td></tr>
+          <tr><td>Gallery</td><td>写真一覧の閲覧、検索、選択を行う。</td><td>スキャン、フィルタ、表示モード切替、写真選択</td><td>Features/Gallery</td></tr>
+          <tr><td>Photo Modal</td><td>選択写真の詳細を表示・編集する。</td><td>タグ編集、お気に入り、ワールド編集、類似写真確認</td><td>Features/PhotoModal</td></tr>
+          <tr><td>Settings</td><td>アプリ設定とマスタを管理する。</td><td>フォルダ設定、テーマ、タグ、テンプレート、連携登録</td><td>Features/Settings</td></tr>
+          <tr><td>World Resolve</td><td>世界不明写真の候補を確認する。</td><td>候補選択、ワールド名確定</td><td>Features/WorldResolve</td></tr>
+          <tr><td>Group Drill Down</td><td>月・ワールド等のグループ内写真を表示する。</td><td>グループ内閲覧、写真選択</td><td>Features/Gallery</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>2. Navigation Structure</h2>
+      <div class="note">Shell を基点に、Gallery を背景として中位モーダル (Settings / WorldResolve / Group Drill Down) と上位モーダル (Photo Modal) を重ねる。</div>
+      <pre class="wireframe">Bootstrap
+  └─ Shell
+      ├─ Gallery
+      │   ├─ Group Drill Down (middle modal)
+      │   └─ Photo Modal (top modal)
+      ├─ Settings (middle modal)
+      │   ├─ General
+      │   ├─ Tag Master
+      │   ├─ Template
+      │   └─ Credits / Integrations
+      └─ World Resolve (middle modal)</pre>
+    </section>
+
+    <section>
+      <h2>3. Common Layout Rules</h2>
+      <table>
+        <thead><tr><th>Area</th><th>Definition</th></tr></thead>
+        <tbody>
+          <tr><td>Header</td><td>ロゴ、検索・フィルタ入口、表示モード、設定ボタン、進捗表示を配置する。</td></tr>
+          <tr><td>Main content</td><td>Gallery を常設し、選択状態とフィルタ状態に応じて表示を更新する。</td></tr>
+          <tr><td>Middle modal</td><td>Settings / WorldResolve / Group Drill Down を表示する。背景 Gallery は維持する。</td></tr>
+          <tr><td>Top modal</td><td>Photo Modal を表示する。中位モーダルが開いていても最上位に重ねる。</td></tr>
+          <tr><td>Feedback</td><td>スキャン、PDQ、サムネイル、保存失敗はトーストまたは画面内状態で表示する。</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>4. Screen Layouts</h2>
+      <div class="layout">
+        <article class="screen">
+          <h3>Gallery</h3>
+          <p>写真一覧の標準表示。フィルタ、月別グループ、サムネイル要求、選択状態を扱う。</p>
+          <pre class="wireframe">┌ Header: logo / search / filter / view / settings ┐
+├ Toolbar: scan status / PDQ progress / actions    ┤
+├ Filter summary / month navigation                ┤
+├──────────────────────────────────────────────────┤
+│ Photo grid or masonry viewport                   │
+│ [thumb][thumb][thumb][thumb]                     │
+│ [thumb][thumb][thumb][thumb]                     │
+└ Status: count / selected / warnings              ┘</pre>
+        </article>
+        <article class="screen">
+          <h3>Photo Modal</h3>
+          <p>写真詳細、タグ、類似候補を 1 画面で扱う。</p>
+          <pre class="wireframe">┌ Modal header: filename / close ┐
+├ Image preview                  ┬ Metadata
+│                                │ world / timestamp / slot
+│                                │ favorite / missing
+├ Tags                           │
+├ Similar photos                 │
+└ Actions: save / open / copy / tweet</pre>
+        </article>
+        <article class="screen">
+          <h3>Settings</h3>
+          <p>左ナビゲーションで設定カテゴリを切り替える。</p>
+          <pre class="wireframe">┌ Settings modal ───────────────────────┐
+│ Nav       │ Content                    │
+│ General   │ folder / theme / startup   │
+│ Tags      │ tag list / add / delete    │
+│ Template  │ template list / editor     │
+│ Credits   │ StellaRecord registration  │
+└────────────────────────────────────────┘</pre>
+        </article>
+        <article class="screen">
+          <h3>World Resolve</h3>
+          <p>世界不明写真と候補ワールドを並べて確認する。</p>
+          <pre class="wireframe">┌ World Resolve ────────────────────────┐
+│ Unknown photo list │ Candidate panel   │
+│ [photo]            │ world candidates  │
+│ [photo]            │ PDQ distance      │
+│ [photo]            │ apply / skip      │
+└────────────────────────────────────────┘</pre>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <h2>5. Modal and Dialog Layouts</h2>
+      <table>
+        <thead><tr><th>Modal</th><th>Layer</th><th>Close Rule</th><th>State Source</th></tr></thead>
+        <tbody>
+          <tr><td>Settings</td><td>Middle</td><td>閉じるボタンまたは Esc</td><td>SettingsViewModel</td></tr>
+          <tr><td>Group Drill Down</td><td>Middle</td><td>戻る/閉じる操作</td><td>GalleryViewModel</td></tr>
+          <tr><td>World Resolve</td><td>Middle</td><td>閉じるボタンまたは完了</td><td>WorldResolveViewModel</td></tr>
+          <tr><td>Photo Modal</td><td>Top</td><td>閉じるボタンまたは Esc</td><td>PhotoModalViewModel</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>6. State and Feedback</h2>
+      <table>
+        <thead><tr><th>State</th><th>Display</th><th>Trigger</th></tr></thead>
+        <tbody>
+          <tr><td>Scanning</td><td>進捗、現在処理中ワールド、キャンセル状態</td><td>PhotoScanner events</td></tr>
+          <tr><td>PDQ running</td><td>解析件数、完了通知、World Resolve 利用可否</td><td>PhashService events</td></tr>
+          <tr><td>Thumbnail pending</td><td>プレースホルダからサムネイルへ差し替え</td><td>ThumbnailWorker</td></tr>
+          <tr><td>Save error</td><td>トーストまたはダイアログ</td><td>DB / setting save failure</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>
