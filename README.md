@@ -109,7 +109,7 @@ Tauri / Rust IPC は使用しない。UI、スキャン、画像解析、DB 更�
 
 ### From Installer
 
-1. `Alpheratz-v2-Installer.exe` を実行
+1. `Alpheratz-Installer.exe` を実行
 2. インストール先を選択する
 3. 既定のインストール先は `%LOCALAPPDATA%\CosmoArtsStore\Alpheratz`
 

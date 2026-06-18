@@ -15,6 +15,7 @@ using Alpheratz.Shared.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 
 namespace Alpheratz;
 
@@ -23,6 +24,7 @@ public partial class App : Application
 {
     private Window? mainWindow;
     private ServiceProvider? serviceProvider;
+    private bool winUiResourcesInitialized;
 
     public static Window? MainWindowInstance => (Current as App)?.mainWindow;
     public static IServiceProvider? Services => (Current as App)?.serviceProvider;
@@ -102,6 +104,7 @@ public partial class App : Application
         var dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         UiThread.Queue = dispatcherQueue;
         AppLogger.Trace("App.OnLaunchedCore: dispatcherQueue acquired");
+        EnsureWinUiResources();
 
         var services = new ServiceCollection();
         services.AddSingleton<AppLifecycleService>();
@@ -241,6 +244,27 @@ public partial class App : Application
         AppLogger.Trace("App.OnLaunchedCore: splash sequence dispatched");
 
         AppLogger.Trace("App.OnLaunchedCore: exit");
+    }
+
+    private void EnsureWinUiResources()
+    {
+        if (winUiResourcesInitialized) return;
+
+        try
+        {
+            // XamlControlsResources can fail-fast during App.InitializeComponent
+            // in this self-contained unpackaged build. OnLaunched runs after the
+            // WinUI desktop host is ready, while still before any page/control XAML
+            // is loaded.
+            Resources.MergedDictionaries.Insert(0, new XamlControlsResources());
+            winUiResourcesInitialized = true;
+            AppLogger.Trace("App.EnsureWinUiResources: XamlControlsResources installed");
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Fatal($"App.EnsureWinUiResources: failed: {ex}");
+            throw;
+        }
     }
 
     private bool shellSwapped;

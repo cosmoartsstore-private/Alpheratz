@@ -204,6 +204,35 @@ public sealed class GalleryStateTests
     }
 
     /// <summary>
+    /// 寸法未取得の Masonry カードは、正方形ではなく一般的な横長写真の比率で仮配置する。
+    ///
+    /// 初期スキャン直後や古いDBで image_width / image_height が無い場合、正方形で仮配置すると
+    /// スクロール時に大きい枠が一瞬出る。orientation が分かる場合は従来通り優先し、
+    /// 完全に不明な場合だけ 16:9 を使う。
+    /// </summary>
+    [Fact]
+    public void GalleryMasonryLayout_UsesLandscapeFallbackWhenAspectIsUnknown()
+    {
+        var unknown = new PhotoThumbnailItem
+        {
+            PhotoFilename = "unknown.jpg",
+            PhotoPath = "/photo/unknown.jpg",
+        };
+        var portrait = new PhotoThumbnailItem
+        {
+            PhotoFilename = "portrait.jpg",
+            PhotoPath = "/photo/portrait.jpg",
+            Orientation = "portrait",
+        };
+
+        var result = GalleryMasonryLayout.Build([unknown, portrait], panelWidth: 334, requestedColumnCount: 1);
+
+        Assert.Equal(326, result.ColumnWidth);
+        Assert.Equal(Math.Round(result.ColumnWidth / (16.0 / 9.0)), result.Items[0].Height);
+        Assert.Equal(Math.Round(result.ColumnWidth / (9.0 / 16.0)), result.Items[1].Height);
+    }
+
+    /// <summary>
     /// GalleryMonthsCalculator が写真のタイムスタンプから月グループを作り、無効な日時を fallback グループに入れることを確認する。
     ///
     /// 月ナビゲーションは photos 配列上の FirstIndex を使ってスクロール先を決める。

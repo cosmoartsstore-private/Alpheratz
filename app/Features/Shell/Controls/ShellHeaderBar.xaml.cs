@@ -13,7 +13,6 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
-using Windows.Foundation;
 using Windows.System;
 
 namespace Alpheratz.Features.Shell.Controls;
@@ -148,6 +147,17 @@ public sealed partial class ShellHeaderBar : UserControl
             ContentRoot.IsHitTestVisible = interactive;
         }
         catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.SetControlsInteractive: threw: {ex}"); }
+    }
+
+    /// <summary>条件検索や一覧再読込中であることを検索条件ボタンへ表示する。</summary>
+    public void SetGalleryBusy(bool busy)
+    {
+        try
+        {
+            FilterBusyRing.IsActive = busy;
+            FilterBusyRing.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+        }
+        catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.SetGalleryBusy: threw: {ex}"); }
     }
 
     /// <summary>ヘッダー検索の候補に使うワールド一覧を購読し、検索語に応じた候補を更新する。</summary>
@@ -446,10 +456,8 @@ public sealed partial class ShellHeaderBar : UserControl
         if (SearchBoxBorder.ActualWidth > 0)
             SearchSuggestionSurface.Width = SearchBoxBorder.ActualWidth;
 
-        var point = SearchBoxBorder.TransformToVisual(null)
-            .TransformPoint(new Point(0, SearchBoxBorder.ActualHeight + 6));
-        SearchSuggestionPopup.HorizontalOffset = point.X;
-        SearchSuggestionPopup.VerticalOffset = point.Y;
+        SearchSuggestionPopup.HorizontalOffset = 0;
+        SearchSuggestionPopup.VerticalOffset = SearchBoxBorder.ActualHeight + 6;
         SearchSuggestionPopup.IsOpen = true;
     }
 

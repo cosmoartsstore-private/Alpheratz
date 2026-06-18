@@ -14,8 +14,8 @@ namespace Alpheratz.Core.Imaging;
 
 /// <summary>
 /// グリッド用 / 表示用サムネイルのディスクキャッシュを管理し、無ければ生成する。
-/// キャッシュキーは "&lt;filename&gt;.thumb.&lt;version&gt;.jpg" 形式で imgCache ディレクトリに置く。
-/// version はアルゴリズム / 仕様変更時にインクリメントすることで、旧版を強制再生成できる。
+/// キャッシュキーは "&lt;filename&gt;.thumb.&lt;variant&gt;.jpg" 形式で imgCache ディレクトリに置く。
+/// variant は用途と生成仕様を表し、仕様変更時は別名にして既存キャッシュと混在させない。
 /// </summary>
 public sealed class ThumbnailService
 {
@@ -26,15 +26,14 @@ public sealed class ThumbnailService
 
     /// <summary>
     /// グリッド用サムネイル（長辺 512px）を取得する。無ければ生成。
-    /// キャッシュキーは "grid.v3"。v2 は 384px だったが、HiDPI 表示で blur に見えるため
-    /// 512px に上げて v3 に bump した（旧 v2 ファイルは新規生成で自然に置き換わる）。
+    /// キャッシュキーは "grid-512"。HiDPI 表示で blur に見えないよう長辺 512px で生成する。
     /// </summary>
     public async Task<string> EnsureGridThumbAsync(string photoPath, long sourceSlot, CancellationToken ct = default)
     {
         AppLogger.Trace($"ThumbnailService.EnsureGridThumbAsync: enter path={photoPath} slot={sourceSlot}");
         try
         {
-            var path = await EnsureThumbAsync(photoPath, sourceSlot, 512, "grid.v3", ct).ConfigureAwait(false);
+            var path = await EnsureThumbAsync(photoPath, sourceSlot, 512, "grid-512", ct).ConfigureAwait(false);
             AppLogger.Trace("ThumbnailService.EnsureGridThumbAsync: exit");
             return path;
         }
@@ -46,7 +45,7 @@ public sealed class ThumbnailService
     }
 
     /// <summary>
-    /// PhotoModal 表示用サムネイル（長辺 514px、display.v2）を取得する。無ければ生成。
+    /// PhotoModal 表示用サムネイル（長辺 514px、display-514）を取得する。無ければ生成。
     /// グリッド用とサイズはほぼ同じだが、キャッシュキーを分けることで将来別仕様にできる。
     /// </summary>
     public async Task<string> EnsureDisplayThumbAsync(string photoPath, long sourceSlot, CancellationToken ct = default)
@@ -54,7 +53,7 @@ public sealed class ThumbnailService
         AppLogger.Trace($"ThumbnailService.EnsureDisplayThumbAsync: enter path={photoPath} slot={sourceSlot}");
         try
         {
-            var path = await EnsureThumbAsync(photoPath, sourceSlot, 514, "display.v2", ct).ConfigureAwait(false);
+            var path = await EnsureThumbAsync(photoPath, sourceSlot, 514, "display-514", ct).ConfigureAwait(false);
             AppLogger.Trace("ThumbnailService.EnsureDisplayThumbAsync: exit");
             return path;
         }
@@ -72,9 +71,9 @@ public sealed class ThumbnailService
     /// 元画像のタイムスタンプ &gt; キャッシュタイムスタンプなら旧キャッシュを破棄して再生成する
     /// （ユーザがファイルを差し替えたケースで古いサムネが表示され続けるのを防ぐ）。
     /// </summary>
-    private static async Task<string> EnsureThumbAsync(string photoPath, long sourceSlot, uint maxSize, string version, CancellationToken ct)
+    private static async Task<string> EnsureThumbAsync(string photoPath, long sourceSlot, uint maxSize, string variant, CancellationToken ct)
     {
-        AppLogger.Trace($"ThumbnailService.EnsureThumbAsync: enter version={version} maxSize={maxSize}");
+        AppLogger.Trace($"ThumbnailService.EnsureThumbAsync: enter variant={variant} maxSize={maxSize}");
         try
         {
             var imgCacheDir = AppPaths.GetImgCacheDir(sourceSlot)
@@ -82,7 +81,7 @@ public sealed class ThumbnailService
             var nativePhotoPath = photoPath.Replace('/', Path.DirectorySeparatorChar);
             var filename = Path.GetFileName(nativePhotoPath);
             var cacheKey = BuildCacheKey(photoPath);
-            var thumbPath = Path.Combine(imgCacheDir, $"{filename}.{cacheKey}.thumb.{version}.jpg");
+            var thumbPath = Path.Combine(imgCacheDir, $"{filename}.{cacheKey}.thumb.{variant}.jpg");
 
             var pathLock = _pathLocks.GetOrAdd(thumbPath, _ => new SemaphoreSlim(1, 1));
             await pathLock.WaitAsync(ct).ConfigureAwait(false);

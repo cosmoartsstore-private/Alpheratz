@@ -87,6 +87,33 @@ public sealed class WorldServiceBehaviorTests
     }
 
     /// <summary>
+    /// 準備済み候補でも通常候補と同じ距離順になり、不正な候補ハッシュが除外されることを確認する。
+    ///
+    /// WorldResolve UI は大量の未知写真へ同じ既知候補を繰り返し当てるため、
+    /// 候補側の PDQ 文字列を先にパースして使い回す。この最適化で順位仕様が変わらないことを固定する。
+    /// </summary>
+    [Fact]
+    public void PreparedCandidates_ReturnSameRankingAndSkipInvalidHashes()
+    {
+        var target = Hash(0x00);
+        var candidates = new[]
+        {
+            Row("invalid", "Invalid", "not-a-hash"),
+            Row("near", "Near", SingleBitHash()),
+            Row("exact", "Exact", Hash(0x00)),
+        };
+
+        var prepared = WorldService.PrepareKnownWorldRows(candidates);
+        var ranked = WorldService.RankCandidatesByDistance(target, prepared);
+        var best = WorldService.FindBestMatchWithDetails(target, prepared);
+
+        Assert.Equal(["Exact", "Near"], prepared.Select(item => item.Row.WorldName).Order().ToArray());
+        Assert.Equal(["Exact", "Near"], ranked.Select(item => item.Row.WorldName).ToArray());
+        Assert.NotNull(best);
+        Assert.Equal("Exact", best.Value.Row.WorldName);
+    }
+
+    /// <summary>
     /// target 側のハッシュが空または不正な場合、順位付けが空になることを確認する。
     ///
     /// DB には移行途中や破損データとして空の phash が残り得る。

@@ -76,6 +76,7 @@ public sealed partial class ShellPage : Page
 
             viewModel.galleryViewModel.selectionState.PropertyChanged += OnSelectionStateChanged;
             viewModel.galleryViewModel.filtersState.PropertyChanged += OnShellFiltersStateChanged;
+            viewModel.galleryViewModel.photosState.PropertyChanged += OnShellPhotosStateChanged;
             viewModel.PropertyChanged += OnShellViewModelChanged;
 
             // drill-down 中の写真コレクションを GalleryViewModel.updatePhoto に
@@ -96,7 +97,8 @@ public sealed partial class ShellPage : Page
         ShowGallery();
         HeaderBar.SetViewMode(viewModel.ViewMode);
         HeaderBar.SetGroupingMode(viewModel.galleryViewModel.filtersState.GroupingMode);
-            AppLogger.Trace("ShellPage.ctor: exit");
+        HeaderBar.SetGalleryBusy(viewModel.galleryViewModel.photosState.IsLoading);
+        AppLogger.Trace("ShellPage.ctor: exit");
     }
 
     // 複数選択モードの変更をヘッダーのトグル状態へ反映する。
@@ -132,6 +134,26 @@ public sealed partial class ShellPage : Page
         AppLogger.Trace("ShellPage.OnShellFiltersStateChanged: exit");
     }
 
+    private void OnShellPhotosStateChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        AppLogger.Trace($"ShellPage.OnShellPhotosStateChanged: enter property={e.PropertyName}");
+        try
+        {
+            if (e.PropertyName == nameof(viewModel.galleryViewModel.photosState.IsLoading))
+                HeaderBar.SetGalleryBusy(viewModel.galleryViewModel.photosState.IsLoading);
+        }
+        catch (Exception ex) { AppLogger.Error($"ShellPage.OnShellPhotosStateChanged: threw: {ex}"); }
+        AppLogger.Trace("ShellPage.OnShellPhotosStateChanged: exit");
+    }
+
+    private void SyncSettingsWorldAnalysisState()
+    {
+        settingsPage?.SetWorldAnalysisProgress(
+            viewModel.PdqProgress,
+            viewModel.IsPdqRunning,
+            viewModel.CanStartWorldResolve);
+    }
+
     private void OnShellViewModelChanged(object? sender, PropertyChangedEventArgs e)
     {
         AppLogger.Trace($"ShellPage.OnShellViewModelChanged: enter property={e.PropertyName}");
@@ -146,8 +168,10 @@ public sealed partial class ShellPage : Page
             else if (e.PropertyName == nameof(viewModel.PendingFolderPath) && viewModel.PendingFolderPath is not null) _ = ShowFolderChangeConfirmAsync();
             else if (e.PropertyName == nameof(viewModel.PendingResetRequest) && viewModel.PendingResetRequest is not null) _ = ShowResetConfirmAsync();
             else if (e.PropertyName == nameof(viewModel.ThemeMode)) ApplyTheme(viewModel.ThemeMode);
-            else if (e.PropertyName == nameof(viewModel.CanStartWorldResolve))
-                settingsPage?.SetWorldAnalysisEnabled(viewModel.CanStartWorldResolve);
+            else if (e.PropertyName == nameof(viewModel.CanStartWorldResolve)
+                || e.PropertyName == nameof(viewModel.PdqProgress)
+                || e.PropertyName == nameof(viewModel.IsPdqRunning))
+                DispatcherQueue?.TryEnqueue(SyncSettingsWorldAnalysisState);
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.OnShellViewModelChanged: threw: {ex}"); }
         AppLogger.Trace("ShellPage.OnShellViewModelChanged: exit");
@@ -439,7 +463,7 @@ public sealed partial class ShellPage : Page
                     },
                 };
             }
-            settingsPage.SetWorldAnalysisEnabled(viewModel.CanStartWorldResolve);
+            SyncSettingsWorldAnalysisState();
             if (initialSection is not null)
                 settingsPage.ShowSection(initialSection);
             Stage.ModalContent = settingsPage;

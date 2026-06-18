@@ -10,6 +10,7 @@ using Alpheratz.Models;
 using Alpheratz.Services;
 using Alpheratz.Shared.Models;
 using Alpheratz.Shared.Services;
+using Microsoft.Data.Sqlite;
 
 namespace Alpheratz.Tests;
 
@@ -493,6 +494,46 @@ public sealed class StateViewModelBehaviorTests : IDisposable
         Assert.Contains(toastService.toasts, toast => toast.Msg.Contains("40文字以内"));
         Assert.Contains(toastService.toasts, toast => toast.Msg.Contains("タグを追加しました"));
         Assert.Contains(toastService.toasts, toast => toast.Msg.Contains("タグを削除しました"));
+    }
+
+    /// <summary>
+    /// タグマスタ追加が短い SQLite 書き込み競合を待ち、解除後に一覧へ反映されることを確認する。
+    ///
+    /// 設定画面の「追加」はこの ViewModel を直接呼ぶため、写真タグ付け側だけでなく
+    /// タグマスタ側の書き込みも UI スレッドから外し、busy_timeout の待機対象にする必要がある。
+    /// </summary>
+    [Fact]
+    public async Task TagMasterViewModel_CreateTagWaitsForShortWriteLockAndRefreshesList()
+    {
+        var dbPath = Path.Combine(tempDir, "Alpheratz.db");
+        var viewModel = new TagMasterViewModel(db, toastService);
+
+        using var lockConnection = new SqliteConnection($"Data Source={dbPath}");
+        lockConnection.Open();
+        using (var pragma = lockConnection.CreateCommand())
+        {
+            pragma.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;";
+            pragma.ExecuteNonQuery();
+        }
+        using var tx = lockConnection.BeginTransaction();
+        using (var lockCommand = lockConnection.CreateCommand())
+        {
+            lockCommand.Transaction = tx;
+            lockCommand.CommandText = "INSERT INTO tags (name) VALUES ('lock-holder')";
+            lockCommand.ExecuteNonQuery();
+        }
+
+        viewModel.TagDraft = "delayed";
+        var createTask = viewModel.createTag();
+        await Task.Delay(150);
+
+        Assert.False(createTask.IsCompleted);
+
+        tx.Commit();
+        await createTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal("", viewModel.TagDraft);
+        Assert.Equal(["delayed", "lock-holder"], viewModel.masterTags.ToArray());
     }
 
     /// <summary>

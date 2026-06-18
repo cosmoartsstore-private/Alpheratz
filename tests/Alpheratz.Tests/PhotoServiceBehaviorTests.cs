@@ -1,6 +1,7 @@
 using Alpheratz.Core.Database;
 using Alpheratz.Models;
 using Alpheratz.Services;
+using Microsoft.Data.Sqlite;
 
 namespace Alpheratz.Tests;
 
@@ -211,6 +212,59 @@ public sealed class PhotoServiceBehaviorTests : IDisposable
         Assert.Equal(["bulk"], tagsB);
         Assert.Equal(2, page.total);
         Assert.All(page.items, photo => Assert.True(photo.is_favorite));
+    }
+
+    /// <summary>
+    /// 単体写真へ複数タグを追加したとき、全タグが同じ書き込みゲート内で保存されることを確認する。
+    /// </summary>
+    [Fact]
+    public async Task AddPhotoTagsAsync_AddsMultipleTagsToSinglePhoto()
+    {
+        await db.UpsertPhotoAsync(Photo("/photo/a.jpg", "a.jpg", "2026-06-05 10:00:00"));
+
+        await service.AddPhotoTagsAsync("/photo/a.jpg", ["night", "city"], sourceSlot: 1);
+        var tags = await service.GetPhotoTagsAsync("/photo/a.jpg", sourceSlot: 1);
+
+        Assert.Equal(["city", "night"], tags);
+    }
+
+    /// <summary>
+    /// タグ追加が短いSQLite書き込み競合を待ってから成功することを確認する。
+    ///
+    /// スキャンや解析の書き込みとユーザーのタグ追加が重なると、以前は SQLITE_BUSY で即失敗し得た。
+    /// 別接続で書き込みトランザクションを保持し、解除後にタグが保存されることを固定する。
+    /// </summary>
+    [Fact]
+    public async Task AddPhotoTagAsync_WaitsForShortWriteLockAndSucceeds()
+    {
+        var dbPath = Path.Combine(tempDir, "Alpheratz.db");
+        await db.UpsertPhotoAsync(Photo("/photo/a.jpg", "a.jpg", "2026-06-05 10:00:00"));
+
+        using var lockConnection = new SqliteConnection($"Data Source={dbPath}");
+        lockConnection.Open();
+        using (var pragma = lockConnection.CreateCommand())
+        {
+            pragma.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;";
+            pragma.ExecuteNonQuery();
+        }
+        using var tx = lockConnection.BeginTransaction();
+        using (var lockCommand = lockConnection.CreateCommand())
+        {
+            lockCommand.Transaction = tx;
+            lockCommand.CommandText = "INSERT INTO tags (name) VALUES ('lock-holder')";
+            lockCommand.ExecuteNonQuery();
+        }
+
+        var addTask = service.AddPhotoTagAsync("/photo/a.jpg", "delayed", sourceSlot: 1);
+        await Task.Delay(150);
+
+        Assert.False(addTask.IsCompleted);
+
+        tx.Commit();
+        await addTask.WaitAsync(TimeSpan.FromSeconds(5));
+        var tags = await service.GetPhotoTagsAsync("/photo/a.jpg", sourceSlot: 1);
+
+        Assert.Equal(["delayed"], tags);
     }
 
     /// <summary>

@@ -36,6 +36,13 @@ public sealed class PhotoService
         AppLogger.Trace("PhotoService.ctor: exit");
     }
 
+    private static Task RunWriteOffUiThread(Func<Task> write, CancellationToken ct)
+        => Task.Run(async () =>
+        {
+            ct.ThrowIfCancellationRequested();
+            await write().ConfigureAwait(false);
+        }, ct);
+
     /// <summary>外向け Payload を DB 内部の Params に変換する。includePhash は転送量削減のため別パラメータ化。</summary>
     private PhotoQueryParams ToParams(PhotoQueryPayload p, bool includePhash = false) => new()
     {
@@ -210,41 +217,78 @@ public sealed class PhotoService
     }
 
     /// <summary>単体写真へのタグ追加（tags マスタへの登録も DB 側でまとめて行う）。</summary>
-    public Task AddPhotoTagAsync(string photoPath, string tag, long sourceSlot, CancellationToken ct = default)
-    {
-        AppLogger.Trace($"PhotoService.AddPhotoTagAsync: enter tag={tag}");
-        var task = _db.AddPhotoTagAsync(photoPath, tag, ct);
-        AppLogger.Trace("PhotoService.AddPhotoTagAsync: exit");
-        return task;
-    }
+    public async Task AddPhotoTagAsync(string photoPath, string tag, long sourceSlot, CancellationToken ct = default)
+        => await AddPhotoTagsAsync(photoPath, [tag], sourceSlot, ct).ConfigureAwait(false);
 
-    /// <summary>選択写真への一括タグ追加。BulkSetFavorite と同様 _bulkWriteGate で直列化。</summary>
-    public async Task BulkAddPhotoTagAsync(IReadOnlyList<SelectedPhotoRefDto> photos, string tag, CancellationToken ct = default)
+    /// <summary>単体写真へ複数タグを追加する。1 回のゲート取得でまとめて書き込み、UI スレッドを塞がない。</summary>
+    public async Task AddPhotoTagsAsync(string photoPath, IReadOnlyList<string> tags, long sourceSlot, CancellationToken ct = default)
     {
-        AppLogger.Trace($"PhotoService.BulkAddPhotoTagAsync: enter count={photos.Count} tag={tag}");
+        AppLogger.Trace($"PhotoService.AddPhotoTagsAsync: enter count={tags.Count}");
+        if (tags.Count == 0) return;
         await _bulkWriteGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            foreach (var p in photos)
+            await RunWriteOffUiThread(async () =>
             {
-                ct.ThrowIfCancellationRequested();
-                await _db.AddPhotoTagAsync(p.photo_path, tag, ct).ConfigureAwait(false);
-            }
+                foreach (var tag in tags)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    await _db.AddPhotoTagAsync(photoPath, tag, ct).ConfigureAwait(false);
+                }
+            }, ct).ConfigureAwait(false);
         }
         finally
         {
             _bulkWriteGate.Release();
         }
-        AppLogger.Trace("PhotoService.BulkAddPhotoTagAsync: exit");
+        AppLogger.Trace("PhotoService.AddPhotoTagsAsync: exit");
+    }
+
+    /// <summary>選択写真への一括タグ追加。BulkSetFavorite と同様 _bulkWriteGate で直列化。</summary>
+    public async Task BulkAddPhotoTagAsync(IReadOnlyList<SelectedPhotoRefDto> photos, string tag, CancellationToken ct = default)
+        => await BulkAddPhotoTagsAsync(photos, [tag], ct).ConfigureAwait(false);
+
+    /// <summary>選択写真へ複数タグを一括追加する。全対象を 1 回のゲート内で直列書き込みする。</summary>
+    public async Task BulkAddPhotoTagsAsync(IReadOnlyList<SelectedPhotoRefDto> photos, IReadOnlyList<string> tags, CancellationToken ct = default)
+    {
+        AppLogger.Trace($"PhotoService.BulkAddPhotoTagsAsync: enter photoCount={photos.Count} tagCount={tags.Count}");
+        if (photos.Count == 0 || tags.Count == 0) return;
+        await _bulkWriteGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await RunWriteOffUiThread(async () =>
+            {
+                foreach (var tag in tags)
+                {
+                    foreach (var p in photos)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        await _db.AddPhotoTagAsync(p.photo_path, tag, ct).ConfigureAwait(false);
+                    }
+                }
+            }, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _bulkWriteGate.Release();
+        }
+        AppLogger.Trace("PhotoService.BulkAddPhotoTagsAsync: exit");
     }
 
     /// <summary>単体写真からタグを 1 件外す。tags マスタ自体は残す。</summary>
-    public Task RemovePhotoTagAsync(string photoPath, string tag, long sourceSlot, CancellationToken ct = default)
+    public async Task RemovePhotoTagAsync(string photoPath, string tag, long sourceSlot, CancellationToken ct = default)
     {
         AppLogger.Trace($"PhotoService.RemovePhotoTagAsync: enter tag={tag}");
-        var task = _db.RemovePhotoTagAsync(photoPath, tag, ct);
+        await _bulkWriteGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await RunWriteOffUiThread(() => _db.RemovePhotoTagAsync(photoPath, tag, ct), ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _bulkWriteGate.Release();
+        }
         AppLogger.Trace("PhotoService.RemovePhotoTagAsync: exit");
-        return task;
     }
 
     /// <summary>単体写真に紐づくタグ名一覧を取得する。</summary>

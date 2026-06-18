@@ -30,6 +30,14 @@ public sealed class WorldService
     private readonly AlpheratzDb _db;
     private readonly PhotoScanner _scanner;
 
+    /// <summary>
+    /// PDQ 文字列を候補取得時に一度だけパースした既知ワールド候補。
+    /// 大量の未知写真と総当たりするとき、候補側のパースを毎回繰り返さないために使う。
+    /// </summary>
+    internal sealed record PreparedKnownWorldRow(
+        AlpheratzDb.KnownWorldRow Row,
+        IReadOnlyList<string> HashVariants);
+
     /// <summary>ワールド情報を扱う DB とログ由来の解決処理を受け取ってサービスを作成する。</summary>
     public WorldService(AlpheratzDb db, PhotoScanner scanner)
     {
@@ -191,6 +199,10 @@ public sealed class WorldService
 
     internal static (AlpheratzDb.KnownWorldRow Row, int Distance)? FindBestMatchWithDetails(
         string targetPhash, IReadOnlyList<AlpheratzDb.KnownWorldRow> candidates)
+        => FindBestMatchWithDetails(targetPhash, PrepareKnownWorldRows(candidates));
+
+    internal static (AlpheratzDb.KnownWorldRow Row, int Distance)? FindBestMatchWithDetails(
+        string targetPhash, IReadOnlyList<PreparedKnownWorldRow> candidates)
     {
         var targetVariants = PdqHasher.ParseHashVariants(targetPhash);
         if (targetVariants.Count == 0) return null;
@@ -199,12 +211,11 @@ public sealed class WorldService
         AlpheratzDb.KnownWorldRow? best = null;
         foreach (var candidate in candidates)
         {
-            var candVariants = PdqHasher.ParseHashVariants(candidate.Phash);
-            var d = PdqHasher.ClosestHashDistance(targetVariants, candVariants);
+            var d = PdqHasher.ClosestHashDistance(targetVariants, candidate.HashVariants);
             if (d is null || d.Value > WorldMatchDistanceThreshold) continue;
             if (d.Value >= bestDistance) continue;
             bestDistance = d.Value;
-            best = candidate;
+            best = candidate.Row;
             if (bestDistance == 0) break;
         }
         if (best is null) return null;
@@ -213,6 +224,10 @@ public sealed class WorldService
 
     internal static List<(AlpheratzDb.KnownWorldRow Row, int Distance)> RankCandidatesByDistance(
         string targetPhash, IReadOnlyList<AlpheratzDb.KnownWorldRow> candidates)
+        => RankCandidatesByDistance(targetPhash, PrepareKnownWorldRows(candidates));
+
+    internal static List<(AlpheratzDb.KnownWorldRow Row, int Distance)> RankCandidatesByDistance(
+        string targetPhash, IReadOnlyList<PreparedKnownWorldRow> candidates)
     {
         var targetVariants = PdqHasher.ParseHashVariants(targetPhash);
         if (targetVariants.Count == 0) return [];
@@ -220,12 +235,24 @@ public sealed class WorldService
         var ranked = new List<(AlpheratzDb.KnownWorldRow Row, int Distance)>();
         foreach (var candidate in candidates)
         {
-            var candVariants = PdqHasher.ParseHashVariants(candidate.Phash);
-            var d = PdqHasher.ClosestHashDistance(targetVariants, candVariants);
+            var d = PdqHasher.ClosestHashDistance(targetVariants, candidate.HashVariants);
             if (d is null) continue;
-            ranked.Add((candidate, d.Value));
+            ranked.Add((candidate.Row, d.Value));
         }
         ranked.Sort((a, b) => a.Distance.CompareTo(b.Distance));
         return ranked;
+    }
+
+    internal static IReadOnlyList<PreparedKnownWorldRow> PrepareKnownWorldRows(
+        IReadOnlyList<AlpheratzDb.KnownWorldRow> candidates)
+    {
+        var prepared = new List<PreparedKnownWorldRow>(candidates.Count);
+        foreach (var candidate in candidates)
+        {
+            var variants = PdqHasher.ParseHashVariants(candidate.Phash);
+            if (variants.Count > 0)
+                prepared.Add(new PreparedKnownWorldRow(candidate, variants));
+        }
+        return prepared;
     }
 }

@@ -92,9 +92,9 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.11" />
   </ItemGroup>
 
-  <!-- ms-appx:///Alpheratz.Frontend/ expects XBF files under an assembly-named
-       subdirectory. The XAML compiler outputs them to $(OutDir) flat; mirror
-       them into the subfolder so LoadComponent succeeds at runtime. -->
+  <!-- Keep an assembly-name XBF mirror for older generated LoadComponent paths.
+       Release publish also mirrors XBF files to the app root because current
+       generated code uses root-relative ms-appx:/// paths. -->
   <Target Name="CopyXbfToSubfolder" AfterTargets="Build">
     <RemoveDir Directories="$(OutDir)$(AssemblyName)\$(AssemblyName)"
                Condition="Exists('$(OutDir)$(AssemblyName)\$(AssemblyName)')" />

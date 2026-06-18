@@ -75,6 +75,24 @@ public sealed class DatabaseBehaviorTests : IDisposable
     }
 
     /// <summary>
+    /// ヘッダー検索の入力はワールド名検索として扱い、ファイル名一致だけの写真を混ぜない。
+    ///
+    /// 画面の検索欄は「ワールド名で検索」と表示しているため、photo_filename への LIKE を混ぜると
+    /// 候補で選んだワールド名と一覧結果がずれて見える。
+    /// </summary>
+    [Fact]
+    public async Task GetPhotosPageAsync_WorldQuerySearchesWorldNameOnly()
+    {
+        await db.UpsertPhotoAsync(Photo("/photo/world.jpg", "ordinary.jpg", "2026-06-05 10:00:00", worldName: "Moon Station"));
+        await db.UpsertPhotoAsync(Photo("/photo/file.jpg", "Moon Station snapshot.jpg", "2026-06-05 11:00:00", worldName: "Other World"));
+
+        var page = await db.GetPhotosPageAsync(new PhotoQueryParams { WorldQuery = "Moon Station" });
+
+        var item = Assert.Single(page.Items);
+        Assert.Equal("/photo/world.jpg", item.photo_path);
+    }
+
+    /// <summary>
     /// 類似写真からワールド情報を反映した場合、コピー元の由来ではなく phash として保存することを確認する。
     ///
     /// コピー元写真は archive 補完やメタデータ由来など、別の match_source を持つことがある。

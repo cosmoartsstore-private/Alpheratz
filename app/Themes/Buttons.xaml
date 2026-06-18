@@ -77,6 +77,64 @@
         </Border>
     </ControlTemplate>
 
+    <!-- お気に入り選択済み用: ホバーで少し明るい黄色へ変える -->
+    <ControlTemplate x:Key="FavoriteSelectedControlTemplate" TargetType="Button">
+        <Border x:Name="RootBorder"
+                Background="{TemplateBinding Background}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                CornerRadius="{TemplateBinding CornerRadius}">
+            <Grid>
+                <ContentPresenter x:Name="ContentPresenter"
+                                  Content="{TemplateBinding Content}"
+                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                  ContentTransitions="{TemplateBinding ContentTransitions}"
+                                  Foreground="{TemplateBinding Foreground}"
+                                  Padding="{TemplateBinding Padding}"
+                                  HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                  VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                  AutomationProperties.AccessibilityView="Raw"/>
+                <Border x:Name="FocusRing"
+                        BorderBrush="{ThemeResource ATextOnPrimary}"
+                        BorderThickness="1"
+                        CornerRadius="{TemplateBinding CornerRadius}"
+                        Visibility="Collapsed"
+                        IsHitTestVisible="False"/>
+            </Grid>
+            <VisualStateManager.VisualStateGroups>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal"/>
+                    <VisualState x:Name="PointerOver">
+                        <VisualState.Setters>
+                            <Setter Target="RootBorder.Background" Value="{ThemeResource AFavoriteSolidHover}"/>
+                            <Setter Target="RootBorder.BorderBrush" Value="{ThemeResource AFavoriteSolidHover}"/>
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                        <VisualState.Setters>
+                            <Setter Target="RootBorder.Background" Value="{ThemeResource AFavoriteSolidPressed}"/>
+                            <Setter Target="RootBorder.BorderBrush" Value="{ThemeResource AFavoriteSolidPressed}"/>
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Target="ContentPresenter.Opacity" Value="0.5"/>
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+                <VisualStateGroup x:Name="FocusStates">
+                    <VisualState x:Name="Unfocused"/>
+                    <VisualState x:Name="PointerFocused"/>
+                    <VisualState x:Name="Focused">
+                        <VisualState.Setters>
+                            <Setter Target="FocusRing.Visibility" Value="Visible"/>
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateManager.VisualStateGroups>
+        </Border>
+    </ControlTemplate>
+
     <!-- Danger 用: hover/press でも ADangerSolid 系の赤を保持 -->
     <ControlTemplate x:Key="DangerControlTemplate" TargetType="Button">
         <Border x:Name="RootBorder"
@@ -253,6 +311,21 @@
         <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="Foreground" Value="{ThemeResource ATextDim}"/>
         <Setter Property="Template" Value="{StaticResource NeutralControlTemplate}"/>
+    </Style>
+
+    <!-- お気に入り選択済みボタン -->
+    <Style x:Key="FavoriteSelectedButtonStyle" TargetType="Button">
+        <Setter Property="MinHeight" Value="34"/>
+        <Setter Property="Padding" Value="12,7"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="CornerRadius" Value="{StaticResource ARadiusMd}"/>
+        <Setter Property="Background" Value="{ThemeResource AFavoriteSolid}"/>
+        <Setter Property="BorderBrush" Value="{ThemeResource AFavoriteSolid}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Foreground" Value="{ThemeResource ATextOnPrimary}"/>
+        <Setter Property="FontWeight" Value="ExtraBold"/>
+        <Setter Property="Template" Value="{StaticResource FavoriteSelectedControlTemplate}"/>
     </Style>
 
     <!-- Destructive primary -->

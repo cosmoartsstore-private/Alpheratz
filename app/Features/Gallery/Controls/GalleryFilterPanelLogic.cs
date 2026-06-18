@@ -102,8 +102,8 @@ internal static class GalleryFilterPanelLogic
     /// <summary>お気に入りトグルの状態からテーマリソースキーを返す。</summary>
     public static FavoriteToggleDisplay FavoriteToggle(bool active)
         => active
-            ? new FavoriteToggleDisplay(true, "AFavoriteSoft", "AFavoriteBorder", "AFavorite")
-            : new FavoriteToggleDisplay(false, "ASurfaceSoft", null, "ATextDim");
+            ? new FavoriteToggleDisplay(true, "AFavoriteSolid", null, "ATextOnPrimary", "ATextOnPrimary", "FavoriteSelectedButtonStyle")
+            : new FavoriteToggleDisplay(false, "ASurfaceSoft", null, "ATextDim", "ATextFaint", "GhostButtonStyle");
 
     /// <summary>日付ドラフトの表示テキストと範囲ラベルを作る。</summary>
     public static DateDraftDisplay DraftDisplay(string? from, string? to)
@@ -433,7 +433,13 @@ internal sealed record FilterBadgeDisplay(bool Visible, string Text);
 internal sealed record DateTriggerDisplay(string Label, bool ClearVisible);
 
 /// <summary>お気に入りトグルの表示に使うテーマリソースキー。</summary>
-internal sealed record FavoriteToggleDisplay(bool Liked, string BackgroundKey, string? BorderKey, string LabelForegroundKey);
+internal sealed record FavoriteToggleDisplay(
+    bool Liked,
+    string BackgroundKey,
+    string? BorderKey,
+    string LabelForegroundKey,
+    string IconForegroundKey,
+    string ButtonStyleKey);
 
 /// <summary>日付ドラフト入力欄の表示状態。</summary>
 internal sealed record DateDraftDisplay(string FromText, string ToText, string RangeLabel);

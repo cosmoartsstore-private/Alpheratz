@@ -102,6 +102,7 @@ public sealed partial class PhotoModalPage : Page
         next.state.PropertyChanged += OnStatePropertyChanged;
         syncSelectedPhotoSubscription();
         syncWorldName();
+        syncWorldAction();
         syncMatchSource();
         syncEmptyTagNote();
         syncModalImage();
@@ -115,6 +116,7 @@ public sealed partial class PhotoModalPage : Page
         {
             syncSelectedPhotoSubscription();
             syncWorldName();
+            syncWorldAction();
             syncMatchSource();
             syncEmptyTagNote();
             syncModalImage();
@@ -158,6 +160,7 @@ public sealed partial class PhotoModalPage : Page
         DispatcherQueue?.TryEnqueue(() =>
         {
             syncWorldName();
+            syncWorldAction();
             syncMatchSource();
             syncEmptyTagNote();
             if (e.PropertyName == nameof(PhotoThumbnailItem.EffectiveDisplayPath))
@@ -203,6 +206,23 @@ public sealed partial class PhotoModalPage : Page
     {
         var photo = viewModel.state.SelectedPhoto;
         WorldNameText.Text = PhotoModalPageLogic.WorldNameText(photo?.WorldName);
+    }
+
+    /// <summary>ワールド ID が未取得の写真では、リンクボタンを明確な非活性表示にする。</summary>
+    private void syncWorldAction()
+    {
+        var photo = viewModel.state.SelectedPhoto;
+        var display = PhotoModalPageLogic.WorldAction(photo?.WorldId);
+        var foreground = themeBrush(display.ForegroundKey);
+
+        WorldActionButton.IsEnabled = display.Enabled;
+        WorldActionButton.Opacity = display.Opacity;
+        WorldActionButton.Background = new SolidColorBrush(Colors.Transparent);
+        WorldActionIcon.Foreground = foreground;
+        WorldActionLabel.Foreground = foreground;
+        WorldActionLabel.Text = display.Label;
+        ToolTipService.SetToolTip(WorldActionButton, display.Tooltip);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(WorldActionButton, display.Tooltip);
     }
 
     /// <summary>ワールド情報の取得元表示を現在の match_source に合わせる。</summary>
@@ -274,6 +294,7 @@ public sealed partial class PhotoModalPage : Page
             viewModel.state.PropertyChanged += OnStatePropertyChanged;
             syncSelectedPhotoSubscription();
             syncWorldName();
+            syncWorldAction();
             syncMatchSource();
             syncEmptyTagNote();
             syncModalImage();

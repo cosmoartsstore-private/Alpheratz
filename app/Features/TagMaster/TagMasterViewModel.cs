@@ -28,6 +28,9 @@ public partial class TagMasterViewModel : UiThreadSafeObservableObject
     /// <summary>追加フォームの入力中文字列。</summary>
     [ObservableProperty] private string tagDraft = string.Empty;
 
+    private static Task RunDbWriteOffUiThread(Func<Task> write)
+        => Task.Run(async () => await write().ConfigureAwait(false));
+
     public TagMasterViewModel(AlpheratzDb db, ToastService toastService, DispatcherService? dispatcherService = null)
     {
         AppLogger.Trace("TagMasterViewModel.ctor: enter");
@@ -82,7 +85,7 @@ public partial class TagMasterViewModel : UiThreadSafeObservableObject
 
         try
         {
-            await db.CreateTagMasterAsync(normalized).ConfigureAwait(false);
+            await RunDbWriteOffUiThread(() => db.CreateTagMasterAsync(normalized)).ConfigureAwait(false);
             await dispatcherService.RunOnUiThread(() => TagDraft = string.Empty).ConfigureAwait(false);
             await loadTags();
             toastService.addToast("タグを追加しました。");
@@ -105,7 +108,7 @@ public partial class TagMasterViewModel : UiThreadSafeObservableObject
         AppLogger.Trace($"TagMasterViewModel.deleteTag: enter tag={tag}");
         try
         {
-            await db.DeleteTagMasterAsync(tag);
+            await RunDbWriteOffUiThread(() => db.DeleteTagMasterAsync(tag)).ConfigureAwait(false);
             await loadTags();
             toastService.addToast("タグを削除しました。");
             AppLogger.Trace("TagMasterViewModel.deleteTag: exit result=true");

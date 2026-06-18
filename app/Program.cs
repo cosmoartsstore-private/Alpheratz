@@ -14,6 +14,7 @@ partial class Program
     static void Main(string[] args)
     {
         AppLogger.Trace($"Program.Main: enter args.Length={args.Length}");
+        WinRT.ComWrappersSupport.InitializeComWrappers();
 
         // Debug ビルド (RELEASE_SELF_CONTAINED 未定義) ではシステムインストール済みの
         // WindowsAppRuntime を Bootstrap.Initialize 経由で見つける。

@@ -391,7 +391,9 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         {
             var initial = await phashService.GetPhashProgressAsync().ConfigureAwait(false);
             var pending = await phashService.GetPendingPhashCountAsync().ConfigureAwait(false);
-            PdqProgress = initial;
+            PdqProgress = initial.total > 0 || pending == 0
+                ? initial
+                : initial with { done = 0, total = pending, current = null };
             IsPdqRunning = initial.total > 0 && initial.done < initial.total;
             CanStartWorldResolve = !IsPdqRunning && pending == 0;
         }
@@ -532,7 +534,6 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
             await refreshSettings().ConfigureAwait(false);
             await galleryViewModel.photosState.loadPhotos().ConfigureAwait(false);
             await refreshGalleryFilterMetadata().ConfigureAwait(false);
-            if (!string.IsNullOrEmpty(nextPrimaryPath) || !string.IsNullOrEmpty(nextSecondaryPath)) await startScan().ConfigureAwait(false);
             PendingResetRequest = null;
             toastService.addToast(slot == 1 ? "1st 写真フォルダをリセットしました" : "2nd 写真フォルダをリセットしました");
         }

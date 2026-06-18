@@ -128,6 +128,7 @@
             <SolidColorBrush x:Key="APrimarySoft" Color="#EFF6FF"/>
             <SolidColorBrush x:Key="APrimarySoftHover" Color="#DBEAFE"/>
             <SolidColorBrush x:Key="AAccentSoft" Color="#EFF6FF"/>
+            <SolidColorBrush x:Key="AProgressBarTrack" Color="#DCEEFF"/>
 
             <!-- Semantic -->
             <SolidColorBrush x:Key="AWarn" Color="#D97706"/>
@@ -139,7 +140,10 @@
             <SolidColorBrush x:Key="ADangerSolidPressed" Color="#B91C1C"/>
             <SolidColorBrush x:Key="ADangerSoft" Color="#FEF2F2"/>
             <SolidColorBrush x:Key="ADangerBorder" Color="#FECACA"/>
-            <SolidColorBrush x:Key="AFavorite" Color="#D97706"/>
+            <SolidColorBrush x:Key="AFavorite" Color="#F59E0B"/>
+            <SolidColorBrush x:Key="AFavoriteSolid" Color="#F59E0B"/>
+            <SolidColorBrush x:Key="AFavoriteSolidHover" Color="#FBBF24"/>
+            <SolidColorBrush x:Key="AFavoriteSolidPressed" Color="#D97706"/>
             <SolidColorBrush x:Key="AFavoriteSoft" Color="#FFFBEB"/>
             <SolidColorBrush x:Key="AFavoriteBorder" Color="#FDE68A"/>
             <SolidColorBrush x:Key="ABulkActionBar" Color="#FFFFFF"/>
@@ -150,11 +154,12 @@
             <SolidColorBrush x:Key="ABulkActionFaintText" Color="#6B7280"/>
             <SolidColorBrush x:Key="ABulkActionCount" Color="#EFF6FF"/>
             <SolidColorBrush x:Key="ABulkActionCountBorder" Color="#BFDBFE"/>
-            <SolidColorBrush x:Key="ABulkFavoriteAccent" Color="#EC4899"/>
-            <SolidColorBrush x:Key="ABulkFavoriteAccentHover" Color="#DB2777"/>
-            <SolidColorBrush x:Key="ABulkFavoriteAccentPressed" Color="#BE185D"/>
+            <SolidColorBrush x:Key="ABulkFavoriteAccent" Color="#F59E0B"/>
+            <SolidColorBrush x:Key="ABulkFavoriteAccentHover" Color="#FBBF24"/>
+            <SolidColorBrush x:Key="ABulkFavoriteAccentPressed" Color="#D97706"/>
             <SolidColorBrush x:Key="APhotoSelectionTint" Color="#00000000"/>
-            <SolidColorBrush x:Key="APhotoSelectionBadgeBorder" Color="#FFFFFFFF"/>
+            <SolidColorBrush x:Key="APhotoSelectionRing" Color="#1D9BF0"/>
+            <SolidColorBrush x:Key="APhotoSelectionGlow" Color="#661D9BF0"/>
 
             <!-- Overlay -->
             <SolidColorBrush x:Key="AOverlay" Color="#66000000"/>
@@ -278,6 +283,7 @@
             <SolidColorBrush x:Key="APrimarySoft" Color="#1F2C3A"/>
             <SolidColorBrush x:Key="APrimarySoftHover" Color="#283A4E"/>
             <SolidColorBrush x:Key="AAccentSoft" Color="#1F2C3A"/>
+            <SolidColorBrush x:Key="AProgressBarTrack" Color="#17324A"/>
 
             <!-- Semantic -->
             <SolidColorBrush x:Key="AWarn" Color="#FBBF24"/>
@@ -290,6 +296,9 @@
             <SolidColorBrush x:Key="ADangerSoft" Color="#2D1F1F"/>
             <SolidColorBrush x:Key="ADangerBorder" Color="#5C2E2E"/>
             <SolidColorBrush x:Key="AFavorite" Color="#FBBF24"/>
+            <SolidColorBrush x:Key="AFavoriteSolid" Color="#F59E0B"/>
+            <SolidColorBrush x:Key="AFavoriteSolidHover" Color="#FBBF24"/>
+            <SolidColorBrush x:Key="AFavoriteSolidPressed" Color="#D97706"/>
             <SolidColorBrush x:Key="AFavoriteSoft" Color="#2D2A1A"/>
             <SolidColorBrush x:Key="AFavoriteBorder" Color="#5C4E1F"/>
             <SolidColorBrush x:Key="ABulkActionBar" Color="#18181E"/>
@@ -300,11 +309,12 @@
             <SolidColorBrush x:Key="ABulkActionFaintText" Color="#8A8A9A"/>
             <SolidColorBrush x:Key="ABulkActionCount" Color="#172849"/>
             <SolidColorBrush x:Key="ABulkActionCountBorder" Color="#334E7E"/>
-            <SolidColorBrush x:Key="ABulkFavoriteAccent" Color="#EC4899"/>
-            <SolidColorBrush x:Key="ABulkFavoriteAccentHover" Color="#DB2777"/>
-            <SolidColorBrush x:Key="ABulkFavoriteAccentPressed" Color="#BE185D"/>
+            <SolidColorBrush x:Key="ABulkFavoriteAccent" Color="#F59E0B"/>
+            <SolidColorBrush x:Key="ABulkFavoriteAccentHover" Color="#FBBF24"/>
+            <SolidColorBrush x:Key="ABulkFavoriteAccentPressed" Color="#D97706"/>
             <SolidColorBrush x:Key="APhotoSelectionTint" Color="#00000000"/>
-            <SolidColorBrush x:Key="APhotoSelectionBadgeBorder" Color="#FFFFFFFF"/>
+            <SolidColorBrush x:Key="APhotoSelectionRing" Color="#45ADF4"/>
+            <SolidColorBrush x:Key="APhotoSelectionGlow" Color="#801D9BF0"/>
 
             <!-- Overlay -->
             <SolidColorBrush x:Key="AOverlay" Color="#80000000"/>

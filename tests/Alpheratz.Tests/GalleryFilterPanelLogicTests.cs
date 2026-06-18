@@ -92,9 +92,21 @@ public sealed class GalleryFilterPanelLogicTests
         Assert.Equal(new DateTriggerDisplay("2026-06-01 ~ ...", true),
             GalleryFilterPanelLogic.DateTrigger("2026-06-01", ""));
 
-        Assert.Equal(new FavoriteToggleDisplay(true, "AFavoriteSoft", "AFavoriteBorder", "AFavorite"),
+        Assert.Equal(new FavoriteToggleDisplay(
+                true,
+                "AFavoriteSolid",
+                null,
+                "ATextOnPrimary",
+                "ATextOnPrimary",
+                "FavoriteSelectedButtonStyle"),
             GalleryFilterPanelLogic.FavoriteToggle(true));
-        Assert.Equal(new FavoriteToggleDisplay(false, "ASurfaceSoft", null, "ATextDim"),
+        Assert.Equal(new FavoriteToggleDisplay(
+                false,
+                "ASurfaceSoft",
+                null,
+                "ATextDim",
+                "ATextFaint",
+                "GhostButtonStyle"),
             GalleryFilterPanelLogic.FavoriteToggle(false));
 
         Assert.Equal(new DateDraftDisplay("---", "---", "すべての期間"),

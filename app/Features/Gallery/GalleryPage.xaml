@@ -226,7 +226,7 @@
 
                     <Button Style="{StaticResource BulkActionFavoriteButtonStyle}" Click="BulkFavorite_Click">
                         <StackPanel Orientation="Horizontal" Spacing="6">
-                            <TextBlock Text="&#x2665;" FontSize="14" Foreground="White"/>
+                            <shared:AppIcon IconName="starFill" IconSize="13" Foreground="White"/>
                             <TextBlock Text="追加" Foreground="White"/>
                         </StackPanel>
                     </Button>

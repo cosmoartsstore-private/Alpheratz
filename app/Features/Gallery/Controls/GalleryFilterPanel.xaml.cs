@@ -40,9 +40,38 @@ public sealed partial class GalleryFilterPanel : UserControl
     private string draftFrom = "";
     private string draftTo = "";
     private string draftPreset = "none";
+    private bool suppressFilterCollectionRefresh;
 
     private List<WorldFilterOptionDto> allWorldOptions = [];
     private List<string> allTagOptions = [];
+
+    private sealed class CheckboxVisualResources
+    {
+        private readonly FrameworkElement element;
+        private readonly Dictionary<string, Brush?> brushes = new(StringComparer.Ordinal);
+
+        public CheckboxVisualResources(FrameworkElement element)
+        {
+            this.element = element;
+            CountFont = ThemeHelper.AppResource<FontFamily>("AFontMono");
+        }
+
+        public FontFamily? CountFont { get; }
+
+        public Brush? Resolve(string key)
+        {
+            if (!brushes.TryGetValue(key, out var brush))
+            {
+                brush = ResolveThemeBrush(element, key);
+                brushes[key] = brush;
+            }
+
+            return brush;
+        }
+
+        public Brush ResolveOrTransparent(string key)
+            => Resolve(key) ?? new SolidColorBrush(Colors.Transparent);
+    }
 
     /// <summary>フィルタパネルを初期化し、初期表示に必要な曜日ヘッダを構築する。</summary>
     public GalleryFilterPanel()
@@ -72,7 +101,6 @@ public sealed partial class GalleryFilterPanel : UserControl
         try
         {
             RefreshThemeBoundVisuals();
-            DispatcherQueue?.TryEnqueue(RefreshThemeBoundVisuals);
         }
         catch (Exception ex) { AppLogger.Error($"GalleryFilterPanel.OnActualThemeChanged: {ex}"); }
     }
@@ -83,8 +111,7 @@ public sealed partial class GalleryFilterPanel : UserControl
         syncActiveStates();
         syncFavoriteToggle();
         buildWeekdayHeaders();
-        rebuildTagCheckboxList();
-        rebuildWorldCheckboxList();
+        RebuildOpenChoiceLists();
         if (DatePickerPopup.Visibility == Visibility.Visible)
             buildCalendar();
     }
@@ -95,7 +122,16 @@ public sealed partial class GalleryFilterPanel : UserControl
         RequestedTheme = theme;
         ThemeHelper.NotifySelectedThemeChanged(theme);
         RefreshThemeBoundVisuals();
-        DispatcherQueue?.TryEnqueue(RefreshThemeBoundVisuals);
+    }
+
+    private bool IsTagDropdownOpen() => TagDropdownPanel.Visibility == Visibility.Visible;
+
+    private bool IsWorldDropdownOpen() => WorldDropdownPanel.Visibility == Visibility.Visible;
+
+    private void RebuildOpenChoiceLists()
+    {
+        if (IsTagDropdownOpen()) rebuildTagCheckboxList();
+        if (IsWorldDropdownOpen()) rebuildWorldCheckboxList();
     }
 
     /// <summary>カード化した検索条件パネルの土台・カード・区切り線を現在テーマのブラシで塗り直す。</summary>
@@ -166,7 +202,7 @@ public sealed partial class GalleryFilterPanel : UserControl
         }
     }
 
-    /// <summary>ワールドフィルタ候補の参照を差し替え、一覧表示を再構築する。</summary>
+    /// <summary>ワールドフィルタ候補の参照を差し替え、展開中なら一覧表示を再構築する。</summary>
     public void setWorldFilterOptions(UiObservableCollection<WorldFilterOptionDto> options)
     {
         AppLogger.Trace($"GalleryFilterPanel.setWorldFilterOptions: enter count={options.Count}");
@@ -178,13 +214,13 @@ public sealed partial class GalleryFilterPanel : UserControl
             boundWorldOptions = options;
             boundWorldOptions.CollectionChanged += OnWorldOptionsChanged;
             allWorldOptions = options.ToList();
-            rebuildWorldCheckboxList();
+            if (IsWorldDropdownOpen()) rebuildWorldCheckboxList();
         }
         catch (Exception ex) { AppLogger.Error($"GalleryFilterPanel.setWorldFilterOptions: threw: {ex}"); }
         AppLogger.Trace("GalleryFilterPanel.setWorldFilterOptions: exit");
     }
 
-    /// <summary>タグマスタの参照を差し替え、タグチェックリストを再構築する。</summary>
+    /// <summary>タグマスタの参照を差し替え、展開中ならタグチェックリストを再構築する。</summary>
     public void setMasterTagsSource(UiObservableCollection<string> tags)
     {
         AppLogger.Trace($"GalleryFilterPanel.setMasterTagsSource: enter count={tags.Count}");
@@ -196,7 +232,7 @@ public sealed partial class GalleryFilterPanel : UserControl
             boundMasterTags = tags;
             boundMasterTags.CollectionChanged += OnMasterTagsChanged;
             allTagOptions = tags.ToList();
-            rebuildTagCheckboxList();
+            if (IsTagDropdownOpen()) rebuildTagCheckboxList();
         }
         catch (Exception ex) { AppLogger.Error($"GalleryFilterPanel.setMasterTagsSource: threw: {ex}"); }
         AppLogger.Trace("GalleryFilterPanel.setMasterTagsSource: exit");
@@ -230,26 +266,26 @@ public sealed partial class GalleryFilterPanel : UserControl
         AppLogger.Trace("GalleryFilterPanel.bindFiltersState: exit");
     }
 
-    /// <summary>ワールド候補の増減に合わせてワールドチェックリストを作り直す。</summary>
+    /// <summary>ワールド候補の増減を取り込み、展開中ならワールドチェックリストを作り直す。</summary>
     private void OnWorldOptionsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         try
         {
             if (boundWorldOptions is not null)
                 allWorldOptions = boundWorldOptions.ToList();
-            rebuildWorldCheckboxList();
+            if (IsWorldDropdownOpen()) rebuildWorldCheckboxList();
         }
         catch (Exception ex) { AppLogger.Error($"GalleryFilterPanel.OnWorldOptionsChanged: threw: {ex}"); }
     }
 
-    /// <summary>タグマスタの増減に合わせてタグチェックリストを作り直す。</summary>
+    /// <summary>タグマスタの増減を取り込み、展開中ならタグチェックリストを作り直す。</summary>
     private void OnMasterTagsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         try
         {
             if (boundMasterTags is not null)
                 allTagOptions = boundMasterTags.ToList();
-            rebuildTagCheckboxList();
+            if (IsTagDropdownOpen()) rebuildTagCheckboxList();
         }
         catch (Exception ex) { AppLogger.Error($"GalleryFilterPanel.OnMasterTagsChanged: threw: {ex}"); }
     }
@@ -259,7 +295,14 @@ public sealed partial class GalleryFilterPanel : UserControl
     {
         try
         {
-            ApplySyncPlan(GalleryFilterPanelLogic.SyncPlanForSelectionCollectionChanged());
+            if (suppressFilterCollectionRefresh) return;
+
+            var plan = ReferenceEquals(sender, boundFiltersState?.tagFilters)
+                ? new FilterPanelSyncPlan(Badge: true, TagSummary: true, TagChoices: true)
+                : ReferenceEquals(sender, boundFiltersState?.worldFilters)
+                    ? new FilterPanelSyncPlan(Badge: true, WorldSummary: true, WorldChoices: true)
+                    : GalleryFilterPanelLogic.SyncPlanForSelectionCollectionChanged();
+            ApplySyncPlan(plan);
         }
         catch (Exception ex) { AppLogger.Error($"GalleryFilterPanel.OnFilterCollectionChanged: threw: {ex}"); }
     }
@@ -285,8 +328,8 @@ public sealed partial class GalleryFilterPanel : UserControl
         if (plan.FavoriteToggle) syncFavoriteToggle();
         if (plan.TagSummary) syncTagSummary();
         if (plan.WorldSummary) syncWorldSummary();
-        if (plan.TagChoices) rebuildTagCheckboxList();
-        if (plan.WorldChoices) rebuildWorldCheckboxList();
+        if (plan.TagChoices && IsTagDropdownOpen()) rebuildTagCheckboxList();
+        if (plan.WorldChoices && IsWorldDropdownOpen()) rebuildWorldCheckboxList();
     }
 
     /// <summary>現在のフィルタ値から各ボタンやセクションの active 表示を更新する。</summary>
@@ -346,7 +389,10 @@ public sealed partial class GalleryFilterPanel : UserControl
     {
         if (boundFiltersState is null) return;
         var state = GalleryFilterPanelLogic.FavoriteToggle(boundFiltersState.FavoritesOnly);
-        FavoriteStarIcon.Liked = state.Liked;
+        if (ThemeHelper.AppResource<Style>(state.ButtonStyleKey) is { } buttonStyle)
+            FavoriteToggleBtn.Style = buttonStyle;
+        FavoriteStarIcon.IconName = state.Liked ? "starFill" : "star";
+        FavoriteStarIcon.Foreground = ResolveThemeBrushOrTransparent(FavoriteStarIcon, state.IconForegroundKey);
         FavoriteToggleBtn.Background = ResolveThemeBrush(FavoriteToggleBtn, state.BackgroundKey);
         FavoriteToggleBtn.BorderBrush = state.BorderKey is null
             ? new SolidColorBrush(Colors.Transparent)
@@ -684,14 +730,17 @@ public sealed partial class GalleryFilterPanel : UserControl
         TagDropdownPanel.Visibility = ToVisibility(toggle.IsOpen);
         if (toggle.ShouldResetSearchAndRebuild)
         {
-            TagSearchBox.Text = "";
-            rebuildTagCheckboxList();
+            if (string.IsNullOrEmpty(TagSearchBox.Text))
+                rebuildTagCheckboxList();
+            else
+                TagSearchBox.Text = "";
         }
     }
 
     /// <summary>タグ検索文字列の変更に合わせてタグチェックリストを絞り込む。</summary>
     private void TagSearch_TextChanged(object sender, TextChangedEventArgs e)
     {
+        if (!IsTagDropdownOpen()) return;
         rebuildTagCheckboxList();
     }
 
@@ -706,10 +755,12 @@ public sealed partial class GalleryFilterPanel : UserControl
             boundFiltersState?.tagFilters ?? Enumerable.Empty<string>(),
             boundFiltersState?.TagFilterCounts ?? new Dictionary<string, long>());
 
+        var resources = new CheckboxVisualResources(TagCheckboxList);
         foreach (var row in choices.Rows)
         {
             var capturedValue = row.FilterValue;
             addCheckboxItem(TagCheckboxList, row.Label, row.CountText, row.IsChecked,
+                resources,
                 () =>
                 {
                     if (capturedValue is null) clearAllTagFilters();
@@ -732,19 +783,24 @@ public sealed partial class GalleryFilterPanel : UserControl
         {
             OnTagFilterAdd?.Invoke(tag);
         }
-
-        syncTagSummary();
-        rebuildTagCheckboxList();
     }
 
     /// <summary>選択中のタグフィルタをすべて解除する。</summary>
     private void clearAllTagFilters()
     {
         if (boundFiltersState is null) return;
-        foreach (var t in GalleryFilterPanelLogic.ValuesToClear(boundFiltersState.tagFilters))
-            OnTagFilterRemove?.Invoke(t);
-        syncTagSummary();
-        rebuildTagCheckboxList();
+        suppressFilterCollectionRefresh = true;
+        try
+        {
+            foreach (var t in GalleryFilterPanelLogic.ValuesToClear(boundFiltersState.tagFilters))
+                OnTagFilterRemove?.Invoke(t);
+        }
+        finally
+        {
+            suppressFilterCollectionRefresh = false;
+        }
+
+        ApplySyncPlan(new FilterPanelSyncPlan(Badge: true, TagSummary: true, TagChoices: true));
     }
 
     // ── World dropdown ──
@@ -754,14 +810,17 @@ public sealed partial class GalleryFilterPanel : UserControl
         WorldDropdownPanel.Visibility = ToVisibility(toggle.IsOpen);
         if (toggle.ShouldResetSearchAndRebuild)
         {
-            WorldSearchBox.Text = "";
-            rebuildWorldCheckboxList();
+            if (string.IsNullOrEmpty(WorldSearchBox.Text))
+                rebuildWorldCheckboxList();
+            else
+                WorldSearchBox.Text = "";
         }
     }
 
     /// <summary>ワールド検索文字列の変更に合わせてワールドチェックリストを絞り込む。</summary>
     private void WorldSearch_TextChanged(object sender, TextChangedEventArgs e)
     {
+        if (!IsWorldDropdownOpen()) return;
         rebuildWorldCheckboxList();
     }
 
@@ -775,8 +834,10 @@ public sealed partial class GalleryFilterPanel : UserControl
             query,
             boundFiltersState?.worldFilters ?? Enumerable.Empty<string>());
 
+        var resources = new CheckboxVisualResources(WorldCheckboxList);
         var allRow = choices.Rows[0];
         addCheckboxItem(WorldCheckboxList, allRow.Label, allRow.CountText, allRow.IsChecked,
+            resources,
             () => { clearAllWorldFilters(); });
 
         if (choices.HasVisitedWorlds)
@@ -789,6 +850,7 @@ public sealed partial class GalleryFilterPanel : UserControl
                 var capturedValue = row.FilterValue;
                 if (capturedValue is null) continue;
                 addCheckboxItem(WorldCheckboxList, row.Label, row.CountText, row.IsChecked,
+                    resources,
                     () => { toggleWorldFilter(capturedValue); });
             }
         }
@@ -808,23 +870,34 @@ public sealed partial class GalleryFilterPanel : UserControl
         {
             OnWorldFilterAdd?.Invoke(worldName);
         }
-
-        syncWorldSummary();
-        rebuildWorldCheckboxList();
     }
 
     /// <summary>選択中のワールドフィルタをすべて解除する。</summary>
     private void clearAllWorldFilters()
     {
         if (boundFiltersState is null) return;
-        foreach (var w in GalleryFilterPanelLogic.ValuesToClear(boundFiltersState.worldFilters))
-            OnWorldFilterRemove?.Invoke(w);
-        syncWorldSummary();
-        rebuildWorldCheckboxList();
+        suppressFilterCollectionRefresh = true;
+        try
+        {
+            foreach (var w in GalleryFilterPanelLogic.ValuesToClear(boundFiltersState.worldFilters))
+                OnWorldFilterRemove?.Invoke(w);
+        }
+        finally
+        {
+            suppressFilterCollectionRefresh = false;
+        }
+
+        ApplySyncPlan(new FilterPanelSyncPlan(Badge: true, WorldSummary: true, WorldChoices: true));
     }
 
     // ── Shared checkbox item builder ──
-    private void addCheckboxItem(StackPanel parent, string label, string? countText, bool isChecked, Action onToggle)
+    private void addCheckboxItem(
+        StackPanel parent,
+        string label,
+        string? countText,
+        bool isChecked,
+        CheckboxVisualResources resources,
+        Action onToggle)
     {
         var visual = GalleryFilterPanelLogic.CheckboxVisual(isChecked, countText is not null);
         var grid = new Grid
@@ -842,7 +915,7 @@ public sealed partial class GalleryFilterPanel : UserControl
             Text = label,
             FontSize = 12,
             FontWeight = Microsoft.UI.Text.FontWeights.Bold,
-            Foreground = ResolveThemeBrush(parent, visual.NameForegroundKey),
+            Foreground = resources.Resolve(visual.NameForegroundKey),
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
             Margin = new Thickness(10, 0, 0, 0),
@@ -856,14 +929,15 @@ public sealed partial class GalleryFilterPanel : UserControl
             {
                 Text = countText,
                 FontSize = 11,
-                FontFamily = ThemeHelper.AppResource<FontFamily>("AFontMono"),
-                Foreground = ResolveThemeBrush(parent, visual.CountForegroundKey),
+                Foreground = resources.Resolve(visual.CountForegroundKey),
                 VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Right,
                 TextAlignment = TextAlignment.Right,
                 MinWidth = 36,
                 Margin = new Thickness(8, 0, 0, 0),
             };
+            if (resources.CountFont is not null)
+                countBlock.FontFamily = resources.CountFont;
             Grid.SetColumn(countBlock, 2);
             grid.Children.Add(countBlock);
         }
@@ -874,8 +948,8 @@ public sealed partial class GalleryFilterPanel : UserControl
             Height = 20,
             CornerRadius = new CornerRadius(7),
             BorderThickness = new Thickness(1),
-            BorderBrush = ResolveThemeBrush(parent, visual.CheckBorderKey),
-            Background = ResolveThemeBrush(parent, visual.CheckBackgroundKey),
+            BorderBrush = resources.Resolve(visual.CheckBorderKey),
+            Background = resources.Resolve(visual.CheckBackgroundKey),
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Center,
         };
@@ -886,7 +960,7 @@ public sealed partial class GalleryFilterPanel : UserControl
             {
                 IconName = "check",
                 IconSize = 12,
-                Foreground = ResolveThemeBrushOrTransparent(parent, visual.CheckmarkForegroundKey),
+                Foreground = resources.ResolveOrTransparent(visual.CheckmarkForegroundKey),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
             };
@@ -901,10 +975,10 @@ public sealed partial class GalleryFilterPanel : UserControl
             HorizontalAlignment = HorizontalAlignment.Stretch,
             Background = visual.ItemBackgroundKey is null
                 ? new SolidColorBrush(Colors.Transparent)
-                : ResolveThemeBrush(parent, visual.ItemBackgroundKey),
+                : resources.Resolve(visual.ItemBackgroundKey),
             BorderBrush = visual.ItemBorderKey is null
                 ? new SolidColorBrush(Colors.Transparent)
-                : ResolveThemeBrush(parent, visual.ItemBorderKey),
+                : resources.Resolve(visual.ItemBorderKey),
             BorderThickness = new Thickness(0),
             Child = grid,
         };

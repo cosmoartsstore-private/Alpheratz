@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $BuildWorksRoot = Split-Path -Parent $PSScriptRoot
 $RepoRoot = Split-Path -Parent $BuildWorksRoot
 $InstallerScriptPath = Join-Path $BuildWorksRoot "nsis\Installer.nsi"
-$InstallerOutputPath = Join-Path $BuildWorksRoot "Alpheratz-v2-Installer.exe"
+$InstallerOutputPath = Join-Path $BuildWorksRoot "Alpheratz-Installer.exe"
 # Windows App Runtime preflight is intentionally skipped for the self-contained build.
 # WindowsAppSDKSelfContained=true copies WinAppSDK dependencies into the app output.
 

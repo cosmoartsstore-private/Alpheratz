@@ -108,6 +108,7 @@ public sealed partial class ShellPage
             viewModel.galleryViewModel.drillDownPhotosProvider = null;
             viewModel.galleryViewModel.selectionState.PropertyChanged -= OnSelectionStateChanged;
             viewModel.galleryViewModel.filtersState.PropertyChanged -= OnShellFiltersStateChanged;
+            viewModel.galleryViewModel.photosState.PropertyChanged -= OnShellPhotosStateChanged;
             viewModel.PropertyChanged -= OnShellViewModelChanged;
             drillDownPhotos = null;
             if (drillDownPage is not null)

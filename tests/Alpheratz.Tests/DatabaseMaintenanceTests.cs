@@ -92,6 +92,69 @@ public sealed class DatabaseMaintenanceTests : IDisposable
     }
 
     /// <summary>
+    /// UpsertPhotosAsync が単体 upsert と同じ保持規則で複数写真をまとめて保存することを確認する。
+    ///
+    /// 大量スキャンでは 1 件ごとに接続とコミットを発生させないため、複数行を同じ
+    /// トランザクションで upsert する。高速化しても既存の world / orientation を
+    /// null で消さない契約は単体 upsert と一致している必要がある。
+    /// </summary>
+    [Fact]
+    public async Task UpsertPhotosAsync_PreservesResolvedMetadataAndInsertsMultipleRows()
+    {
+        await db.UpsertPhotoAsync(Photo(
+            "/photo/a.jpg",
+            "a.jpg",
+            "2026-06-05 10:00:00",
+            worldName: "Known",
+            worldId: "wrld_known",
+            orientation: "landscape",
+            width: 1920,
+            height: 1080,
+            matchSource: "metadata"));
+
+        var count = await db.UpsertPhotosAsync(
+        [
+            Photo(
+                "/photo/a.jpg",
+                "renamed.jpg",
+                "2026-06-06 10:00:00",
+                worldName: null,
+                worldId: null,
+                orientation: null,
+                width: null,
+                height: null,
+                matchSource: null),
+            Photo(
+                "/photo/b.jpg",
+                "b.jpg",
+                "2026-06-07 10:00:00",
+                worldName: "New World",
+                orientation: "portrait",
+                width: 1080,
+                height: 1920,
+                matchSource: "metadata"),
+        ]);
+
+        var existing = await db.GetPhotoRecordAsync("/photo/a.jpg");
+        var inserted = await db.GetPhotoRecordAsync("/photo/b.jpg");
+
+        Assert.Equal(2, count);
+        Assert.NotNull(existing);
+        Assert.Equal("renamed.jpg", existing.photo_filename);
+        Assert.Equal("Known", existing.world_name);
+        Assert.Equal("wrld_known", existing.world_id);
+        Assert.Equal("landscape", existing.orientation);
+        Assert.Equal(1920, existing.image_width);
+        Assert.Equal(1080, existing.image_height);
+        Assert.Equal("metadata", existing.match_source);
+        Assert.NotNull(inserted);
+        Assert.Equal("New World", inserted.world_name);
+        Assert.Equal("portrait", inserted.orientation);
+        Assert.Equal(1080, inserted.image_width);
+        Assert.Equal(1920, inserted.image_height);
+    }
+
+    /// <summary>
     /// DeleteMissingPhotosAsync が対象 source_slot の欠落写真とタグ紐付けだけを削除することを確認する。
     ///
     /// プライマリ/セカンダリの片方だけを再スキャンした場合、もう片方のフォルダを foundPaths に含めない。
@@ -279,6 +342,32 @@ public sealed class DatabaseMaintenanceTests : IDisposable
         Assert.Equal(2, beforeCount);
         Assert.Equal(["/photo/new.jpg", "/photo/old.jpg"], batch.Select(item => item.PhotoPath).ToArray());
         Assert.Equal(1, afterCount);
+    }
+
+    /// <summary>
+    /// phash 補完結果を複数件まとめて保存し、pending から外れることを確認する。
+    ///
+    /// PhashService は画像解析を並列化する一方、SQLite 更新はチャンク単位のトランザクションにまとめる。
+    /// 1件ずつ接続を開く経路へ戻ると大量解析で遅くなるため、一括更新APIの契約を固定する。
+    /// </summary>
+    [Fact]
+    public async Task UpdatePhotoPhashesAsync_UpdatesMultipleRowsInOneCall()
+    {
+        await db.UpsertPhotoAsync(Photo("/photo/a.jpg", "a.jpg", "2026-06-05 10:00:00"));
+        await db.UpsertPhotoAsync(Photo("/photo/b.jpg", "b.jpg", "2026-06-05 11:00:00"));
+
+        await db.UpdatePhotoPhashesAsync([
+            new AlpheratzDb.PhotoPhashUpdate("/photo/a.jpg", new string('a', 64)),
+            new AlpheratzDb.PhotoPhashUpdate("/photo/b.jpg", "unreadable"),
+        ]);
+
+        var a = await db.GetPhotoRecordAsync("/photo/a.jpg", includePhash: true);
+        var b = await db.GetPhotoRecordAsync("/photo/b.jpg", includePhash: true);
+        var pending = await db.GetPendingPhashCountAsync();
+
+        Assert.Equal(new string('a', 64), a?.phash);
+        Assert.Equal("unreadable", b?.phash);
+        Assert.Equal(0, pending);
     }
 
     /// <summary>

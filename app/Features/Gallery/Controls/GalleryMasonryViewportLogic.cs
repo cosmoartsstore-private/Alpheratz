@@ -11,6 +11,8 @@ internal static class GalleryMasonryViewportLogic
 {
     public const double ShimmerWidthRatio = 0.4;
     public const int ShimmerDurationMilliseconds = 1500;
+    public const int ImageLoadRetryDelayMilliseconds = 500;
+    public const int MaxImageLoadRetries = 2;
 
     /// <summary>コントロール幅と指定カラム数から、内部幅と実効カラム数を算出する。</summary>
     public static (double InnerWidth, int EffectiveColumns) ComputeColumns(
@@ -145,6 +147,14 @@ internal static class GalleryMasonryViewportLogic
     public static bool ShouldReloadImage(string newPath, string loadedPath)
         => newPath != loadedPath;
 
+    public static bool IsCurrentImageLoadCallback(
+        int callbackVersion,
+        int currentVersion,
+        string callbackPath,
+        string loadingPath)
+        => callbackVersion == currentVersion
+            && string.Equals(callbackPath, loadingPath, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>未ロードカードが現在の overscan 範囲内にあるかを返す。</summary>
     public static bool IsInsideOverscan(double cardTop, double cardHeight, double scrollTop, double viewportHeight, double overscanPx)
     {
@@ -153,6 +163,10 @@ internal static class GalleryMasonryViewportLogic
         var viewBottom = scrollTop + viewportHeight + overscanPx;
         return cardBottom >= viewTop && cardTop <= viewBottom;
     }
+
+    /// <summary>画像ロード失敗後に、同じカードへ自動再試行を予約するかを返す。</summary>
+    public static bool ShouldRetryImageLoad(int failureCount, bool isInsideOverscan)
+        => isInsideOverscan && failureCount > 0 && failureCount <= MaxImageLoadRetries;
 
     /// <summary>写真の選択状態から、選択リングとチェックバッジを表示するかを返す。</summary>
     public static SelectionVisual SelectionVisual(bool isSelected) => new(isSelected);
@@ -167,6 +181,8 @@ internal static class GalleryMasonryViewportLogic
     {
         if (propertyName == nameof(PhotoThumbnailItem.IsSelected))
             return MasonryPhotoChangeAction.UpdateSelection;
+        if (propertyName == nameof(PhotoThumbnailItem.IsFavorite))
+            return MasonryPhotoChangeAction.UpdateFavorite;
         if (!IsImageSourceProperty(propertyName))
             return MasonryPhotoChangeAction.None;
         if (!ShouldReloadImage(newPath, loadedPath))
@@ -220,5 +236,6 @@ internal enum MasonryPhotoChangeAction
 {
     None,
     UpdateSelection,
+    UpdateFavorite,
     ReloadNow,
 }

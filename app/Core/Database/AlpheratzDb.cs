@@ -24,6 +24,28 @@ namespace Alpheratz.Core.Database;
 // ---------------------------------------------------------------------------
 public sealed class AlpheratzDb
 {
+    private const string UpsertPhotoSql = """
+INSERT INTO photos (
+    photo_path, photo_filename, world_id, world_name, timestamp, last_modified_utc,
+    orientation, image_width, image_height, source_slot, match_source, is_missing
+) VALUES (
+    @photo_path, @photo_filename, @world_id, @world_name, @timestamp, @last_modified_utc,
+    @orientation, @image_width, @image_height, @source_slot, @match_source, 0
+)
+ON CONFLICT(photo_path) DO UPDATE SET
+    photo_filename = excluded.photo_filename,
+    world_id       = COALESCE(excluded.world_id,      photos.world_id),
+    world_name     = COALESCE(excluded.world_name,    photos.world_name),
+    timestamp      = excluded.timestamp,
+    last_modified_utc = excluded.last_modified_utc,
+    orientation    = COALESCE(excluded.orientation,   photos.orientation),
+    image_width    = COALESCE(excluded.image_width,   photos.image_width),
+    image_height   = COALESCE(excluded.image_height,  photos.image_height),
+    source_slot    = excluded.source_slot,
+    match_source   = COALESCE(excluded.match_source,  photos.match_source),
+    is_missing     = 0
+""";
+
     private readonly string? databasePath;
 
     /// <summary>通常はアプリの既定DBを使い、テスト時だけDBファイルを明示できる。</summary>
@@ -41,6 +63,8 @@ public sealed class AlpheratzDb
     ///     概ね確保される（最後の数 ms のトランザクションのみ理論上ロスし得る）。
     ///   - foreign_keys=ON は photo_tags → photos / tags の ON DELETE CASCADE を
     ///     有効にするために必須（SQLite はデフォルトで FK 強制が OFF）。
+    ///   - busy_timeout はスキャンや解析の短い書き込みとユーザー操作が重なったとき、
+    ///     即 SQLITE_BUSY で失敗せず少し待ってから再試行させる。
     /// 接続は短命：呼び出しごとに開いて破棄する。SqliteConnection の内部プールが
     /// 物理接続を再利用するため、毎回 PRAGMA を投げてもオーバーヘッドは小さい。
     /// </summary>
@@ -51,7 +75,7 @@ public sealed class AlpheratzDb
         var conn = new SqliteConnection($"Data Source={path}");
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;";
+        cmd.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;";
         cmd.ExecuteNonQuery();
         return conn;
     }
@@ -337,8 +361,7 @@ WHERE pt.photo_path IN (");
         }
         if (q.WorldQuery is not null)
         {
-            sb.Append($" AND ({tableAlias}.world_name LIKE @worldQuery"
-                + $" OR {tableAlias}.photo_filename LIKE @worldQuery)");
+            sb.Append($" AND {tableAlias}.world_name LIKE @worldQuery");
             cmd.Parameters.AddWithValue("@worldQuery", $"%{q.WorldQuery}%");
         }
         if (q.WorldExacts is { Count: > 0 } exacts)
@@ -897,38 +920,8 @@ WHERE photo_path = @p
 
             using var conn = OpenConnection();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-INSERT INTO photos (
-    photo_path, photo_filename, world_id, world_name, timestamp, last_modified_utc,
-    orientation, image_width, image_height, source_slot, match_source, is_missing
-) VALUES (
-    @photo_path, @photo_filename, @world_id, @world_name, @timestamp, @last_modified_utc,
-    @orientation, @image_width, @image_height, @source_slot, @match_source, 0
-)
-ON CONFLICT(photo_path) DO UPDATE SET
-    photo_filename = excluded.photo_filename,
-    world_id       = COALESCE(excluded.world_id,      photos.world_id),
-    world_name     = COALESCE(excluded.world_name,    photos.world_name),
-    timestamp      = excluded.timestamp,
-    last_modified_utc = excluded.last_modified_utc,
-    orientation    = COALESCE(excluded.orientation,   photos.orientation),
-    image_width    = COALESCE(excluded.image_width,   photos.image_width),
-    image_height   = COALESCE(excluded.image_height,  photos.image_height),
-    source_slot    = excluded.source_slot,
-    match_source   = COALESCE(excluded.match_source,  photos.match_source),
-    is_missing     = 0";
-
-            cmd.Parameters.AddWithValue("@photo_path",     data.PhotoPath);
-            cmd.Parameters.AddWithValue("@photo_filename",  data.PhotoFilename);
-            cmd.Parameters.AddWithValue("@world_id",        (object?)data.WorldId   ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@world_name",      (object?)data.WorldName ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@timestamp",       data.Timestamp);
-            cmd.Parameters.AddWithValue("@last_modified_utc", (object?)data.LastModifiedUtc ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@orientation",     (object?)data.Orientation ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@image_width",     (object?)data.ImageWidth  ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@image_height",    (object?)data.ImageHeight ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("@source_slot",     data.SourceSlot);
-            cmd.Parameters.AddWithValue("@match_source",    (object?)data.MatchSource ?? DBNull.Value);
+            PreparePhotoUpsertCommand(cmd);
+            BindPhotoUpsertParameters(cmd, data);
             cmd.ExecuteNonQuery();
             AppLogger.Trace("AlpheratzDb.UpsertPhotoAsync: exit");
             return Task.CompletedTask;
@@ -938,6 +931,82 @@ ON CONFLICT(photo_path) DO UPDATE SET
             AppLogger.Error($"AlpheratzDb.UpsertPhotoAsync: threw: {ex}");
             throw;
         }
+    }
+
+    /// <summary>
+    /// スキャナが見つけた写真を同一トランザクションでまとめて upsert する。
+    /// 1 件ごとに接続を開くと大量初回スキャンで接続初期化とコミットが支配的になるため、
+    /// スキャン側はこの API に小さなバッチを渡して書き込みをまとめる。
+    /// </summary>
+    public Task<int> UpsertPhotosAsync(IReadOnlyList<PhotoUpsertData> photos, CancellationToken ct = default)
+    {
+        AppLogger.Trace($"AlpheratzDb.UpsertPhotosAsync: enter count={photos.Count}");
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            if (photos.Count == 0)
+            {
+                AppLogger.Trace("AlpheratzDb.UpsertPhotosAsync: exit count=0");
+                return Task.FromResult(0);
+            }
+
+            using var conn = OpenConnection();
+            using var tx = conn.BeginTransaction();
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            PreparePhotoUpsertCommand(cmd);
+
+            var written = 0;
+            foreach (var photo in photos)
+            {
+                if ((written & 0x7F) == 0)
+                    ct.ThrowIfCancellationRequested();
+
+                BindPhotoUpsertParameters(cmd, photo);
+                cmd.ExecuteNonQuery();
+                written++;
+            }
+
+            tx.Commit();
+            AppLogger.Trace($"AlpheratzDb.UpsertPhotosAsync: exit count={written}");
+            return Task.FromResult(written);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"AlpheratzDb.UpsertPhotosAsync: threw: {ex}");
+            throw;
+        }
+    }
+
+    private static void PreparePhotoUpsertCommand(SqliteCommand cmd)
+    {
+        cmd.CommandText = UpsertPhotoSql;
+        cmd.Parameters.Add("@photo_path", SqliteType.Text);
+        cmd.Parameters.Add("@photo_filename", SqliteType.Text);
+        cmd.Parameters.Add("@world_id", SqliteType.Text);
+        cmd.Parameters.Add("@world_name", SqliteType.Text);
+        cmd.Parameters.Add("@timestamp", SqliteType.Text);
+        cmd.Parameters.Add("@last_modified_utc", SqliteType.Text);
+        cmd.Parameters.Add("@orientation", SqliteType.Text);
+        cmd.Parameters.Add("@image_width", SqliteType.Integer);
+        cmd.Parameters.Add("@image_height", SqliteType.Integer);
+        cmd.Parameters.Add("@source_slot", SqliteType.Integer);
+        cmd.Parameters.Add("@match_source", SqliteType.Text);
+    }
+
+    private static void BindPhotoUpsertParameters(SqliteCommand cmd, PhotoUpsertData data)
+    {
+        cmd.Parameters["@photo_path"].Value = data.PhotoPath;
+        cmd.Parameters["@photo_filename"].Value = data.PhotoFilename;
+        cmd.Parameters["@world_id"].Value = (object?)data.WorldId ?? DBNull.Value;
+        cmd.Parameters["@world_name"].Value = (object?)data.WorldName ?? DBNull.Value;
+        cmd.Parameters["@timestamp"].Value = data.Timestamp;
+        cmd.Parameters["@last_modified_utc"].Value = (object?)data.LastModifiedUtc ?? DBNull.Value;
+        cmd.Parameters["@orientation"].Value = (object?)data.Orientation ?? DBNull.Value;
+        cmd.Parameters["@image_width"].Value = (object?)data.ImageWidth ?? DBNull.Value;
+        cmd.Parameters["@image_height"].Value = (object?)data.ImageHeight ?? DBNull.Value;
+        cmd.Parameters["@source_slot"].Value = data.SourceSlot;
+        cmd.Parameters["@match_source"].Value = (object?)data.MatchSource ?? DBNull.Value;
     }
 
     /// <summary>
@@ -1390,6 +1459,9 @@ GROUP BY t.name";
     /// <summary>ワールド未確定 + phash 持ち写真の対象行（マッチング target）。</summary>
     public sealed record UnknownPhashRow(string PhotoPath, string PhotoFilename, string Phash, long SourceSlot);
 
+    /// <summary>phash 補完結果の一括更新行。</summary>
+    public sealed record PhotoPhashUpdate(string PhotoPath, string Phash);
+
     /// <summary>
     /// PDQ 比較の参照側（既にワールド情報が確定している写真）を返す。
     /// excludePhotoPath: 単一写真の類似探索時、その写真自身を結果から除外したいときに指定。
@@ -1585,6 +1657,46 @@ GROUP BY t.name";
         catch (Exception ex)
         {
             AppLogger.Error($"AlpheratzDb.UpdatePhotoPhashAsync: threw: {ex}");
+            throw;
+        }
+    }
+
+    /// <summary>計算済み phash をトランザクション内でまとめて保存する。</summary>
+    public Task UpdatePhotoPhashesAsync(IReadOnlyList<PhotoPhashUpdate> updates, CancellationToken ct = default)
+    {
+        AppLogger.Trace($"AlpheratzDb.UpdatePhotoPhashesAsync: enter count={updates.Count}");
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            if (updates.Count == 0)
+            {
+                AppLogger.Trace("AlpheratzDb.UpdatePhotoPhashesAsync: exit (empty)");
+                return Task.CompletedTask;
+            }
+
+            using var conn = OpenConnection();
+            using var tx = conn.BeginTransaction();
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = @"UPDATE photos SET phash = @phash WHERE photo_path = @photo_path";
+            var phashParam = cmd.Parameters.Add("@phash", SqliteType.Text);
+            var pathParam = cmd.Parameters.Add("@photo_path", SqliteType.Text);
+
+            foreach (var update in updates)
+            {
+                ct.ThrowIfCancellationRequested();
+                phashParam.Value = update.Phash;
+                pathParam.Value = update.PhotoPath;
+                cmd.ExecuteNonQuery();
+            }
+
+            tx.Commit();
+            AppLogger.Trace("AlpheratzDb.UpdatePhotoPhashesAsync: exit");
+            return Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"AlpheratzDb.UpdatePhotoPhashesAsync: threw: {ex}");
             throw;
         }
     }

@@ -91,8 +91,8 @@ public sealed class ImagingIoBehaviorTests : IDisposable
             Assert.Equal(gridThumb, gridThumbAgain);
             Assert.True(File.Exists(gridThumb));
             Assert.True(File.Exists(displayThumb));
-            Assert.EndsWith(".thumb.grid.v3.jpg", gridThumb);
-            Assert.EndsWith(".thumb.display.v2.jpg", displayThumb);
+            Assert.EndsWith(".thumb.grid-512.jpg", gridThumb);
+            Assert.EndsWith(".thumb.display-514.jpg", displayThumb);
             Assert.True(new FileInfo(gridThumb).Length > 0);
             Assert.True(new FileInfo(displayThumb).Length > 0);
         }

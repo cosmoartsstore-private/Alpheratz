@@ -181,6 +181,7 @@ public sealed partial class PhotoGridItemsView : UserControl
         wrapGrid.ItemWidth = layout.ItemWidth;
         wrapGrid.ItemHeight = layout.ItemHeight;
         wrapGrid.MaximumRowsOrColumns = layout.Columns;
+        PhotoItems.Opacity = 1;
         // 既に実体化済みのカードの shimmer ハイライト幅も新カード幅に合わせて更新する。
         RefreshActiveShimmerSizes(PhotoItems);
     }
@@ -245,34 +246,34 @@ public sealed partial class PhotoGridItemsView : UserControl
         catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.PhotoItems_ItemClick: threw: {ex}"); }
     }
 
-    // DataTemplate 内のお気に入りボタンに、現在カード用のクリック処理を渡す。
-    private void FavoriteStar_Loaded(object sender, RoutedEventArgs e)
+    // DataTemplate 内のお気に入りバッジに、現在カード用のクリック処理を渡す。
+    private void FavoriteBadge_Loaded(object sender, RoutedEventArgs e)
     {
         try
         {
-            WireFavoriteStar(sender as AnimatedFavoriteStar);
+            WireFavoriteBadge(sender as FavoriteCornerBadge);
         }
-        catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.FavoriteStar_Loaded: threw: {ex}"); }
+        catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.FavoriteBadge_Loaded: threw: {ex}"); }
     }
 
-    /// <summary>カード再利用で DataContext が差し替わった時に、星クリックの対象写真を更新する。</summary>
-    private void FavoriteStar_DataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
+    /// <summary>カード再利用で DataContext が差し替わった時に、バッジクリックの対象写真を更新する。</summary>
+    private void FavoriteBadge_DataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
     {
         try
         {
-            WireFavoriteStar(sender as AnimatedFavoriteStar);
+            WireFavoriteBadge(sender as FavoriteCornerBadge);
         }
-        catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.FavoriteStar_DataContextChanged: threw: {ex}"); }
+        catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.FavoriteBadge_DataContextChanged: threw: {ex}"); }
     }
 
-    /// <summary>お気に入り星を現在の PhotoGridItem に結線する。対象が無ければクリックを無効化する。</summary>
-    private void WireFavoriteStar(AnimatedFavoriteStar? star)
+    /// <summary>お気に入りバッジを現在の PhotoGridItem に結線する。対象が無ければクリックを無効化する。</summary>
+    private void WireFavoriteBadge(FavoriteCornerBadge? badge)
     {
-        if (star is null) return;
-        if (star.DataContext is PhotoGridItem item)
-            star.OnClick = () => OnFavoriteClicked?.Invoke(item);
+        if (badge is null) return;
+        if (badge.DataContext is PhotoGridItem item)
+            badge.OnClick = () => OnFavoriteClicked?.Invoke(item);
         else
-            star.OnClick = null;
+            badge.OnClick = null;
     }
 
     // スクロール位置、終端接近、先頭表示インデックスを親側へ通知する。

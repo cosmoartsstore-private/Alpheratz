@@ -64,11 +64,74 @@ public sealed class SettingsPageLogicTests
     public void TemplateCard_ReturnsThemeKeysForActiveAndRestCards()
     {
         Assert.Equal(
-            new TemplateCardDisplay("使用中", "APrimary", "ASurfaceSoft", "APrimary", "AText"),
+            new TemplateCardDisplay("使用中", "APrimary", "ASurface", "APrimary", "AText"),
             SettingsPageLogic.TemplateCard(true));
         Assert.Equal(
-            new TemplateCardDisplay("テンプレート", "ABorder", "ASurfaceSoft", "ATextDim", "AText"),
+            new TemplateCardDisplay("テンプレート", "ABorder", "ASurface", "ATextDim", "AText"),
             SettingsPageLogic.TemplateCard(false));
+    }
+
+    /// <summary>単一テーマボタンが現在テーマ名と次の切替先を返すことを確認する。</summary>
+    [Fact]
+    public void ThemeButtonHelpers_ReturnCurrentLabelAndNextMode()
+    {
+        Assert.Equal("ライト", SettingsPageLogic.ThemeButtonText(isDark: false));
+        Assert.Equal("ダーク", SettingsPageLogic.ThemeButtonText(isDark: true));
+        Assert.Contains("ダーク", SettingsPageLogic.ThemeButtonTooltip(isDark: false));
+        Assert.Contains("ライト", SettingsPageLogic.ThemeButtonTooltip(isDark: true));
+        Assert.True(SettingsPageLogic.NextThemeIsDark(isDark: false));
+        Assert.False(SettingsPageLogic.NextThemeIsDark(isDark: true));
+    }
+
+    /// <summary>ワールド分析が使用可能なときは進捗表示を隠す。</summary>
+    [Fact]
+    public void WorldAnalysisProgress_HidesWhenAnalysisCanStart()
+    {
+        Assert.Equal(
+            WorldAnalysisProgressDisplay.Hidden,
+            SettingsPageLogic.WorldAnalysisProgress(
+                done: 10,
+                total: 10,
+                current: null,
+                isRunning: false,
+                canStartWorldAnalysis: true));
+    }
+
+    /// <summary>PDQ 総数が未確定の待機中は不定進行を表示する。</summary>
+    [Fact]
+    public void WorldAnalysisProgress_UsesIndeterminateStateBeforeTotalIsKnown()
+    {
+        var display = SettingsPageLogic.WorldAnalysisProgress(
+            done: 0,
+            total: 0,
+            current: null,
+            isRunning: true,
+            canStartWorldAnalysis: false);
+
+        Assert.True(display.ProgressVisible);
+        Assert.True(display.IsIndeterminate);
+        Assert.Equal(1, display.Maximum);
+        Assert.Equal(0, display.Value);
+        Assert.Contains("開始", display.SummaryText);
+    }
+
+    /// <summary>PDQ 総数がある場合は処理済み枚数、割合、現在ファイル名を表示する。</summary>
+    [Fact]
+    public void WorldAnalysisProgress_ReturnsDeterminateCountAndCurrentFile()
+    {
+        var display = SettingsPageLogic.WorldAnalysisProgress(
+            done: 12,
+            total: 30,
+            current: "avatar.png",
+            isRunning: true,
+            canStartWorldAnalysis: false);
+
+        Assert.True(display.ProgressVisible);
+        Assert.False(display.IsIndeterminate);
+        Assert.Equal(30, display.Maximum);
+        Assert.Equal(12, display.Value);
+        Assert.Equal("類似画像解析 12/30 枚 (40%)", display.SummaryText);
+        Assert.Equal("処理中: avatar.png", display.DetailText);
     }
 
     /// <summary>外部遷移やサイドバーで扱う設定セクション ID を固定する。</summary>
@@ -113,11 +176,7 @@ public sealed class SettingsPageLogicTests
                 "C:/app/Alpheratz.exe",
                 Path.Combine("C:/app", "Assets", "icon.png")),
             SettingsPageLogic.StellaRecordRegistration(true, "C:/app/Alpheratz.exe", "C:/app"));
-        Assert.Equal(
-            new StellaRecordRegistrationRequest(
-                "",
-                Path.Combine("C:/app", "Assets", "icon.png")),
-            SettingsPageLogic.StellaRecordRegistration(true, null, "C:/app"));
+        Assert.Null(SettingsPageLogic.StellaRecordRegistration(true, null, "C:/app"));
     }
 
     /// <summary>

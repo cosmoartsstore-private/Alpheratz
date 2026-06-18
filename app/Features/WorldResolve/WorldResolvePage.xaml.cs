@@ -44,12 +44,13 @@ public sealed partial class WorldResolvePage : Page
     private void SyncUi()
     {
         LoadingOverlay.Visibility = viewModel.IsLoading ? Visibility.Visible : Visibility.Collapsed;
+        SyncLoadingProgress();
 
         var hasItems = viewModel.Items.Count > 0;
         ItemsListView.Visibility = hasItems && !viewModel.IsLoading ? Visibility.Visible : Visibility.Collapsed;
         EmptyState.Visibility = !hasItems && !viewModel.IsLoading ? Visibility.Visible : Visibility.Collapsed;
 
-        StatusText.Text = viewModel.IsLoading ? "検索中..."
+        StatusText.Text = viewModel.IsLoading ? FormatLoadingStatus()
             : $"{viewModel.Items.Count} 件の未解決写真";
         ApplyCountText.Text = $"{viewModel.ApplyCount} 件を適用予定";
         ApplyConfirmedBtn.Content = $"確認した {viewModel.ApplyCount} 件を適用";
@@ -73,6 +74,23 @@ public sealed partial class WorldResolvePage : Page
             CandidatePickerView.Visibility = Visibility.Collapsed;
         }
     }
+
+    // 対象件数が分かるまでは不定バー、取得後は処理済み件数で決定バーに切り替える。
+    private void SyncLoadingProgress()
+    {
+        var total = viewModel.SearchProgressTotal;
+        var processed = Math.Clamp(viewModel.SearchProgressProcessed, 0, Math.Max(total, 0));
+        LoadingProgressBar.IsIndeterminate = total <= 0;
+        LoadingProgressBar.Maximum = Math.Max(total, 1);
+        LoadingProgressBar.Value = total > 0 ? processed : 0;
+        LoadingProgressTitle.Text = total > 0 ? "候補を検索中..." : "対象写真を確認中...";
+        LoadingProgressText.Text = viewModel.SearchProgressText;
+    }
+
+    private string FormatLoadingStatus()
+        => viewModel.SearchProgressTotal > 0
+            ? $"候補を検索中... {viewModel.SearchProgressText}"
+            : viewModel.SearchProgressText;
 
     // 候補ピッカーで比較対象として表示する写真のサムネイルを差し替える。
     private void SetPickerTargetImage(string? path)

@@ -272,6 +272,7 @@ public sealed partial class GalleryPage : Page
             masonry.SetPhotos(viewModel.photosState.photos);
             masonry.OnPhotoTapped = photo => viewModel.handlePhotoActivate(
                 new PhotoGridItem { Photo = photo }, IsShiftKeyDown(), p => OnSelectPhoto?.Invoke(p));
+            masonry.OnFavoriteClicked = photo => _ = viewModel.toggleFavorite(photo.PhotoPath, photo.IsFavorite);
             masonry.OnThumbnailsNeeded = items => viewModel.photosState.requestVisibleThumbnails(items);
             masonry.OnFirstVisibleIndexChanged = idx => SyncMonthNavToIndex(idx);
         }
@@ -564,7 +565,7 @@ public sealed partial class GalleryPage : Page
             var tags = pendingBulkTags.ToArray();
             CloseBulkTagConfirmation();
             if (tags.Length > 0)
-                await viewModel.bulkAddTags(tags).ConfigureAwait(false);
+                await viewModel.bulkAddTags(tags);
         }
         catch (Exception ex)
         {
@@ -652,6 +653,7 @@ public sealed partial class GalleryPage : Page
         if (GridStage.MasonryViewControlRef is { } masonry)
         {
             masonry.OnPhotoTapped = null;
+            masonry.OnFavoriteClicked = null;
             masonry.OnThumbnailsNeeded = null;
             masonry.OnFirstVisibleIndexChanged = null;
         }

@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using Alpheratz.Features.Template;
 using Windows.System;
@@ -35,8 +36,62 @@ internal static class SettingsPageLogic
     /// <summary>テンプレートカードの状態ラベルとテーマリソースキーを返す。</summary>
     public static TemplateCardDisplay TemplateCard(bool isActive)
         => isActive
-            ? new TemplateCardDisplay("使用中", "APrimary", "ASurfaceSoft", "APrimary", "AText")
-            : new TemplateCardDisplay("テンプレート", "ABorder", "ASurfaceSoft", "ATextDim", "AText");
+            ? new TemplateCardDisplay("使用中", "APrimary", "ASurface", "APrimary", "AText")
+            : new TemplateCardDisplay("テンプレート", "ABorder", "ASurface", "ATextDim", "AText");
+
+    /// <summary>テーマボタンに表示する現在テーマ名を返す。</summary>
+    public static string ThemeButtonText(bool isDark) => isDark ? "ダーク" : "ライト";
+
+    /// <summary>テーマボタンの補助説明に表示する次の切替先を返す。</summary>
+    public static string ThemeButtonTooltip(bool isDark)
+        => isDark ? "クリックでライトに切り替えます" : "クリックでダークに切り替えます";
+
+    /// <summary>現在テーマから次に保存する Dark 状態を返す。</summary>
+    public static bool NextThemeIsDark(bool isDark) => !isDark;
+
+    /// <summary>ワールド分析が使用可能になるまでの PDQ 解析進捗表示を返す。</summary>
+    public static WorldAnalysisProgressDisplay WorldAnalysisProgress(
+        int done,
+        int total,
+        string? current,
+        bool isRunning,
+        bool canStartWorldAnalysis)
+    {
+        if (canStartWorldAnalysis)
+            return WorldAnalysisProgressDisplay.Hidden;
+
+        if (total <= 0)
+        {
+            var summary = isRunning
+                ? "類似画像解析を開始しています。"
+                : "類似画像解析の状態を確認しています。";
+            return new WorldAnalysisProgressDisplay(
+                ProgressVisible: true,
+                IsIndeterminate: true,
+                Maximum: 1,
+                Value: 0,
+                SummaryText: summary,
+                DetailText: "解析が完了すると分析を開始できます。");
+        }
+
+        var safeDone = Math.Clamp(done, 0, total);
+        var percent = (int)Math.Round(safeDone * 100.0 / total);
+        var detail = !string.IsNullOrWhiteSpace(current)
+            ? $"処理中: {current}"
+            : isRunning
+                ? "解析中です。"
+                : safeDone <= 0
+                    ? "解析開始を待っています。"
+                    : "解析完了を待っています。";
+
+        return new WorldAnalysisProgressDisplay(
+            ProgressVisible: true,
+            IsIndeterminate: false,
+            Maximum: total,
+            Value: safeDone,
+            SummaryText: $"類似画像解析 {safeDone}/{total} 枚 ({percent}%)",
+            DetailText: detail);
+    }
 
     /// <summary>設定ページで表示できるセクション ID かを返す。</summary>
     public static bool IsKnownSection(string? section)
@@ -49,8 +104,9 @@ internal static class SettingsPageLogic
         string baseDirectory)
     {
         if (!stellaRecordAvailable) return null;
+        if (string.IsNullOrWhiteSpace(processPath)) return null;
         return new StellaRecordRegistrationRequest(
-            processPath ?? string.Empty,
+            processPath,
             Path.Combine(baseDirectory, "Assets", "icon.png"));
     }
 
@@ -81,6 +137,24 @@ internal sealed record TemplateCardDisplay(
     string BackgroundKey,
     string LabelForegroundKey,
     string BodyForegroundKey);
+
+/// <summary>ワールド分析開始前の PDQ 解析進捗表示。</summary>
+internal sealed record WorldAnalysisProgressDisplay(
+    bool ProgressVisible,
+    bool IsIndeterminate,
+    double Maximum,
+    double Value,
+    string SummaryText,
+    string DetailText)
+{
+    public static WorldAnalysisProgressDisplay Hidden { get; } = new(
+        ProgressVisible: false,
+        IsIndeterminate: false,
+        Maximum: 1,
+        Value: 0,
+        SummaryText: string.Empty,
+        DetailText: string.Empty);
+}
 
 /// <summary>StellaRecord ランチャー登録に渡すパス。</summary>
 internal sealed record StellaRecordRegistrationRequest(string ExePath, string IconPath);

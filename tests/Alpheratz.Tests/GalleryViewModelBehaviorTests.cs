@@ -144,6 +144,24 @@ public sealed class GalleryViewModelBehaviorTests : IDisposable
     }
 
     /// <summary>
+    /// 写真詳細モーダルからの複数タグ追加が、DB と表示中 PhotoThumbnailItem の両方へ反映されることを確認する。
+    /// </summary>
+    [Fact]
+    public async Task AddTags_AddsMultipleTagsAndUpdatesVisiblePhotoItem()
+    {
+        await db.UpsertPhotoAsync(Photo("/photo/a.jpg", "a.jpg", "2026-06-05 10:00:00"));
+        var item = Thumb("/photo/a.jpg", "a.jpg");
+        viewModel.photosState.setPhotos([item], autoGenerateThumbnails: false);
+        viewModel.photosState.rebuildDisplayItems(GroupingMode.none);
+
+        await viewModel.addTags("/photo/a.jpg", [" night ", "city", "Night"]);
+        var tags = await db.GetPhotoTagsAsync("/photo/a.jpg");
+
+        Assert.Equal(["city", "night"], tags);
+        Assert.Equal(["city", "night"], item.Tags);
+    }
+
+    /// <summary>
     /// タグ追加が空文字、長すぎるタグ、重複タグを保存前に弾くことを確認する。
     ///
     /// addTag は DB へ渡す前に入力を正規化し、空・最大長超過・既に付与済みのタグを no-op にする。

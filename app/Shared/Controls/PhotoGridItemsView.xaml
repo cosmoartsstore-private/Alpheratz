@@ -11,6 +11,7 @@
               IsItemClickEnabled="True"
               ItemClick="PhotoItems_ItemClick"
               SelectionMode="None"
+              Opacity="0"
               Padding="10"
               ScrollViewer.VerticalScrollBarVisibility="Hidden"
               ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -27,10 +28,24 @@
                                Loaded="PhotoItemsWrapGrid_Loaded"/>
             </ItemsPanelTemplate>
         </GridView.ItemsPanel>
+        <GridView.ItemContainerStyle>
+            <Style TargetType="GridViewItem">
+                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="Margin" Value="0"/>
+                <Setter Property="MinWidth" Value="0"/>
+                <Setter Property="MinHeight" Value="0"/>
+            </Style>
+        </GridView.ItemContainerStyle>
         <GridView.ItemTemplate>
             <DataTemplate>
-                <Grid Margin="4,4,4,6">
+                <Grid Margin="4,4,4,6"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Stretch">
                     <Border Style="{StaticResource PhotoCardBorderStyle}"
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Stretch"
                             PointerEntered="CardBorder_PointerEntered"
                             PointerExited="CardBorder_PointerExited"
                             DataContextChanged="CardBorder_DataContextChanged">
@@ -80,18 +95,6 @@
                                            Visibility="Collapsed"/>
 
                                 <!--
-                                    複数選択モードで選択された写真には solid なアクセント枠 + チェックバッジを表示。
-                                    写真を覆う色面は使わず、2px の APrimary リングで示す。
-                                    PhotoThumbnailItem.IsSelected は GallerySelectionState の選択パスと
-                                    表示写真の再同期で更新する。
-                                -->
-                                <Border Background="{ThemeResource APhotoSelectionTint}"
-                                        BorderBrush="{ThemeResource APrimary}"
-                                        BorderThickness="2"
-                                        CornerRadius="4"
-                                        Visibility="{Binding Photo.IsSelected, Converter={StaticResource BoolToVisibilityConverter}}"/>
-
-                                <!--
                                     GroupCount バッジ。ADarkOverlay の濃い面色で
                                     画像の上に乗っても可読性を確保しつつ控えめな印象に。
                                     明るい単色面を避け、写真の視認性を優先する。
@@ -108,32 +111,14 @@
                                                HorizontalAlignment="Center"/>
                                 </Border>
 
-                                <!--
-                                    選択チェック。角丸スクエアで写真選択の状態を示す。
-                                -->
-                                <Border HorizontalAlignment="Right" VerticalAlignment="Top"
-                                        Margin="0,6,6,0"
-                                        Width="22" Height="22"
-                                        CornerRadius="8"
-                                        Background="{ThemeResource APrimary}"
-                                        BorderBrush="{ThemeResource APhotoSelectionBadgeBorder}"
-                                        BorderThickness="0"
-                                        Visibility="{Binding Photo.IsSelected, Converter={StaticResource BoolToVisibilityConverter}}">
-                                    <controls:AppIcon IconName="check"
-                                                      IconSize="13"
-                                                      Foreground="White"
-                                                      HorizontalAlignment="Center"
-                                                      VerticalAlignment="Center"/>
-                                </Border>
-
-                                <controls:AnimatedFavoriteStar HorizontalAlignment="Right"
-                                                               VerticalAlignment="Bottom"
-                                                               Margin="0,0,9,9"
-                                                               Width="30" Height="30"
-                                                               Liked="{Binding Photo.IsFavorite}"
-                                                               Interactive="True"
-                                                               Loaded="FavoriteStar_Loaded"
-                                                               DataContextChanged="FavoriteStar_DataContextChanged"/>
+                                <controls:FavoriteCornerBadge HorizontalAlignment="Right"
+                                                              VerticalAlignment="Top"
+                                                              BadgeSize="36"
+                                                              IconSize="12"
+                                                              Liked="{Binding Photo.IsFavorite}"
+                                                              Interactive="True"
+                                                              Loaded="FavoriteBadge_Loaded"
+                                                              DataContextChanged="FavoriteBadge_DataContextChanged"/>
                             </Grid>
 
                             <StackPanel Grid.Row="1" Margin="11,8,11,8" Spacing="2"
@@ -149,6 +134,27 @@
                                            Foreground="{ThemeResource ATextDim}"
                                            TextTrimming="CharacterEllipsis"/>
                             </StackPanel>
+
+                            <!--
+                                複数選択の枠は画像だけでなく、タイトル/日時を含むカード全体を囲む。
+                                PhotoThumbnailItem.IsSelected は GallerySelectionState の選択パスと
+                                表示写真の再同期で更新する。
+                            -->
+                            <Border Grid.RowSpan="2"
+                                    Background="{ThemeResource APhotoSelectionTint}"
+                                    BorderBrush="{ThemeResource APhotoSelectionGlow}"
+                                    BorderThickness="6"
+                                    CornerRadius="7"
+                                    Opacity="0.7"
+                                    IsHitTestVisible="False"
+                                    Visibility="{Binding Photo.IsSelected, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                            <Border Grid.RowSpan="2"
+                                    Background="Transparent"
+                                    BorderBrush="{ThemeResource APhotoSelectionRing}"
+                                    BorderThickness="3"
+                                    CornerRadius="5"
+                                    IsHitTestVisible="False"
+                                    Visibility="{Binding Photo.IsSelected, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
                         </Grid>
                     </Border>

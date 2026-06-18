@@ -17,12 +17,14 @@ These notes prevent future sessions from redoing already-audited recovery work.
 - `openWorldLinkOnPost` / `OpenWorldLinkOnPost` is the persisted setting for opening the selected photo's VRChat world link when launching the tweet/post intent.
 - `AppLogger` intentionally persists only `Fatal` by default. `Error`, `Warn`, `Info`, and `Trace` are opt-in through `ALPHERATZ_VERBOSE_LOGS=1`; the queue is bounded and `info.log` rotates at 1MB to avoid user storage growth from repeated sync/media failures.
 - Settings modal layout is intentionally single-column in the order General, Tag master, Template, Credits, with `MaxWidth=760`.
+- Credits profile avatar is only a profile image. Do not add it back to the material-credit list; keep the code comment near the avatar image.
 - `MVVMTK0045` is suppressed in `app/Alpheratz.Frontend.csproj` to keep build/test output usable. Do not reintroduce warning noise unless doing the full CommunityToolkit source-generator migration.
 - `TextBlock` default `IsTextSelectionEnabled` is set to `False` to avoid text boxes looking like focused inputs unless selection is explicitly needed.
 - World grouping is normalized by `GalleryPhotosStateLogic.BuildWorldGroupKey`: null, empty, and whitespace-only names are all grouped as the unknown-world group.
 - Group drill-down should prefer preserved `GroupPhotos` from the clicked card. Use DB fallback only when `GroupPhotos` is absent.
 - Favorite-star handlers must also run on `DataContextChanged`, not only `Loaded`, because virtualized cards are reused.
 - The favorite toggle argument name `currentIsFavorite` is intentional: it represents the current state before calculating the next state.
+- 2026-06-13 XAML startup crashes were traced to unpackaged self-contained XBF/PRI layout and custom WinUI startup, not sync interference. Read `.claude/xaml-packaging-notes.md` before changing `App.xaml`, `Program.cs`, `Alpheratz.Frontend.csproj`, or `BuildWorks/scripts/publish-app-release.ps1`.
 
 ## Known Follow-Up Work
 

@@ -35,6 +35,7 @@ public sealed class PhotoModalPageLogicTests
     [Theory]
     [InlineData(nameof(PhotoThumbnailItem.Tags), true)]
     [InlineData(nameof(PhotoThumbnailItem.WorldName), true)]
+    [InlineData(nameof(PhotoThumbnailItem.WorldId), true)]
     [InlineData(nameof(PhotoThumbnailItem.MatchSource), true)]
     [InlineData(nameof(PhotoThumbnailItem.EffectiveDisplayPath), true)]
     [InlineData(nameof(PhotoThumbnailItem.IsFavorite), false)]
@@ -75,6 +76,16 @@ public sealed class PhotoModalPageLogicTests
         Assert.Equal(PhotoModalPageLogic.UnknownWorldName, PhotoModalPageLogic.WorldNameText(null));
         Assert.Equal(PhotoModalPageLogic.UnknownWorldName, PhotoModalPageLogic.WorldNameText(""));
         Assert.Equal("Moonlight Station", PhotoModalPageLogic.WorldNameText("Moonlight Station"));
+
+        Assert.Equal(
+            new WorldActionDisplay(false, PhotoModalPageLogic.WorldActionDisabledLabel, PhotoModalPageLogic.WorldActionDisabledTooltip, "ATextDisabled", 0.42),
+            PhotoModalPageLogic.WorldAction(null));
+        Assert.Equal(
+            new WorldActionDisplay(false, PhotoModalPageLogic.WorldActionDisabledLabel, PhotoModalPageLogic.WorldActionDisabledTooltip, "ATextDisabled", 0.42),
+            PhotoModalPageLogic.WorldAction(""));
+        Assert.Equal(
+            new WorldActionDisplay(true, PhotoModalPageLogic.WorldActionEnabledLabel, PhotoModalPageLogic.WorldActionEnabledTooltip, "ATextFaint", 1.0),
+            PhotoModalPageLogic.WorldAction("wrld_123"));
 
         Assert.Equal(new MatchSourceDisplay(true, "archive ログから補完"),
             PhotoModalPageLogic.MatchSource("polaris_archive"));

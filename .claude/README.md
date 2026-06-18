@@ -19,4 +19,5 @@ Read `C:\Users\kaimu\.codex\AGENTS.md` first for common rules. This file only in
 | `../AGENT.md` | Codex | Codex entry point and document router |
 | `../CLAUDE.md` | Claude | Claude entry point and bridge to Codex global rules |
 | `.claude/agent-notes.md` | Codex, Claude | Completed decisions, do-not-rework notes, follow-ups, and Alpheratz work rules moved from the old root `AGENT.md` |
+| `.claude/xaml-packaging-notes.md` | Codex, Claude | NSIS/self-contained WinUI XAML startup failure cause, countermeasures, and verification checklist |
 | `.claude/settings.json` | Claude | Claude local settings |

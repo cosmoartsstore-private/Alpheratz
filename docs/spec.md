@@ -209,6 +209,7 @@ xUnit で DB、スキャナ、PDQ、ViewModel、UI ロジック、外部連携�
 - Polaris archive が存在する場合、`output_log_*.txt` から入退室時刻とワールド名を読み込む。
 - 撮影時刻が訪問区間に一致する写真へ `match_source = polaris_archive` を付与してワールド名を保存する。
 - PDQ 解決は自動確定せず、WorldResolve UI の確認操作を唯一の確定経路にする。
+- WorldResolve UI は PDQ 候補探索中に対象写真数ベースの進捗を表示する。
 
 ### Settings
 
@@ -224,7 +225,7 @@ xUnit で DB、スキャナ、PDQ、ViewModel、UI ロジック、外部連携�
 #### Behavior
 
 - 写真フォルダ、2nd 写真フォルダ、テーマ、表示モード、起動設定、テンプレートを保存する。
-- StellaRecord が利用可能な場合、`apps` テーブルへ Alpheratz を登録する。
+- StellaRecord が利用可能な場合、`apps` テーブルへ `Alpheratz` を登録する。説明は「VRChat写真ギャラリー化・ワールドリンク展開サポートアプリ」。
 - Settings は Shell の中位モーダルとして表示する。
 
 ### Bootstrap
@@ -314,7 +315,7 @@ WAL により、スキャン書き込み中も UI の SELECT がブロックさ�
 | Area | Characteristic |
 | --- | --- |
 | Gallery | 表示対象のサムネイルだけを要求し、一覧全体の画像読み込みを避ける |
-| Scan | 既存 DB 情報を先に読み、再スキャン時の不要更新を抑制する |
+| Scan | 既存 DB 情報を先に読み、再スキャン時の不要更新を抑制する。更新対象は小さなバッチにまとめて SQLite へ書き込む |
 | PDQ | 未計算写真のみ対象にし、`phash_version` で再計算条件を管理する |
 | Archive logs | 1 行の上限を 64 KiB に制限し、巨大行でメモリを使い切らない |
 
@@ -363,7 +364,8 @@ WAL により、スキャン書き込み中も UI の SELECT がブロックさ�
 | `HKCU\Software\CosmoArtsStore\Alpheratz` | `InstallLocation` | installer が書き込むインストール先 |
 | `HKCU\Software\CosmoArtsStore\Alpheratz` | `RuntimeLocation` | WinUI 本体配置先 |
 | `HKCU\Software\CosmoArtsStore\Polaris` | `InstallLocation` | Polaris archive 解決時に参照 |
-| `HKCU\Software\CosmoArtsStore\StellaRecord` | `DbPath` | StellaRecord 登録時に参照 |
+| `HKCU\Software\CosmoArtsStore\StellaRecord` | `InstallLocation` | StellaRecord 登録時に `Data\db\stellarecord.db` を優先参照 |
+| `HKCU\Software\CosmoArtsStore\StellaRecord` | `DbPath` | `InstallLocation` から DB を解決できない場合の fallback |
 
 ### LocalStorage
 

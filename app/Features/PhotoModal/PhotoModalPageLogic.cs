@@ -18,6 +18,10 @@ internal static class PhotoModalPageLogic
     public const long NavigationBurstResetMs = 450;
     public const string UnknownWorldName = "ワールド不明";
     public const string BottomActionHoverBrushKey = "ASurfaceHover";
+    public const string WorldActionEnabledLabel = "ワールド";
+    public const string WorldActionDisabledLabel = "未取得";
+    public const string WorldActionEnabledTooltip = "ワールドリンクを開く";
+    public const string WorldActionDisabledTooltip = "ワールドID未取得のため開けません";
 
     /// <summary>SelectedPhoto の変更だけを、モーダル表示全体の再同期対象として扱う。</summary>
     public static bool ShouldSyncForPropertyChanged(string? propertyName)
@@ -27,6 +31,7 @@ internal static class PhotoModalPageLogic
     public static bool ShouldSyncForSelectedPhotoProperty(string? propertyName)
         => propertyName is nameof(PhotoThumbnailItem.Tags)
             or nameof(PhotoThumbnailItem.WorldName)
+            or nameof(PhotoThumbnailItem.WorldId)
             or nameof(PhotoThumbnailItem.MatchSource)
             or nameof(PhotoThumbnailItem.EffectiveDisplayPath);
 
@@ -42,6 +47,22 @@ internal static class PhotoModalPageLogic
     /// <summary>写真のワールド名が空の場合に、モーダル用の不明表示へ置き換える。</summary>
     public static string WorldNameText(string? worldName)
         => string.IsNullOrEmpty(worldName) ? UnknownWorldName : worldName;
+
+    /// <summary>ワールドリンクボタンの有効状態と表示を、world_id の有無から返す。</summary>
+    public static WorldActionDisplay WorldAction(string? worldId)
+        => string.IsNullOrWhiteSpace(worldId)
+            ? new WorldActionDisplay(
+                Enabled: false,
+                Label: WorldActionDisabledLabel,
+                Tooltip: WorldActionDisabledTooltip,
+                ForegroundKey: "ATextDisabled",
+                Opacity: 0.42)
+            : new WorldActionDisplay(
+                Enabled: true,
+                Label: WorldActionEnabledLabel,
+                Tooltip: WorldActionEnabledTooltip,
+                ForegroundKey: "ATextFaint",
+                Opacity: 1.0);
 
     /// <summary>match_source から補完元チップの表示可否とラベルを返す。</summary>
     public static MatchSourceDisplay MatchSource(string? source)
@@ -141,6 +162,9 @@ internal enum PhotoModalNavigationDirection
 
 /// <summary>match_source 補完元チップの表示状態。</summary>
 internal sealed record MatchSourceDisplay(bool Visible, string? Label);
+
+/// <summary>ワールドリンクボタンの表示状態。</summary>
+internal sealed record WorldActionDisplay(bool Enabled, string Label, string Tooltip, string ForegroundKey, double Opacity);
 
 /// <summary>タグ追加欄の表示状態と追加可能タグ数。</summary>
 internal sealed record TagAddDisplay(bool HasAvailable, int AvailableCount);

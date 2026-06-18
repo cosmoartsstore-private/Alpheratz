@@ -103,6 +103,8 @@ public sealed class ShellViewModelBehaviorTests
 
         await harness.ViewModel.initialize();
         Assert.False(harness.ViewModel.CanStartWorldResolve);
+        Assert.Equal(1, harness.ViewModel.PdqProgress.total);
+        Assert.Equal(0, harness.ViewModel.PdqProgress.done);
 
         await harness.Db.UpdatePhotoPhashAsync("/photo/pending.jpg", new string('0', 64));
         await harness.EventBus.PublishAsync(EventNames.PhashComplete, new object());
@@ -159,16 +161,18 @@ public sealed class ShellViewModelBehaviorTests
     ///
     /// フォルダ変更はユーザー確認を挟むため、promptFolderChange は「どのスロットをどのパスに変えるか」だけを保持する。
     /// 一方 executeResetFolder は DB キャッシュを削除し、設定ファイル側のパスも空にする。
-    /// ここでは secondary を空にしたまま primary だけをリセットし、後続スキャンを起動しない分岐で保存結果を検証する。
+    /// ここでは secondary が残っていても primary リセットだけで後続スキャンを起動しないことを検証する。
     /// </summary>
     [Fact]
     public async Task FolderPromptAndReset_UpdatePendingStateSettingsAndDatabase()
     {
         await using var harness = ShellTestHarness.Create();
+        var secondaryFolder = Path.Combine(harness.TempDir, "secondary");
+        Directory.CreateDirectory(secondaryFolder);
         harness.Config.SaveSetting(new AlpheratzSetting
         {
             PhotoFolderPath = "F:/old-primary",
-            SecondaryPhotoFolderPath = "",
+            SecondaryPhotoFolderPath = secondaryFolder,
         });
         await harness.Db.UpsertPhotoAsync(new PhotoUpsertData
         {
@@ -195,7 +199,9 @@ public sealed class ShellViewModelBehaviorTests
         Assert.False(harness.ViewModel.IsApplyingFolderChange);
         Assert.Null(harness.ViewModel.PendingResetRequest);
         Assert.Equal("", saved.PhotoFolderPath);
+        Assert.Equal(secondaryFolder, saved.SecondaryPhotoFolderPath);
         Assert.Equal("", harness.ViewModel.PhotoFolderPath);
+        Assert.Equal("idle", harness.ViewModel.ScanStatus);
         Assert.Null(deletedPhoto);
         Assert.Contains(harness.ToastService.toasts, toast => toast.Msg.Contains("リセットしました"));
     }

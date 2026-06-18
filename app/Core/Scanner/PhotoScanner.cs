@@ -16,6 +16,8 @@ namespace Alpheratz.Core.Scanner;
 public sealed partial class PhotoScanner
 {
     private const int MaxItxtSize = 4 * 1024 * 1024;
+    private const int ScanDbBatchSize = 500;
+    private const int ScanProgressInterval = 100;
     // VRChat の output_log 1 行の上限。ここを超える行は破損または異常データとみなして
     // Regex を走らせずに打ち切る。デフォルト 64 KiB。
     private const int MaxLogLineLength = 64 * 1024;
@@ -176,6 +178,7 @@ public sealed partial class PhotoScanner
         var total = candidates.Count;
         await _bus.PublishAsync(EventNames.ScanProgress, new ScanProgressDto { processed = 0, total = total, current_world = $"{total} 件の更新対象を確認しました", phase = "scan" }).ConfigureAwait(false);
 
+        var pendingUpserts = new List<PhotoUpsertData>(ScanDbBatchSize);
         for (var i = 0; i < candidates.Count; i++)
         {
             ct.ThrowIfCancellationRequested();
@@ -184,9 +187,14 @@ public sealed partial class PhotoScanner
             existing.TryGetValue(normalizedPath, out var ex);
 
             var photo = AnalyzePhoto(path, filename, slot, ex, kind);
-            await _db.UpsertPhotoAsync(photo, ct).ConfigureAwait(false);
+            pendingUpserts.Add(photo);
+            if (pendingUpserts.Count >= ScanDbBatchSize)
+            {
+                await _db.UpsertPhotosAsync(pendingUpserts, ct).ConfigureAwait(false);
+                pendingUpserts.Clear();
+            }
 
-            if (i % 10 == 0 || i == total - 1)
+            if (ShouldPublishScanProgress(i, total))
             {
                 await _bus.PublishAsync(EventNames.ScanProgress, new ScanProgressDto
                 {
@@ -197,8 +205,19 @@ public sealed partial class PhotoScanner
                 }).ConfigureAwait(false);
             }
         }
+        if (pendingUpserts.Count > 0)
+            await _db.UpsertPhotosAsync(pendingUpserts, ct).ConfigureAwait(false);
 
         await _bus.PublishAsync(EventNames.ScanCompleted, null).ConfigureAwait(false);
+    }
+
+    private static bool ShouldPublishScanProgress(int itemIndex, int total)
+    {
+        if (total <= 0) return false;
+        var processed = itemIndex + 1;
+        return processed == 1
+            || processed == total
+            || processed % ScanProgressInterval == 0;
     }
 
     /// <summary>1枚の写真から DB upsert 用のメタデータを組み立てる。</summary>
@@ -497,30 +516,37 @@ public sealed partial class PhotoScanner
             return;
         }
 
-        IEnumerable<string> entries;
-        try { entries = Directory.EnumerateFileSystemEntries(dir); }
+        IEnumerable<string> directories;
+        try { directories = Directory.EnumerateDirectories(dir); }
         catch (Exception ex)
         {
-            AppLogger.Warn($"ディレクトリを読み取れません [{dir}]: {ex.Message}");
+            AppLogger.Warn($"サブディレクトリを読み取れません [{dir}]: {ex.Message}");
             return;
         }
 
-        foreach (var entry in entries)
+        foreach (var entry in directories)
         {
             ct.ThrowIfCancellationRequested();
             var name = Path.GetFileName(entry);
-            if (Directory.Exists(entry))
-            {
-                if (name.StartsWith('.')) continue;
-                if (Array.Exists(SkipDirs, s => s.Equals(name, StringComparison.OrdinalIgnoreCase))) continue;
-                CollectPhotosRecursive(slot, entry, files, visitedDirs, ct);
-            }
-            else if (File.Exists(entry))
-            {
-                var ext = Path.GetExtension(entry).TrimStart('.').ToLowerInvariant();
-                if (Array.Exists(SupportedExtensions, s => s == ext))
-                    files.Add((slot, name, entry));
-            }
+            if (name.StartsWith('.')) continue;
+            if (Array.Exists(SkipDirs, s => s.Equals(name, StringComparison.OrdinalIgnoreCase))) continue;
+            CollectPhotosRecursive(slot, entry, files, visitedDirs, ct);
+        }
+
+        IEnumerable<string> fileEntries;
+        try { fileEntries = Directory.EnumerateFiles(dir); }
+        catch (Exception ex)
+        {
+            AppLogger.Warn($"ファイルを読み取れません [{dir}]: {ex.Message}");
+            return;
+        }
+
+        foreach (var entry in fileEntries)
+        {
+            ct.ThrowIfCancellationRequested();
+            var ext = Path.GetExtension(entry).TrimStart('.').ToLowerInvariant();
+            if (Array.Exists(SupportedExtensions, s => s == ext))
+                files.Add((slot, Path.GetFileName(entry), entry));
         }
     }
 

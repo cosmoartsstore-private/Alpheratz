@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Alpheratz.Core;
@@ -16,7 +17,9 @@ namespace Alpheratz.Services;
 /// </summary>
 public sealed class PhashService
 {
-    private const int BatchSize = 50;
+    private const int ChunkSize = 30;
+    private const int MaxParallelChunks = 20;
+    private const int BatchSize = ChunkSize * MaxParallelChunks;
 
     private readonly AlpheratzDb db;
     private readonly LocalEventBus eventBus;
@@ -67,49 +70,42 @@ public sealed class PhashService
             }
 
             var done = 0;
+            using var writeGate = new SemaphoreSlim(1, 1);
             while (!ct.IsCancellationRequested)
             {
                 var batch = await db.GetPendingPhashBatchAsync(BatchSize, ct).ConfigureAwait(false);
                 if (batch.Count == 0) break;
 
-                foreach (var item in batch)
+                var chunks = batch.Chunk(ChunkSize).Select(static chunk => chunk.ToArray()).ToArray();
+                await Parallel.ForEachAsync(chunks, new ParallelOptions
                 {
-                    if (ct.IsCancellationRequested) break;
+                    CancellationToken = ct,
+                    MaxDegreeOfParallelism = MaxParallelChunks,
+                }, async (chunk, token) =>
+                {
+                    var updates = new List<AlpheratzDb.PhotoPhashUpdate>(chunk.Length);
+                    foreach (var item in chunk)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        updates.Add(await BuildPhashUpdateAsync(item).ConfigureAwait(false));
+                    }
+
+                    await writeGate.WaitAsync(token).ConfigureAwait(false);
                     try
                     {
-                        var image = await PdqImageReader.ReadLumaAsync(item.PhotoPath).ConfigureAwait(false);
-                        if (image is null)
-                        {
-                            AppLogger.Warn($"PhashService: skip (unreadable) [{item.PhotoFilename}]");
-                            await MarkPhashUnreadableAsync(item.PhotoPath, ct).ConfigureAwait(false);
-                            done++;
-                            UpdateProgress(done, total, item.PhotoFilename);
-                            continue;
-                        }
-
-                        var (luma, w, h) = image.Value;
-                        var combinedHex = PdqHasher.ComputeHashVariantsHex(luma, w, h);
-                        if (string.IsNullOrEmpty(combinedHex))
-                        {
-                            AppLogger.Warn($"PhashService: skip (no hash) [{item.PhotoFilename}]");
-                            await MarkPhashUnreadableAsync(item.PhotoPath, ct).ConfigureAwait(false);
-                            done++;
-                            UpdateProgress(done, total, item.PhotoFilename);
-                            continue;
-                        }
-                        await db.UpdatePhotoPhashAsync(item.PhotoPath, combinedHex, ct).ConfigureAwait(false);
+                        await db.UpdatePhotoPhashesAsync(updates, token).ConfigureAwait(false);
                     }
-                    catch (OperationCanceledException) { throw; }
-                    catch (Exception ex)
+                    finally
                     {
-                        AppLogger.Warn($"PhashService: skip [{item.PhotoFilename}]: {ex.Message}");
-                        try { await MarkPhashUnreadableAsync(item.PhotoPath, ct).ConfigureAwait(false); }
-                        catch (OperationCanceledException) { throw; }
-                        catch (Exception markEx) { AppLogger.Warn($"PhashService: failed to mark unreadable [{item.PhotoFilename}]: {markEx.Message}"); }
+                        writeGate.Release();
                     }
-                    done++;
-                    UpdateProgress(done, total, item.PhotoFilename);
-                }
+
+                    foreach (var item in chunk)
+                    {
+                        var currentDone = Interlocked.Increment(ref done);
+                        UpdateProgress(currentDone, total, item.PhotoFilename);
+                    }
+                }).ConfigureAwait(false);
             }
             // ループを break で抜けたかキャンセルされたかを判定。
             // キャンセル時は success にしない（UI に「完了」と誤認させない）。
@@ -139,9 +135,35 @@ public sealed class PhashService
         AppLogger.Trace("PhashService.StartPdqAnalysisAsync: exit");
     }
 
-    /// <summary>読めない画像を終端状態として保存し、以後の pending 対象から外す。</summary>
-    private Task MarkPhashUnreadableAsync(string photoPath, CancellationToken ct)
-        => db.UpdatePhotoPhashAsync(photoPath, "unreadable", ct);
+    /// <summary>1枚の画像を読み込み、DBへ保存する phash 更新行へ変換する。</summary>
+    private static async Task<AlpheratzDb.PhotoPhashUpdate> BuildPhashUpdateAsync(PendingPhashItem item)
+    {
+        try
+        {
+            var image = await PdqImageReader.ReadLumaAsync(item.PhotoPath).ConfigureAwait(false);
+            if (image is null)
+            {
+                AppLogger.Warn($"PhashService: skip (unreadable) [{item.PhotoFilename}]");
+                return new AlpheratzDb.PhotoPhashUpdate(item.PhotoPath, "unreadable");
+            }
+
+            var (luma, w, h) = image.Value;
+            var combinedHex = PdqHasher.ComputeHashVariantsHex(luma, w, h);
+            if (string.IsNullOrEmpty(combinedHex))
+            {
+                AppLogger.Warn($"PhashService: skip (no hash) [{item.PhotoFilename}]");
+                return new AlpheratzDb.PhotoPhashUpdate(item.PhotoPath, "unreadable");
+            }
+
+            return new AlpheratzDb.PhotoPhashUpdate(item.PhotoPath, combinedHex);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            AppLogger.Warn($"PhashService: skip [{item.PhotoFilename}]: {ex.Message}");
+            return new AlpheratzDb.PhotoPhashUpdate(item.PhotoPath, "unreadable");
+        }
+    }
 
     /// <summary>進捗スナップショットを更新し、イベントバスへ通知する。</summary>
     private void UpdateProgress(int done, int total, string? current)

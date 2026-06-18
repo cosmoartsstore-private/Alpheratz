@@ -3,6 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:converters="using:Alpheratz.Shared.Converters"
+    xmlns:shared="using:Alpheratz.Shared.Controls"
     xmlns:local="using:Alpheratz.Features.WorldResolve"
     Background="Transparent"
     IsTabStop="True"
@@ -149,9 +150,21 @@
                     <!-- Loading -->
                     <Grid Grid.RowSpan="3" x:Name="LoadingOverlay"
                           Background="{ThemeResource ASurface}" Visibility="Collapsed">
-                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
-                            <ProgressRing IsActive="True" Width="40" Height="40"/>
-                            <TextBlock Text="候補を検索中..." FontSize="{StaticResource AFontSizeMd}" Foreground="{ThemeResource ATextFaint}"
+                        <StackPanel Width="360" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
+                            <ProgressRing IsActive="True" Width="40" Height="40" Foreground="{ThemeResource APrimary}"/>
+                            <TextBlock x:Name="LoadingProgressTitle"
+                                       Text="候補を検索中..."
+                                       FontSize="{StaticResource AFontSizeMd}"
+                                       FontWeight="SemiBold"
+                                       Foreground="{ThemeResource AText}"
+                                       HorizontalAlignment="Center"/>
+                            <shared:WaveProgressBar x:Name="LoadingProgressBar"
+                                                    Minimum="0"
+                                                    Height="8"/>
+                            <TextBlock x:Name="LoadingProgressText"
+                                       FontSize="{StaticResource AFontSizeSm}"
+                                       Foreground="{ThemeResource ATextFaint}"
+                                       TextAlignment="Center"
                                        HorizontalAlignment="Center"/>
                         </StackPanel>
                     </Grid>

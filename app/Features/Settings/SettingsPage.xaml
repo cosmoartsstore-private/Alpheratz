@@ -6,18 +6,6 @@
     Background="Transparent"
     IsTabStop="True"
     KeyDown="Page_KeyDown">
-    <Page.Resources>
-        <ControlTemplate x:Key="ThemeSegmentButtonTemplate" TargetType="Button">
-            <ContentPresenter
-                Content="{TemplateBinding Content}"
-                ContentTemplate="{TemplateBinding ContentTemplate}"
-                Foreground="{TemplateBinding Foreground}"
-                Padding="{TemplateBinding Padding}"
-                HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
-                VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
-                AutomationProperties.AccessibilityView="Raw"/>
-        </ControlTemplate>
-    </Page.Resources>
     <Grid Background="Transparent" Tapped="Backdrop_Tapped">
         <Border MaxWidth="1120" MaxHeight="820" MinWidth="0" Margin="24"
                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
@@ -216,57 +204,14 @@
                                     <TextBlock Text="テーマ" FontWeight="SemiBold"/>
                                     <TextBlock Text="アプリの外観テーマを切り替えます。" Style="{StaticResource HintTextStyle}"/>
                                 </StackPanel>
-                                <Grid Grid.Column="1"
-                                      x:Name="ThemeSegment"
-                                      Width="204"
-                                      Height="40"
-                                      Padding="4"
-                                      VerticalAlignment="Center"
-                                      Background="{ThemeResource ASurfaceSoft}"
-                                      BorderBrush="{ThemeResource ABorder}"
-                                      BorderThickness="1"
-                                      CornerRadius="{StaticResource ARadiusMd}">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <Border x:Name="ThemeSelectionPill"
-                                            Grid.Column="0"
-                                            CornerRadius="6"
-                                            Background="{ThemeResource APrimary}"/>
-                                    <Button x:Name="ThemeLightButton"
-                                            Grid.Column="0"
-                                            Content="ライト"
-                                            Background="Transparent"
-                                            BorderBrush="Transparent"
-                                            BorderThickness="0"
-                                            MinWidth="0"
-                                            MinHeight="0"
-                                            Foreground="{ThemeResource ATextDim}"
-                                            FontSize="{StaticResource AFontSizeSm}"
-                                            FontWeight="Bold"
-                                            HorizontalContentAlignment="Center"
-                                            VerticalContentAlignment="Center"
-                                            Padding="0"
-                                            Template="{StaticResource ThemeSegmentButtonTemplate}"
-                                            Click="ThemeLight_Click"/>
-                                    <Button x:Name="ThemeDarkButton"
-                                            Grid.Column="1"
-                                            Content="ダーク"
-                                            Background="Transparent"
-                                            BorderBrush="Transparent"
-                                            BorderThickness="0"
-                                            MinWidth="0"
-                                            MinHeight="0"
-                                            Foreground="{ThemeResource ATextDim}"
-                                            FontSize="{StaticResource AFontSizeSm}"
-                                            FontWeight="Bold"
-                                            HorizontalContentAlignment="Center"
-                                            VerticalContentAlignment="Center"
-                                            Padding="0"
-                                            Template="{StaticResource ThemeSegmentButtonTemplate}"
-                                            Click="ThemeDark_Click"/>
-                                </Grid>
+                                <Button x:Name="ThemeSwitchButton"
+                                        Grid.Column="1"
+                                        MinWidth="126"
+                                        Height="40"
+                                        VerticalAlignment="Center"
+                                        Style="{StaticResource GhostButtonStyle}"
+                                        FontWeight="Bold"
+                                        Click="ThemeSwitch_Click"/>
                             </Grid>
 
                             <Grid>
@@ -283,10 +228,20 @@
                                 <StackPanel VerticalAlignment="Center" Spacing="2">
                                     <TextBlock Text="ワールド名不明の写真の推測" FontWeight="SemiBold"/>
                                     <TextBlock Text="ワールド名不明の写真を分析済みの写真から推測します。" Style="{StaticResource HintTextStyle}" TextWrapping="WrapWholeWords"/>
-                                    <TextBlock x:Name="WorldAnalysisUnavailableHint"
-                                               Text="類似画像解析が完了すると使用できます。"
-                                               Style="{StaticResource HintTextStyle}"
-                                               Visibility="Collapsed"/>
+                                    <StackPanel x:Name="WorldAnalysisProgressPanel"
+                                                Margin="0,7,0,0"
+                                                Spacing="5"
+                                                Visibility="Collapsed">
+                                        <shared:WaveProgressBar x:Name="WorldAnalysisProgressBar"
+                                                                Minimum="0"
+                                                                Height="6"/>
+                                        <TextBlock x:Name="WorldAnalysisProgressText"
+                                                   Style="{StaticResource HintTextStyle}"
+                                                   FontWeight="SemiBold"/>
+                                        <TextBlock x:Name="WorldAnalysisProgressDetail"
+                                                   Style="{StaticResource HintTextStyle}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
                                 </StackPanel>
                                 <Button x:Name="StartWorldAnalysisButton"
                                         Grid.Column="1"
@@ -376,7 +331,8 @@
                         <StackPanel x:Name="TemplateSection" Grid.Row="2" Grid.Column="0" Spacing="18" Visibility="Collapsed">
                             <TextBlock Text="投稿テンプレート" Style="{StaticResource SectionTitleStyle}"/>
 
-                            <Border Style="{StaticResource SectionCardBorderStyle}">
+                            <Border Style="{StaticResource SectionCardBorderStyle}"
+                                    Background="{ThemeResource ASurface}">
                                 <StackPanel Spacing="12">
                                     <TextBlock x:Name="EditorModeLabel"
                                                Text="新規テンプレート"
@@ -406,7 +362,8 @@
                                 </StackPanel>
                             </Border>
 
-                            <Border Style="{StaticResource SectionCardBorderStyle}">
+                            <Border Style="{StaticResource SectionCardBorderStyle}"
+                                    Background="{ThemeResource ASurface}">
                                 <StackPanel Spacing="12">
                                     <TextBlock Text="登録済みテンプレート" Style="{StaticResource SubHeadingTextStyle}"/>
                                     <ItemsControl x:Name="TemplateList" ItemsSource="{Binding Template.tweetTemplates}">
@@ -421,7 +378,7 @@
                                                         CornerRadius="{StaticResource ARadiusLg}"
                                                         BorderBrush="{ThemeResource ABorder}"
                                                         BorderThickness="1"
-                                                        Background="{ThemeResource ASurfaceSoft}"
+                                                        Background="{ThemeResource ASurface}"
                                                         Loaded="TemplateCard_Loaded"
                                                         PointerPressed="TemplateCard_PointerPressed">
                                                     <Grid ColumnSpacing="10">
@@ -473,7 +430,7 @@
                             <TextBlock Text="クレジット" Style="{StaticResource SectionTitleStyle}"/>
                             <Border Padding="26"
                                     CornerRadius="{StaticResource ARadius}"
-                                    Background="{ThemeResource ASurfaceSoft}"
+                                    Background="{ThemeResource ASurface}"
                                     BorderBrush="{ThemeResource ABorder}"
                                     BorderThickness="1">
                                 <StackPanel>
@@ -483,6 +440,7 @@
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
 
+                                        <!-- Profile image only. Do not add this avatar to the material-credit list. -->
                                         <Border Grid.Column="0"
                                                 Width="56"
                                                 Height="56"
@@ -597,7 +555,6 @@
                                         <Grid RowSpacing="9" ColumnSpacing="10">
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="Auto"/>
-                                                <RowDefinition Height="Auto"/>
                                             </Grid.RowDefinitions>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto"/>
@@ -605,27 +562,11 @@
                                             </Grid.ColumnDefinitions>
 
                                             <shared:AppIcon Grid.Row="0"
-                                                            IconName="photo"
-                                                            IconSize="14"
-                                                            Foreground="{ThemeResource ATextFaint}"
-                                                            VerticalAlignment="Center"/>
-                                            <StackPanel Grid.Row="0"
-                                                        Grid.Column="1"
-                                                        Spacing="2">
-                                                <TextBlock Text="プロフィール画像"
-                                                           FontWeight="SemiBold"
-                                                           Foreground="{ThemeResource ATextDim}"/>
-                                                <TextBlock Text="CosmoArtsStore"
-                                                           FontSize="{StaticResource AFontSizeXs}"
-                                                           Foreground="{ThemeResource ATextFaint}"/>
-                                            </StackPanel>
-
-                                            <shared:AppIcon Grid.Row="1"
                                                             IconName="grid"
                                                             IconSize="14"
                                                             Foreground="{ThemeResource ATextFaint}"
                                                             VerticalAlignment="Center"/>
-                                            <StackPanel Grid.Row="1"
+                                            <StackPanel Grid.Row="0"
                                                         Grid.Column="1"
                                                         Spacing="2">
                                                 <TextBlock Text="UIアイコン"

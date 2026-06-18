@@ -1,7 +1,8 @@
 <UserControl
     x:Class="Alpheratz.Shared.Controls.ScanningOverlay"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:shared="using:Alpheratz.Shared.Controls">
     <Grid Background="{ThemeResource AOverlay}">
         <Border Width="420"
                 HorizontalAlignment="Center"
@@ -21,7 +22,10 @@
                 <TextBlock Text="{Binding ScanProgress.current_world}"
                            Style="{StaticResource HintTextStyle}"
                            TextAlignment="Center"/>
-                <ProgressBar Minimum="0" Maximum="{Binding ScanProgress.total}" Value="{Binding ScanProgress.processed}" Height="8"/>
+                <shared:WaveProgressBar Minimum="0"
+                                        Maximum="{Binding ScanProgress.total}"
+                                        Value="{Binding ScanProgress.processed}"
+                                        Height="8"/>
                 <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
                     <TextBlock Text="{Binding ScanProgress.processed}" Style="{StaticResource CaptionTextStyle}" Foreground="{ThemeResource ATextDim}"/>
                     <TextBlock Text="/" Style="{StaticResource CaptionTextStyle}" Foreground="{ThemeResource ATextDim}"/>

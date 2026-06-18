@@ -75,6 +75,28 @@ public sealed class WorldResolveViewModelBehaviorTests : IDisposable
     }
 
     /// <summary>
+    /// InitializeAsync が候補探索の対象総数と処理済み件数を更新することを確認する。
+    ///
+    /// 大量のワールド不明写真を解析する場合、スピナーだけでは進行状況が判断できない。
+    /// 解析完了後に処理済み件数が総数へ到達していることを固定し、進捗バーの入力値を保証する。
+    /// </summary>
+    [Fact]
+    public async Task InitializeAsync_ReportsCandidateSearchProgress()
+    {
+        await InsertKnownAsync("/known/exact.jpg", "exact.jpg", "Exact World", "wrld_exact", Hash(0x00));
+        await InsertUnknownAsync("/unknown/a.jpg", "a.jpg", Hash(0x00));
+        await InsertUnknownAsync("/unknown/b.jpg", "b.jpg", Hash(0x00));
+
+        await viewModel.InitializeAsync();
+
+        Assert.False(viewModel.IsLoading);
+        Assert.Equal(2, viewModel.Items.Count);
+        Assert.Equal(2, viewModel.SearchProgressProcessed);
+        Assert.Equal(2, viewModel.SearchProgressTotal);
+        Assert.Equal("2 / 2 件", viewModel.SearchProgressText);
+    }
+
+    /// <summary>
     /// ApplyAll / SkipAll / ToggleApply が適用予定件数を更新し、ApplyConfirmedAsync が DB へ確定ワールドを書き込むことを確認する。
     ///
     /// 実際の画面ではユーザーが候補をまとめて選び、確認後に phash_confirmed として保存する。

@@ -37,6 +37,7 @@ public static class GalleryMasonryLayout
     // 極端な縦横比だけを抑え、写真本来の比率を優先する。
     private const double MinAspect = 0.5;   // これ以上は縦長にしない (1:2)
     private const double MaxAspect = 2.0;   // これ以上は横長にしない (2:1)
+    private const double DefaultAspect = 16.0 / 9.0;
 
     /// <summary>写真リストとパネル幅からレイアウト座標を一括計算する。</summary>
     public static MasonryLayoutResult Build(
@@ -84,7 +85,7 @@ public static class GalleryMasonryLayout
         if (w > 0 && h > 0) return (double)w / h;
         if (string.Equals(photo.Orientation, "portrait", StringComparison.Ordinal)) return 9.0 / 16;
         if (string.Equals(photo.Orientation, "landscape", StringComparison.Ordinal)) return 16.0 / 9;
-        return 1;
+        return DefaultAspect;
     }
 
     /// <summary>

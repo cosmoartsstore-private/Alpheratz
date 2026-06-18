@@ -94,7 +94,7 @@
                                         <StackPanel Orientation="Horizontal" Spacing="10">
                                             <Border Width="24" Height="24" CornerRadius="{StaticResource ARadiusSm}"
                                                     Background="{ThemeResource ASurfaceSofter}">
-                                                <shared:AppIcon IconName="calendar"
+                                                <shared:AppIcon IconName="calendarRange"
                                                                 IconSize="13"
                                                                 Foreground="{ThemeResource ATextFaint}"
                                                                 HorizontalAlignment="Center"
@@ -117,7 +117,7 @@
                                         <Border Padding="12,10" BorderBrush="{ThemeResource ABorder}" BorderThickness="0,0,0,1">
                                                 <StackPanel Spacing="2">
                                                     <StackPanel Orientation="Horizontal" Spacing="6">
-                                                    <shared:AppIcon IconName="calendar" IconSize="14" Foreground="{ThemeResource ATextFaint}"/>
+                                                    <shared:AppIcon IconName="calendarRange" IconSize="14" Foreground="{ThemeResource ATextFaint}"/>
                                                     <TextBlock x:Name="CalendarRangeLabel" Text="すべての期間" FontSize="{StaticResource AFontSizeSm}" Foreground="{ThemeResource ATextFaint}"/>
                                                 </StackPanel>
                                                 <TextBlock Text="From / To を切り替えて選択します" FontSize="{StaticResource AFontSizeSm}" Foreground="{ThemeResource ATextFaint}"/>
@@ -235,7 +235,7 @@
                                             HorizontalAlignment="Stretch" MinHeight="62" CornerRadius="{StaticResource ARadiusMd}" Click="OrientationAll_Click">
                                         <StackPanel HorizontalAlignment="Center" Spacing="4">
                                             <shared:AppIcon x:Name="OrientationAllIcon"
-                                                            IconName="grid"
+                                                            IconName="images"
                                                             IconSize="16"
                                                             HorizontalAlignment="Center"/>
                                             <TextBlock Text="すべて" FontSize="{StaticResource AFontSizeXs}" FontWeight="Bold" HorizontalAlignment="Center"/>
@@ -407,14 +407,17 @@
                             <StackPanel Spacing="8">
                                 <TextBlock Text="お気に入り" Style="{StaticResource SectionTitleStyle}"/>
                                 <Button x:Name="FavoriteToggleBtn"
+                                        Style="{StaticResource GhostButtonStyle}"
                                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                                         Padding="14,11" CornerRadius="14"
                                         Background="{ThemeResource ASurfaceSoft}"
                                         BorderThickness="0"
                                         Click="FavoriteToggle_Click">
                                     <StackPanel Orientation="Horizontal" Spacing="10">
-                                        <shared:AnimatedFavoriteStar x:Name="FavoriteStarIcon"
-                                            Liked="False" Interactive="False"
+                                        <shared:AppIcon x:Name="FavoriteStarIcon"
+                                            IconName="star"
+                                            IconSize="18"
+                                            Foreground="{ThemeResource ATextFaint}"
                                             Width="22" Height="22"/>
                                         <TextBlock x:Name="FavoriteLabel" Text="お気に入りのみ"
                                                    FontSize="{StaticResource AFontSizeMd}" FontWeight="ExtraBold"

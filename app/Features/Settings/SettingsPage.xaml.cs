@@ -4,6 +4,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using Alpheratz.Core;
+using Alpheratz.Models.Events;
 using Alpheratz.Services;
 using Alpheratz.Shared.Models;
 using Alpheratz.Shared.Services;
@@ -28,6 +29,9 @@ public sealed partial class SettingsPage : Page
 {
     private readonly SettingsCompositeViewModel viewModel;
     private string activeSettingsSection = "general";
+    private PhashProgressEvent worldAnalysisProgress = PhashProgressEvent.Empty;
+    private bool worldAnalysisRunning;
+    private bool worldAnalysisEnabled;
 
     // ===== 共通 =====
     /// <summary>モーダル閉じる操作 (× ボタン / 背景クリック / ESC)。</summary>
@@ -94,11 +98,42 @@ public sealed partial class SettingsPage : Page
     {
         try
         {
-            StartWorldAnalysisButton.IsEnabled = enabled;
-            StartWorldAnalysisButton.Opacity = enabled ? 1.0 : 0.55;
-            WorldAnalysisUnavailableHint.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
+            worldAnalysisEnabled = enabled;
+            ApplyWorldAnalysisState();
         }
         catch (Exception ex) { AppLogger.Error($"SettingsPage.SetWorldAnalysisEnabled: threw: {ex}"); }
+    }
+
+    /// <summary>PDQ 解析の進捗を、ワールド名解決ボタンの待機表示へ反映する。</summary>
+    public void SetWorldAnalysisProgress(PhashProgressEvent progress, bool isRunning, bool enabled)
+    {
+        try
+        {
+            worldAnalysisProgress = progress;
+            worldAnalysisRunning = isRunning;
+            worldAnalysisEnabled = enabled;
+            ApplyWorldAnalysisState();
+        }
+        catch (Exception ex) { AppLogger.Error($"SettingsPage.SetWorldAnalysisProgress: threw: {ex}"); }
+    }
+
+    private void ApplyWorldAnalysisState()
+    {
+        var display = SettingsPageLogic.WorldAnalysisProgress(
+            worldAnalysisProgress.done,
+            worldAnalysisProgress.total,
+            worldAnalysisProgress.current,
+            worldAnalysisRunning,
+            worldAnalysisEnabled);
+
+        StartWorldAnalysisButton.IsEnabled = worldAnalysisEnabled;
+        StartWorldAnalysisButton.Opacity = worldAnalysisEnabled ? 1.0 : 0.55;
+        WorldAnalysisProgressPanel.Visibility = display.ProgressVisible ? Visibility.Visible : Visibility.Collapsed;
+        WorldAnalysisProgressBar.IsIndeterminate = display.IsIndeterminate;
+        WorldAnalysisProgressBar.Maximum = display.Maximum;
+        WorldAnalysisProgressBar.Value = display.Value;
+        WorldAnalysisProgressText.Text = display.SummaryText;
+        WorldAnalysisProgressDetail.Text = display.DetailText;
     }
 
     /// <summary>外部遷移から指定セクションを表示する。サイドバークリックと同じ切替処理を使う。</summary>
@@ -149,7 +184,7 @@ public sealed partial class SettingsPage : Page
             ActualThemeChanged += OnActualThemeChanged;
             UpdateTagEmptyState();
             UpdateEditorState();
-            UpdateThemeSegmentVisual();
+            UpdateThemeSwitchVisual();
             ShowSettingsSection(activeSettingsSection);
         }
         catch (Exception ex) { AppLogger.Error($"SettingsPage.SettingsPage_Loaded: threw: {ex}"); }
@@ -175,10 +210,10 @@ public sealed partial class SettingsPage : Page
         {
             RefreshTemplateCardVisuals();
             RefreshSettingsNavVisuals();
-            UpdateThemeSegmentVisual();
+            UpdateThemeSwitchVisual();
             DispatcherQueue?.TryEnqueue(RefreshTemplateCardVisuals);
             DispatcherQueue?.TryEnqueue(RefreshSettingsNavVisuals);
-            DispatcherQueue?.TryEnqueue(() => UpdateThemeSegmentVisual());
+            DispatcherQueue?.TryEnqueue(() => UpdateThemeSwitchVisual());
         }
         catch (Exception ex) { AppLogger.Error($"SettingsPage.OnActualThemeChanged: {ex}"); }
     }
@@ -186,7 +221,7 @@ public sealed partial class SettingsPage : Page
     private void SettingsViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(viewModel.Settings.ThemeMode))
-            DispatcherQueue?.TryEnqueue(() => UpdateThemeSegmentVisual());
+            DispatcherQueue?.TryEnqueue(() => UpdateThemeSwitchVisual());
     }
 
     /// <summary>左サイドバーから表示する設定セクションを切り替える。</summary>
@@ -318,7 +353,7 @@ public sealed partial class SettingsPage : Page
         AppLogger.Trace("SettingsPage.StartupToggle_Toggled: exit");
     }
 
-    /// <summary>ライトテーマを選択して保存する。</summary>
+    /// <summary>投稿画面を開くときのワールドリンク自動表示設定を保存する。</summary>
     private async void OpenWorldOnPostToggle_Toggled(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("SettingsPage.OpenWorldOnPostToggle_Toggled: enter");
@@ -331,55 +366,27 @@ public sealed partial class SettingsPage : Page
         AppLogger.Trace("SettingsPage.OpenWorldOnPostToggle_Toggled: exit");
     }
 
-    private async void ThemeLight_Click(object sender, RoutedEventArgs e)
+    /// <summary>現在テーマの逆側へ切り替えて保存する。</summary>
+    private async void ThemeSwitch_Click(object sender, RoutedEventArgs e)
     {
-        AppLogger.Trace("SettingsPage.ThemeLight_Click: enter");
+        AppLogger.Trace("SettingsPage.ThemeSwitch_Click: enter");
         try
         {
-            if (OnThemeChanged is not null) await OnThemeChanged(false).ConfigureAwait(false);
-            DispatcherQueue?.TryEnqueue(() => UpdateThemeSegmentVisual(isDark: false));
+            var nextDark = SettingsPageLogic.NextThemeIsDark(viewModel.Settings.ThemeMode == ThemeMode.dark);
+            if (OnThemeChanged is not null) await OnThemeChanged(nextDark).ConfigureAwait(false);
+            DispatcherQueue?.TryEnqueue(() => UpdateThemeSwitchVisual(nextDark));
         }
-        catch (Exception ex) { AppLogger.Error($"SettingsPage.ThemeLight_Click: threw: {ex}"); }
-        AppLogger.Trace("SettingsPage.ThemeLight_Click: exit");
+        catch (Exception ex) { AppLogger.Error($"SettingsPage.ThemeSwitch_Click: threw: {ex}"); }
+        AppLogger.Trace("SettingsPage.ThemeSwitch_Click: exit");
     }
 
-    /// <summary>ダークテーマを選択して保存する。</summary>
-    private async void ThemeDark_Click(object sender, RoutedEventArgs e)
-    {
-        AppLogger.Trace("SettingsPage.ThemeDark_Click: enter");
-        try
-        {
-            if (OnThemeChanged is not null) await OnThemeChanged(true).ConfigureAwait(false);
-            DispatcherQueue?.TryEnqueue(() => UpdateThemeSegmentVisual(isDark: true));
-        }
-        catch (Exception ex) { AppLogger.Error($"SettingsPage.ThemeDark_Click: threw: {ex}"); }
-        AppLogger.Trace("SettingsPage.ThemeDark_Click: exit");
-    }
-
-    /// <summary>テーマ切替セグメントの選択ピルと文字色を現在テーマへ同期する。</summary>
-    private void UpdateThemeSegmentVisual(bool? isDark = null)
+    /// <summary>単一テーマボタンの表示名を現在テーマへ同期する。</summary>
+    private void UpdateThemeSwitchVisual(bool? isDark = null)
     {
         var dark = isDark ?? viewModel.Settings.ThemeMode == ThemeMode.dark;
-        Grid.SetColumn(ThemeSelectionPill, dark ? 1 : 0);
-
-        ThemeSegment.Background = ResolveSelectedThemeBrush("ASurfaceSoft")
-            ?? new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-        ThemeSegment.BorderBrush = ResolveSelectedThemeBrush("ABorder")
-            ?? new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-        ThemeSelectionPill.Background = ResolveSelectedThemeBrush("APrimary")
-            ?? new SolidColorBrush(Microsoft.UI.Colors.DodgerBlue);
-
-        var activeForeground = ResolveSelectedThemeBrush("ATextOnPrimary")
-            ?? new SolidColorBrush(Microsoft.UI.Colors.White);
-        var restForeground = ResolveSelectedThemeBrush("ATextFaint")
-            ?? new SolidColorBrush(Microsoft.UI.Colors.Gray);
-
-        ThemeLightButton.Foreground = dark ? restForeground : activeForeground;
-        ThemeDarkButton.Foreground = dark ? activeForeground : restForeground;
+        ThemeSwitchButton.Content = SettingsPageLogic.ThemeButtonText(dark);
+        ToolTipService.SetToolTip(ThemeSwitchButton, SettingsPageLogic.ThemeButtonTooltip(dark));
     }
-
-    private Brush? ResolveSelectedThemeBrush(string key)
-        => ThemeHelper.BrushForSelectedTheme(key) ?? ThemeHelper.Brush(this, key);
 
     /// <summary>StellaRecord へ現在の実行ファイルを登録する。</summary>
     private void RegisterStellaRecord_Click(object sender, RoutedEventArgs e)
@@ -447,10 +454,14 @@ public sealed partial class SettingsPage : Page
         {
             if (OnCreateTag is not null)
             {
-                await OnCreateTag().ConfigureAwait(false);
-                return;
+                await OnCreateTag();
             }
-            await viewModel.TagMaster.createTag().ConfigureAwait(false);
+            else
+            {
+                await viewModel.TagMaster.createTag();
+            }
+            UpdateTagEmptyState();
+            TagInputBox.Focus(FocusState.Programmatic);
         }
         catch (Exception ex) { AppLogger.Error($"SettingsPage.AddTag_Click: threw: {ex}"); }
         AppLogger.Trace("SettingsPage.AddTag_Click: exit");
@@ -466,10 +477,13 @@ public sealed partial class SettingsPage : Page
             if (tag is null) return;
             if (OnDeleteTag is not null)
             {
-                await OnDeleteTag(tag).ConfigureAwait(false);
-                return;
+                await OnDeleteTag(tag);
             }
-            await viewModel.TagMaster.deleteTag(tag).ConfigureAwait(false);
+            else
+            {
+                await viewModel.TagMaster.deleteTag(tag);
+            }
+            UpdateTagEmptyState();
         }
         catch (Exception ex) { AppLogger.Error($"SettingsPage.DeleteTag_Click: threw: {ex}"); }
         AppLogger.Trace("SettingsPage.DeleteTag_Click: exit");

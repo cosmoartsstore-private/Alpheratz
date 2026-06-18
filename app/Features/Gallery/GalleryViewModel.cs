@@ -335,8 +335,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
 
         try
         {
-            foreach (var tag in additions)
-                await photoService.AddPhotoTagAsync(photoPath, tag, currentPhoto?.SourceSlot ?? 1).ConfigureAwait(false);
+            await photoService.AddPhotoTagsAsync(photoPath, additions, currentPhoto?.SourceSlot ?? 1).ConfigureAwait(false);
 
             await dispatcherService.RunOnUiThread(() =>
                 updatePhoto(photoPath, photo => photo.Tags = photo.Tags
@@ -529,8 +528,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         if (refs.Count == 0) return;
         try
         {
-            foreach (var normalized in normalizedTags)
-                await photoService.BulkAddPhotoTagAsync(refs, normalized).ConfigureAwait(false);
+            await photoService.BulkAddPhotoTagsAsync(refs, normalizedTags).ConfigureAwait(false);
 
             await dispatcherService.RunOnUiThread(() =>
             {

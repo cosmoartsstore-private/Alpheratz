@@ -211,6 +211,28 @@ public sealed class GalleryMasonryViewportLogicTests
 
         Assert.True(GalleryMasonryViewportLogic.ShouldReloadImage("C:/new.jpg", "C:/old.jpg"));
         Assert.False(GalleryMasonryViewportLogic.ShouldReloadImage("C:/same.jpg", "C:/same.jpg"));
+
+        Assert.True(GalleryMasonryViewportLogic.ShouldRetryImageLoad(1, isInsideOverscan: true));
+        Assert.True(GalleryMasonryViewportLogic.ShouldRetryImageLoad(GalleryMasonryViewportLogic.MaxImageLoadRetries, isInsideOverscan: true));
+        Assert.False(GalleryMasonryViewportLogic.ShouldRetryImageLoad(0, isInsideOverscan: true));
+        Assert.False(GalleryMasonryViewportLogic.ShouldRetryImageLoad(GalleryMasonryViewportLogic.MaxImageLoadRetries + 1, isInsideOverscan: true));
+        Assert.False(GalleryMasonryViewportLogic.ShouldRetryImageLoad(1, isInsideOverscan: false));
+
+        Assert.True(GalleryMasonryViewportLogic.IsCurrentImageLoadCallback(
+            callbackVersion: 4,
+            currentVersion: 4,
+            callbackPath: "C:/cache/thumb.jpg",
+            loadingPath: "c:/cache/thumb.jpg"));
+        Assert.False(GalleryMasonryViewportLogic.IsCurrentImageLoadCallback(
+            callbackVersion: 3,
+            currentVersion: 4,
+            callbackPath: "C:/cache/thumb.jpg",
+            loadingPath: "C:/cache/thumb.jpg"));
+        Assert.False(GalleryMasonryViewportLogic.IsCurrentImageLoadCallback(
+            callbackVersion: 4,
+            currentVersion: 4,
+            callbackPath: "C:/old.jpg",
+            loadingPath: "C:/cache/thumb.jpg"));
     }
 
     /// <summary>
@@ -274,7 +296,7 @@ public sealed class GalleryMasonryViewportLogicTests
     /// <summary>
     /// PhotoThumbnailItem の変更通知から、Masonry カードが行う処理種別が決まることを確認する。
     ///
-    /// IsSelected は画像ロードとは無関係に選択表示だけを更新する。
+    /// IsSelected / IsFavorite は画像ロードとは無関係に各バッジ表示だけを更新する。
     /// 画像ソースに関わらないプロパティや同じパスへの変更は何もしない。
     /// 画像パスが変わった場合は、ロード済みカードまたは overscan 範囲内の未ロードカードだけを即時ロードする。
     /// </summary>
@@ -285,6 +307,14 @@ public sealed class GalleryMasonryViewportLogicTests
             MasonryPhotoChangeAction.UpdateSelection,
             GalleryMasonryViewportLogic.PhotoChangeAction(
                 nameof(PhotoThumbnailItem.IsSelected),
+                "C:/new.jpg",
+                "C:/old.jpg",
+                isLoaded: false,
+                isInsideOverscan: false));
+        Assert.Equal(
+            MasonryPhotoChangeAction.UpdateFavorite,
+            GalleryMasonryViewportLogic.PhotoChangeAction(
+                nameof(PhotoThumbnailItem.IsFavorite),
                 "C:/new.jpg",
                 "C:/old.jpg",
                 isLoaded: false,

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Numerics;
 using Alpheratz.Core;
+using Alpheratz.Shared.Controls;
 using Alpheratz.Shared.Services;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Dispatching;
@@ -62,13 +63,25 @@ public sealed partial class GalleryMasonryView : UserControl
         public required Image Image;
         public required PhotoThumbnailItem Photo;
         public Border? SelectionTint;
+        public Border? SelectionGlow;
         public Border? SelectionRing;
-        public Border? SelectionBadge;
+        public FavoriteCornerBadge? FavoriteBadge;
+        public TextBlock? ErrorIcon;
+        public BitmapImage? CurrentBitmap;
         public string LoadedPath = string.Empty;
+        public string LoadingPath = string.Empty;
+        public string FailedPath = string.Empty;
+        public int LoadVersion;
+        public int LoadFailureCount;
         public bool IsLoaded;
+        public bool IsLoading;
         public DispatcherQueueTimer? PendingReleaseTimer;
+        public DispatcherQueueTimer? PendingRetryTimer;
         public System.ComponentModel.PropertyChangedEventHandler? PhotoSubscription;
-        // ImageFailed 時に該当カードだけの shimmer を止められるよう、生成時の停止処理を保持する。
+        // 画像ロードの状態変化を、カード生成時に作ったローカル UI 要素へ反映する。
+        public Action? PrepareImageLoad;
+        public Action? ShowImageOpened;
+        public Action? ShowImageError;
         public Action? StopShimmer;
     }
 
@@ -87,6 +100,9 @@ public sealed partial class GalleryMasonryView : UserControl
 
     /// <summary>カードタップ時のコールバック。GalleryPage が PhotoModal への遷移を設定する。</summary>
     public Action<PhotoThumbnailItem>? OnPhotoTapped { get; set; }
+
+    /// <summary>お気に入りコーナーバッジのクリックを親へ通知する。</summary>
+    public Action<PhotoThumbnailItem>? OnFavoriteClicked { get; set; }
 
     /// <summary>ビューポート内にサムネイル未生成の写真があるとき呼ばれるコールバック。</summary>
     public Action<IReadOnlyList<PhotoThumbnailItem>>? OnThumbnailsNeeded { get; set; }
@@ -127,15 +143,12 @@ public sealed partial class GalleryMasonryView : UserControl
                     entry.Container.BorderBrush = br;
                 if (entry.SelectionTint is not null && ThemeHelper.Brush(entry.Container, "APhotoSelectionTint") is { } tint)
                     entry.SelectionTint.Background = tint;
-                if (entry.SelectionRing is not null && ThemeHelper.Brush(entry.Container, "APrimary") is { } primary)
+                if (entry.SelectionGlow is not null && ThemeHelper.Brush(entry.Container, "APhotoSelectionGlow") is { } glow)
+                    entry.SelectionGlow.BorderBrush = glow;
+                if (entry.SelectionRing is not null && ThemeHelper.Brush(entry.Container, "APhotoSelectionRing") is { } primary)
                     entry.SelectionRing.BorderBrush = primary;
-                if (entry.SelectionBadge is not null)
-                {
-                    if (ThemeHelper.Brush(entry.Container, "APrimary") is { } badgeBg)
-                        entry.SelectionBadge.Background = badgeBg;
-                    if (ThemeHelper.Brush(entry.Container, "APhotoSelectionBadgeBorder") is { } badgeBorder)
-                        entry.SelectionBadge.BorderBrush = badgeBorder;
-                }
+                if (entry.ErrorIcon is not null && ThemeHelper.Brush(entry.Container, "ATextDisabled") is { } errorBrush)
+                    entry.ErrorIcon.Foreground = errorBrush;
             }
         }
         catch (Exception ex) { AppLogger.Error($"GalleryMasonryView.OnActualThemeChanged: {ex}"); }
@@ -229,6 +242,8 @@ public sealed partial class GalleryMasonryView : UserControl
             {
                 entry.PendingReleaseTimer?.Stop();
                 entry.PendingReleaseTimer = null;
+                entry.PendingRetryTimer?.Stop();
+                entry.PendingRetryTimer = null;
                 if (entry.PhotoSubscription is not null)
                 {
                     entry.Photo.PropertyChanged -= entry.PhotoSubscription;
@@ -346,7 +361,8 @@ public sealed partial class GalleryMasonryView : UserControl
 
                 card.PendingReleaseTimer?.Stop();
                 card.PendingReleaseTimer = null;
-                if (!card.IsLoaded) LoadImage(card);
+                if (!card.IsLoaded && ShouldAttemptImageLoad(card, card.Photo.EffectiveSourcePath ?? string.Empty))
+                    LoadImage(card);
 
                 var wasNewThumbRequest = requestedThumbs.Add(layoutPhotos[i].PhotoPath);
                 if (GalleryMasonryViewportLogic.ShouldQueueThumbnailAfterRequestRegistered(
@@ -368,12 +384,15 @@ public sealed partial class GalleryMasonryView : UserControl
                 {
                     entry.PendingReleaseTimer?.Stop();
                     entry.PendingReleaseTimer = null;
+                    entry.PendingRetryTimer?.Stop();
+                    entry.PendingRetryTimer = null;
                     if (entry.PhotoSubscription is not null)
                     {
                         entry.Photo.PropertyChanged -= entry.PhotoSubscription;
                         entry.PhotoSubscription = null;
                     }
                     entry.Image.Source = null;
+                    entry.CurrentBitmap = null;
                     MasonryCanvas.Children.Remove(entry.Container);
                     toRemoveBuf.Add(index);
                 }
@@ -417,6 +436,26 @@ public sealed partial class GalleryMasonryView : UserControl
     {
         var request = GalleryMasonryViewportLogic.ImageRequest(entry.Photo, entry.Container.Width);
         if (request is null) return;
+        if (entry.IsLoading && SamePath(entry.LoadingPath, request.SourcePath))
+            return;
+
+        entry.PendingRetryTimer?.Stop();
+        entry.PendingRetryTimer = null;
+
+        if (!SamePath(entry.FailedPath, request.SourcePath))
+        {
+            entry.FailedPath = string.Empty;
+            entry.LoadFailureCount = 0;
+        }
+
+        var loadVersion = ++entry.LoadVersion;
+        entry.LoadingPath = request.SourcePath;
+        entry.LoadedPath = string.Empty;
+        entry.CurrentBitmap = null;
+        entry.IsLoaded = false;
+        entry.IsLoading = true;
+        entry.PrepareImageLoad?.Invoke();
+
         try
         {
             var bmp = new BitmapImage
@@ -426,14 +465,136 @@ public sealed partial class GalleryMasonryView : UserControl
                 DecodePixelType = DecodePixelType.Logical,
                 UriSource = new Uri(request.SourcePath, UriKind.Absolute),
             };
+            entry.CurrentBitmap = bmp;
+            RoutedEventHandler? openedHandler = null;
+            ExceptionRoutedEventHandler? failedHandler = null;
+            openedHandler = (_, _) =>
+            {
+                DetachBitmapHandlers(bmp, openedHandler, failedHandler);
+                if (!IsCurrentImageLoad(entry, bmp, request.SourcePath, loadVersion))
+                    return;
+                HandleImageLoadOpened(entry, request.SourcePath);
+            };
+            failedHandler = (_, args) =>
+            {
+                DetachBitmapHandlers(bmp, openedHandler, failedHandler);
+                if (!IsCurrentImageLoad(entry, bmp, request.SourcePath, loadVersion))
+                    return;
+                AppLogger.Warn($"GalleryMasonryView.ImageFailed: {args.ErrorMessage}");
+                HandleImageLoadFailure(entry, request.SourcePath);
+            };
+            bmp.ImageOpened += openedHandler;
+            bmp.ImageFailed += failedHandler;
             entry.Image.Source = bmp;
-            entry.LoadedPath = request.SourcePath;
-            entry.IsLoaded = true;
         }
         catch (Exception ex)
         {
+            HandleImageLoadFailure(entry, request.SourcePath);
             AppLogger.Error($"GalleryMasonryView.LoadImage: failed for {request.SourcePath}: {ex}");
         }
+    }
+
+    /// <summary>未ロードカードへ新規ロードを試みるかを返す。</summary>
+    private static bool ShouldAttemptImageLoad(CardEntry entry, string sourcePath)
+    {
+        if (string.IsNullOrEmpty(sourcePath) || entry.PendingRetryTimer is not null)
+            return false;
+        if (entry.IsLoading && SamePath(entry.LoadingPath, sourcePath))
+            return false;
+        return !SamePath(entry.FailedPath, sourcePath)
+            || entry.LoadFailureCount <= GalleryMasonryViewportLogic.MaxImageLoadRetries;
+    }
+
+    private static bool SamePath(string left, string right)
+        => string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsCurrentImageLoad(CardEntry entry, BitmapImage bitmap, string path, int loadVersion)
+        => ReferenceEquals(entry.CurrentBitmap, bitmap)
+            && GalleryMasonryViewportLogic.IsCurrentImageLoadCallback(
+                loadVersion,
+                entry.LoadVersion,
+                path,
+                entry.LoadingPath);
+
+    private static void DetachBitmapHandlers(
+        BitmapImage bitmap,
+        RoutedEventHandler? openedHandler,
+        ExceptionRoutedEventHandler? failedHandler)
+    {
+        if (openedHandler is not null)
+            bitmap.ImageOpened -= openedHandler;
+        if (failedHandler is not null)
+            bitmap.ImageFailed -= failedHandler;
+    }
+
+    private void HandleImageLoadOpened(CardEntry entry, string openedPath)
+    {
+        entry.PendingRetryTimer?.Stop();
+        entry.PendingRetryTimer = null;
+        entry.LoadedPath = openedPath;
+        entry.FailedPath = string.Empty;
+        entry.LoadFailureCount = 0;
+        entry.IsLoaded = true;
+        entry.IsLoading = false;
+        if (entry.ErrorIcon is not null)
+            entry.ErrorIcon.Visibility = Visibility.Collapsed;
+        entry.ShowImageOpened?.Invoke();
+    }
+
+    /// <summary>ImageFailed / BitmapImage 生成失敗を同じカード状態へ反映する。</summary>
+    private void HandleImageLoadFailure(CardEntry entry, string failedPath)
+    {
+        entry.PendingRetryTimer?.Stop();
+        entry.PendingRetryTimer = null;
+        entry.Image.Source = null;
+        entry.LoadedPath = string.Empty;
+        entry.IsLoaded = false;
+        entry.IsLoading = false;
+        if (string.IsNullOrEmpty(failedPath))
+        {
+            entry.ShowImageError?.Invoke();
+            return;
+        }
+
+        if (!SamePath(entry.FailedPath, failedPath))
+        {
+            entry.FailedPath = failedPath;
+            entry.LoadFailureCount = 0;
+        }
+        entry.LoadFailureCount++;
+        entry.ShowImageError?.Invoke();
+        ScheduleImageRetry(entry, failedPath);
+    }
+
+    /// <summary>一時的なデコード失敗に備えて、表示範囲内のカードだけ短い遅延後に再読込する。</summary>
+    private void ScheduleImageRetry(CardEntry entry, string failedPath)
+    {
+        var insideOverscan = GalleryMasonryViewportLogic.IsInsideOverscan(
+            Canvas.GetTop(entry.Container),
+            entry.Container.Height,
+            ScrollHost.VerticalOffset,
+            ScrollHost.ViewportHeight,
+            OverscanPx);
+        if (!GalleryMasonryViewportLogic.ShouldRetryImageLoad(entry.LoadFailureCount, insideOverscan))
+            return;
+
+        var timer = dispatcherQueue.CreateTimer();
+        timer.Interval = TimeSpan.FromMilliseconds(GalleryMasonryViewportLogic.ImageLoadRetryDelayMilliseconds);
+        timer.IsRepeating = false;
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            if (ReferenceEquals(entry.PendingRetryTimer, timer))
+                entry.PendingRetryTimer = null;
+            if (!activeCards.TryGetValue(entry.Index, out var current) || !ReferenceEquals(current, entry))
+                return;
+            var currentPath = entry.Photo.EffectiveSourcePath ?? string.Empty;
+            if (!SamePath(entry.FailedPath, failedPath) || !SamePath(currentPath, failedPath))
+                return;
+            LoadImage(entry);
+        };
+        entry.PendingRetryTimer = timer;
+        timer.Start();
     }
 
     /// <summary>一定時間後に画像の Source を null にしてメモリを解放するタイマーを設定する。</summary>
@@ -447,8 +608,10 @@ public sealed partial class GalleryMasonryView : UserControl
             try
             {
                 entry.Image.Source = null;
+                entry.CurrentBitmap = null;
                 entry.LoadedPath = string.Empty;
                 entry.IsLoaded = false;
+                entry.IsLoading = false;
             }
             catch (Exception ex)
             {
@@ -512,12 +675,16 @@ public sealed partial class GalleryMasonryView : UserControl
         // ハイライトを横に流して読み込み中であることを示す。
         var shimmerVisual = ElementCompositionPreview.GetElementVisual(shimmerHighlight);
         var compositor = shimmerVisual.Compositor;
-        var shimmerAnim = compositor.CreateScalarKeyFrameAnimation();
-        shimmerAnim.InsertKeyFrame(0f, (float)shimmer.StartOffset);
-        shimmerAnim.InsertKeyFrame(1f, (float)shimmer.EndOffset);
-        shimmerAnim.Duration = TimeSpan.FromMilliseconds(shimmer.DurationMilliseconds);
-        shimmerAnim.IterationBehavior = AnimationIterationBehavior.Forever;
-        shimmerVisual.StartAnimation("Offset.X", shimmerAnim);
+        ScalarKeyFrameAnimation CreateShimmerAnimation()
+        {
+            var animation = compositor.CreateScalarKeyFrameAnimation();
+            animation.InsertKeyFrame(0f, (float)shimmer.StartOffset);
+            animation.InsertKeyFrame(1f, (float)shimmer.EndOffset);
+            animation.Duration = TimeSpan.FromMilliseconds(shimmer.DurationMilliseconds);
+            animation.IterationBehavior = AnimationIterationBehavior.Forever;
+            return animation;
+        }
+        shimmerVisual.StartAnimation("Offset.X", CreateShimmerAnimation());
 
         // 写真本体を UniformToFill で表示する。
         var image = new Image
@@ -532,7 +699,34 @@ public sealed partial class GalleryMasonryView : UserControl
         var imageVisual = ElementCompositionPreview.GetElementVisual(image);
         imageVisual.Opacity = 0f;
 
-        // shimmer 停止ロジックを ImageOpened / ImageFailed の双方から呼べるようローカル関数にする。
+        var errorIcon = new TextBlock
+        {
+            Text = "",
+            FontFamily = new FontFamily("Segoe MDL2 Assets"),
+            FontSize = 24,
+            Foreground = ThemeHelper.Brush(this, "ATextDisabled"),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            IsHitTestVisible = false,
+            Visibility = Visibility.Collapsed,
+        };
+        cardGrid.Children.Add(errorIcon);
+
+        CardEntry? entryRef = null;
+
+        // 画像ロードの開始・終了・失敗を、同じカードのプレースホルダへ反映する。
+        void StartShimmer()
+        {
+            try
+            {
+                shimmerBase.Background = ThemeHelper.Brush(this, "ASurfaceSoft");
+                shimmerBase.Opacity = 1;
+                shimmerHighlight.Opacity = 1;
+                shimmerVisual.StartAnimation("Offset.X", CreateShimmerAnimation());
+            }
+            catch (Exception ex) { AppLogger.Error($"GalleryMasonryView.StartShimmer: threw: {ex}"); }
+        }
+
         void StopShimmer()
         {
             try
@@ -544,36 +738,73 @@ public sealed partial class GalleryMasonryView : UserControl
             catch (Exception ex) { AppLogger.Error($"GalleryMasonryView.StopShimmer: threw: {ex}"); }
         }
 
+        void PrepareImageLoad()
+        {
+            try
+            {
+                errorIcon.Visibility = Visibility.Collapsed;
+                imageVisual.StopAnimation("Opacity");
+                imageVisual.Opacity = 0f;
+                StartShimmer();
+            }
+            catch (Exception ex) { AppLogger.Error($"GalleryMasonryView.PrepareImageLoad: threw: {ex}"); }
+        }
+
+        void ShowImageError()
+        {
+            try
+            {
+                if (entryRef?.CurrentBitmap is not null)
+                    StopShimmer();
+                imageVisual.StopAnimation("Opacity");
+                imageVisual.Opacity = 0f;
+                shimmerBase.Background = ThemeHelper.Brush(this, "ASurfaceSoft");
+                shimmerBase.Opacity = 1;
+                errorIcon.Visibility = Visibility.Visible;
+            }
+            catch (Exception ex) { AppLogger.Error($"GalleryMasonryView.ShowImageError: threw: {ex}"); }
+        }
+
+        void ShowImageOpened()
+        {
+            try
+            {
+                var fadeIn = compositor.CreateScalarKeyFrameAnimation();
+                var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.25f, 0.1f), new Vector2(0.25f, 1f));
+                fadeIn.InsertKeyFrame(1f, 1f, easing);
+                fadeIn.Duration = TimeSpan.FromMilliseconds(200);
+                imageVisual.StartAnimation("Opacity", fadeIn);
+                StopShimmer();
+            }
+            catch (Exception ex) { AppLogger.Error($"GalleryMasonryView.ShowImageOpened: threw: {ex}"); }
+        }
+
         // 画像読み込み完了時にフェードインし、プレースホルダを止める。
         image.ImageOpened += (_, _) =>
         {
+            if (entryRef is { } openedEntry && openedEntry.CurrentBitmap is null)
+            {
+                openedEntry.PendingRetryTimer?.Stop();
+                openedEntry.PendingRetryTimer = null;
+                openedEntry.LoadedPath = openedEntry.LoadingPath;
+                openedEntry.FailedPath = string.Empty;
+                openedEntry.LoadFailureCount = 0;
+                openedEntry.IsLoaded = true;
+                if (openedEntry.ErrorIcon is not null)
+                    openedEntry.ErrorIcon.Visibility = Visibility.Collapsed;
+            }
+
             // 画像を短時間で表示状態へ移す。
             var fadeIn = compositor.CreateScalarKeyFrameAnimation();
             var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.25f, 0.1f), new Vector2(0.25f, 1f));
             fadeIn.InsertKeyFrame(1f, 1f, easing);
             fadeIn.Duration = TimeSpan.FromMilliseconds(200);
-            imageVisual.StartAnimation("Opacity", fadeIn);
+            if (entryRef?.CurrentBitmap is null)
+                imageVisual.StartAnimation("Opacity", fadeIn);
 
             // プレースホルダを隠す。
-            StopShimmer();
-        };
-
-        image.ImageFailed += (_, args) =>
-        {
-            AppLogger.Warn($"GalleryMasonryView.ImageFailed: {args.ErrorMessage}");
-            StopShimmer();
-            shimmerBase.Background = ThemeHelper.Brush(this, "ASurfaceSoft");
-            shimmerBase.Opacity = 1;
-            var errorIcon = new TextBlock
-            {
-                Text = "",
-                FontFamily = new FontFamily("Segoe MDL2 Assets"),
-                FontSize = 24,
-                Foreground = ThemeHelper.Brush(this, "ATextDisabled"),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-            };
-            cardGrid.Children.Add(errorIcon);
+            if (entryRef?.CurrentBitmap is null)
+                StopShimmer();
         };
 
         // ワールド名と撮影時刻の情報表示を画像下部に重ねる。
@@ -620,8 +851,20 @@ public sealed partial class GalleryMasonryView : UserControl
         var overlayVisual = ElementCompositionPreview.GetElementVisual(overlayPanel);
         overlayVisual.Opacity = 0f;
 
-        // --- 複数選択モードのチェックバッジ + 選択リング ---
-        // PhotoGridItemsView と同じく、写真を覆わない 2px 枠と右上の小さな ✓ で選択を示す。
+        var favoriteBadge = new FavoriteCornerBadge
+        {
+            BadgeSize = 36,
+            IconSize = 12,
+            Liked = item.Photo.IsFavorite,
+            Interactive = true,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+        favoriteBadge.OnClick = () => OnFavoriteClicked?.Invoke(item.Photo);
+        cardGrid.Children.Add(favoriteBadge);
+
+        // --- 複数選択モードの選択リング ---
+        // チェックバッジを使わず、カード全体の二重枠で選択を示す。
         // PhotoThumbnailItem.IsSelected の変化を PhotoSubscription で受けて Visibility を切り替える。
         var selection = GalleryMasonryViewportLogic.SelectionVisual(item.Photo.IsSelected);
         var selectionTint = new Border
@@ -632,39 +875,26 @@ public sealed partial class GalleryMasonryView : UserControl
         };
         cardGrid.Children.Add(selectionTint);
 
+        var selectionGlow = new Border
+        {
+            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            BorderBrush = ThemeHelper.Brush(this, "APhotoSelectionGlow"),
+            BorderThickness = new Thickness(6),
+            CornerRadius = new CornerRadius(7),
+            Opacity = 0.7,
+            Visibility = ToVisibility(selection.Visible),
+        };
+        cardGrid.Children.Add(selectionGlow);
+
         var selectionRing = new Border
         {
             Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
-            BorderBrush = ThemeHelper.Brush(this, "APrimary"),
-            BorderThickness = new Thickness(2),
-            CornerRadius = new CornerRadius(4),
+            BorderBrush = ThemeHelper.Brush(this, "APhotoSelectionRing"),
+            BorderThickness = new Thickness(3),
+            CornerRadius = new CornerRadius(5),
             Visibility = ToVisibility(selection.Visible),
         };
         cardGrid.Children.Add(selectionRing);
-
-        // 選択チェックバッジ。PhotoGridItemsView と統一して角丸スクエアで示す。
-        var selectionBadge = new Border
-        {
-            Width = 22,
-            Height = 22,
-            CornerRadius = new CornerRadius(8),
-            Background = ThemeHelper.Brush(this, "APrimary"),
-            BorderBrush = ThemeHelper.Brush(this, "APhotoSelectionBadgeBorder"),
-            BorderThickness = new Thickness(0),
-            HorizontalAlignment = HorizontalAlignment.Right,
-            VerticalAlignment = VerticalAlignment.Top,
-            Margin = new Thickness(0, 6, 6, 0),
-            Visibility = ToVisibility(selection.Visible),
-            Child = new Alpheratz.Shared.Controls.AppIcon
-            {
-                IconName = "check",
-                IconSize = 13,
-                Foreground = new SolidColorBrush(Microsoft.UI.Colors.White),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-            },
-        };
-        cardGrid.Children.Add(selectionBadge);
 
         // ホバー時の浮き上がり・拡大・情報表示アニメーションを設定する。
         var borderVisual = ElementCompositionPreview.GetElementVisual(border);
@@ -722,13 +952,19 @@ public sealed partial class GalleryMasonryView : UserControl
             Image = image,
             Photo = item.Photo,
             SelectionTint = selectionTint,
+            SelectionGlow = selectionGlow,
             SelectionRing = selectionRing,
-            SelectionBadge = selectionBadge,
+            FavoriteBadge = favoriteBadge,
+            ErrorIcon = errorIcon,
+            PrepareImageLoad = PrepareImageLoad,
+            ShowImageOpened = ShowImageOpened,
+            ShowImageError = ShowImageError,
             StopShimmer = StopShimmer,
         };
+        entryRef = entry;
 
         // サムネイル生成完了時に GridThumbPath が更新されるので、自動で画像を差し替える。
-        // また IsSelected の変化に応じて選択バッジと枠の表示を切り替える。
+        // また IsSelected / IsFavorite の変化に応じて各バッジ表示を切り替える。
         entry.PhotoSubscription = (s, e) =>
         {
             var newPath = entry.Photo.EffectiveSourcePath ?? string.Empty;
@@ -749,8 +985,11 @@ public sealed partial class GalleryMasonryView : UserControl
                     var nextSelection = GalleryMasonryViewportLogic.SelectionVisual(entry.Photo.IsSelected);
                     var v = ToVisibility(nextSelection.Visible);
                     selectionTint.Visibility = v;
+                    selectionGlow.Visibility = v;
                     selectionRing.Visibility = v;
-                    selectionBadge.Visibility = v;
+                    return;
+                case MasonryPhotoChangeAction.UpdateFavorite:
+                    favoriteBadge.Liked = entry.Photo.IsFavorite;
                     return;
                 case MasonryPhotoChangeAction.ReloadNow:
                     LoadImage(entry);

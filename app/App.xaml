@@ -6,9 +6,6 @@
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <!-- WinUI3 stock theme resources (TabViewButtonBackground etc) -->
-                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls"/>
-
                 <!-- Order matters: tokens & brushes feed into typography/buttons/containers. -->
                 <ResourceDictionary Source="Themes/Tokens.xaml"/>
                 <ResourceDictionary Source="Themes/Brushes.xaml"/>
