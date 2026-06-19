@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Alpheratz.Core;
@@ -20,6 +21,13 @@ namespace Alpheratz.Services;
 /// </summary>
 public sealed class WorldService
 {
+    private const string TwitterIntentHost = "twitter.com";
+    private const string XIntentHost = "x.com";
+    private const string TweetIntentPath = "/intent/tweet";
+    private const string TweetIntentQueryPrefix = "?text=";
+    private const string ExplorerExecutableName = "explorer.exe";
+    private const string ExplorerSelectArgument = "/select,";
+
     /// <summary>
     /// PDQ ハミング距離の最大許容値。
     /// 256 ビットハッシュ中 124 ビット以下の差なら「同じワールドで撮影された可能性が高い」と判定する。
@@ -53,10 +61,7 @@ public sealed class WorldService
         AppLogger.Trace($"WorldService.OpenWorldUrlAsync: enter worldId={worldId}");
         try
         {
-            if (!worldId.StartsWith("wrld_", StringComparison.Ordinal))
-                throw new ArgumentException($"VRChat ワールドIDの形式が不正です: {worldId}");
-            var url = new Uri($"https://vrchat.com/home/world/{worldId}/info");
-            await Launcher.LaunchUriAsync(url).AsTask(ct).ConfigureAwait(false);
+            await Launcher.LaunchUriAsync(BuildWorldUri(worldId)).AsTask(ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -73,10 +78,7 @@ public sealed class WorldService
         AppLogger.Trace("WorldService.OpenTweetIntentAsync: enter");
         try
         {
-            if (!intentUrl.StartsWith("https://twitter.com/intent/tweet?text=", StringComparison.Ordinal)
-                && !intentUrl.StartsWith("https://x.com/intent/tweet?text=", StringComparison.Ordinal))
-                throw new ArgumentException($"Tweet intent URL の形式が不正です: {intentUrl}");
-            await Launcher.LaunchUriAsync(new Uri(intentUrl)).AsTask(ct).ConfigureAwait(false);
+            await Launcher.LaunchUriAsync(BuildTweetIntentUri(intentUrl)).AsTask(ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -92,18 +94,7 @@ public sealed class WorldService
         AppLogger.Trace($"WorldService.ShowInExplorerAsync: enter path={path}");
         try
         {
-            var normalizedPath = System.IO.Path.GetFullPath(path.Replace('/', '\\'));
-            // 文字列連結で /select,"..." を組むとパス内のダブルクォートやコマンド区切りで
-            // 任意のシェルコマンドが実行できてしまう。ProcessStartInfo.ArgumentList を使い、
-            // OS 側に引数エスケープを任せる。
-            var psi = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "explorer.exe",
-                UseShellExecute = false,
-            };
-            psi.ArgumentList.Add("/select,");
-            psi.ArgumentList.Add(normalizedPath);
-            System.Diagnostics.Process.Start(psi);
+            Process.Start(BuildExplorerSelectionStartInfo(path));
         }
         catch (Exception ex)
         {
@@ -134,6 +125,88 @@ public sealed class WorldService
             throw;
         }
         AppLogger.Trace("WorldService.CopyImageToClipboardAsync: exit");
+    }
+
+    /// <summary>VRChat ワールド詳細を開くための URL を組み立て、ID 形式の不正を起動前に拒否する。</summary>
+    internal static Uri BuildWorldUri(string worldId)
+    {
+        if (!IsValidWorldId(worldId))
+            throw new ArgumentException("VRChat ワールドIDの形式が不正です。");
+
+        return new Uri($"https://vrchat.com/home/world/{worldId}/info");
+    }
+
+    /// <summary>Twitter/X の Web Intent URL として許可するホスト・パス・クエリだけを Uri に変換する。</summary>
+    internal static Uri BuildTweetIntentUri(string intentUrl)
+    {
+        if (string.IsNullOrWhiteSpace(intentUrl)
+            || intentUrl != intentUrl.Trim()
+            || !Uri.TryCreate(intentUrl, UriKind.Absolute, out var uri)
+            || uri.Scheme != Uri.UriSchemeHttps
+            || uri.UserInfo.Length > 0
+            || !uri.IsDefaultPort
+            || (uri.Host != TwitterIntentHost && uri.Host != XIntentHost)
+            || uri.AbsolutePath != TweetIntentPath
+            || uri.Fragment.Length > 0
+            || !IsTextOnlyTweetIntentQuery(uri.Query))
+        {
+            throw new ArgumentException("Tweet intent URL の形式が不正です。");
+        }
+
+        return uri;
+    }
+
+    /// <summary>Explorer で対象ファイルを選択表示する ProcessStartInfo を構築する。</summary>
+    internal static ProcessStartInfo BuildExplorerSelectionStartInfo(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            throw new ArgumentException("Explorer で表示する写真パスが空です。", nameof(path));
+
+        // /select と対象パスを別引数にすることで、引用符や区切り文字を含むパスをコマンド文字列へ混ぜない。
+        var psi = new ProcessStartInfo
+        {
+            FileName = ResolveExplorerExecutablePath(),
+            UseShellExecute = false,
+        };
+        psi.ArgumentList.Add(ExplorerSelectArgument);
+        psi.ArgumentList.Add(System.IO.Path.GetFullPath(path.Replace('/', '\\')));
+        return psi;
+    }
+
+    /// <summary>VRChat の world_id として URL 構成文字だけを含む `wrld_` ID かを確認する。</summary>
+    private static bool IsValidWorldId(string? worldId)
+    {
+        const string Prefix = "wrld_";
+        if (string.IsNullOrWhiteSpace(worldId) || !worldId.StartsWith(Prefix, StringComparison.Ordinal))
+            return false;
+        if (worldId.Length == Prefix.Length)
+            return false;
+
+        for (var i = Prefix.Length; i < worldId.Length; i++)
+        {
+            var ch = worldId[i];
+            if (!char.IsAsciiLetterOrDigit(ch) && ch is not '-' and not '_')
+                return false;
+        }
+        return true;
+    }
+
+    /// <summary>Tweet Intent の query が `text` だけを持ち、追加パラメータを含まないことを確認する。</summary>
+    private static bool IsTextOnlyTweetIntentQuery(string query)
+        => query.StartsWith(TweetIntentQueryPrefix, StringComparison.Ordinal)
+            && !query.Contains('&', StringComparison.Ordinal)
+            && !query.Contains(';', StringComparison.Ordinal);
+
+    /// <summary>PATH 探索に依存せず Windows 配下の Explorer 実行ファイルを返す。</summary>
+    private static string ResolveExplorerExecutablePath()
+    {
+        var windowsDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        if (string.IsNullOrWhiteSpace(windowsDirectory))
+            windowsDirectory = Environment.GetEnvironmentVariable("WINDIR") ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(windowsDirectory))
+            throw new InvalidOperationException("Windows ディレクトリを特定できないため Explorer を起動できません。");
+
+        return System.IO.Path.Combine(windowsDirectory, ExplorerExecutableName);
     }
 
     /// <summary>source 写真のワールド情報を target 写真へコピーする。</summary>

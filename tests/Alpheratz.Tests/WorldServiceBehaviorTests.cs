@@ -248,6 +248,82 @@ public sealed class WorldServiceBehaviorTests
     }
 
     /// <summary>
+    /// VRChat ワールド URL の組み立てが `wrld_` 形式の ID だけを受け付けることを確認する。
+    ///
+    /// 実際の OpenWorldUrlAsync は OS の Launcher を呼ぶため、URL 生成と入力検証を分離して直接検証する。
+    /// 不正 ID を起動前に止めることで、ユーザーのローカル環境に副作用を出さずに失敗を扱える。
+    /// </summary>
+    [Fact]
+    public void BuildWorldUri_AcceptsOnlyVrchatWorldIds()
+    {
+        var uri = WorldService.BuildWorldUri("wrld_alpha");
+
+        Assert.Equal("https://vrchat.com/home/world/wrld_alpha/info", uri.ToString());
+        Assert.Throws<ArgumentException>(() => WorldService.BuildWorldUri("not-a-world-id"));
+        Assert.Throws<ArgumentException>(() => WorldService.BuildWorldUri("wrld_"));
+        Assert.Throws<ArgumentException>(() => WorldService.BuildWorldUri("wrld_alpha/info"));
+        Assert.Throws<ArgumentException>(() => WorldService.BuildWorldUri("wrld_alpha beta"));
+        Assert.Throws<ArgumentException>(() => WorldService.BuildWorldUri(""));
+        Assert.Throws<ArgumentException>(() => WorldService.BuildWorldUri(null!));
+        Assert.Throws<ArgumentException>(() => WorldService.BuildWorldUri("   "));
+
+        var exception = Assert.Throws<ArgumentException>(() => WorldService.BuildWorldUri("wrld_alpha/beta"));
+        Assert.DoesNotContain("wrld_alpha", exception.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Tweet Intent URL が Twitter/X の投稿 intent だけを通すことを確認する。
+    ///
+    /// 投稿本文は事前に URL エンコードして渡す設計であるため、ここでは許可済み URL の境界を固定する。
+    /// 外部ホストや別用途の URL は Launcher へ渡さず、呼出側のエラー通知へ戻す。
+    /// </summary>
+    [Fact]
+    public void BuildTweetIntentUri_AllowsOnlyTwitterAndXIntentUrls()
+    {
+        Assert.Equal(
+            "https://twitter.com/intent/tweet?text=hello%20world",
+            WorldService.BuildTweetIntentUri("https://twitter.com/intent/tweet?text=hello%20world").AbsoluteUri);
+        Assert.Equal(
+            "https://x.com/intent/tweet?text=hello%20world",
+            WorldService.BuildTweetIntentUri("https://x.com/intent/tweet?text=hello%20world").AbsoluteUri);
+
+        Assert.Throws<ArgumentException>(() => WorldService.BuildTweetIntentUri("https://example.com/intent/tweet?text=hello"));
+        Assert.Throws<ArgumentException>(() => WorldService.BuildTweetIntentUri("https://twitter.com/intent/follow?text=hello"));
+        Assert.Throws<ArgumentException>(() => WorldService.BuildTweetIntentUri("https://twitter.com/intent/tweet?text=hello&url=https://example.com"));
+        Assert.Throws<ArgumentException>(() => WorldService.BuildTweetIntentUri("https://twitter.com/intent/tweet?text=hello;url=https://example.com"));
+        Assert.Throws<ArgumentException>(() => WorldService.BuildTweetIntentUri("https://twitter.com/intent/tweet?text=hello#compose"));
+        Assert.Throws<ArgumentException>(() => WorldService.BuildTweetIntentUri("https://twitter.com:444/intent/tweet?text=hello"));
+        Assert.Throws<ArgumentException>(() => WorldService.BuildTweetIntentUri("https://user@twitter.com/intent/tweet?text=hello"));
+        Assert.Throws<ArgumentException>(() => WorldService.BuildTweetIntentUri("http://twitter.com/intent/tweet?text=hello"));
+        Assert.Throws<ArgumentException>(() => WorldService.BuildTweetIntentUri(" https://twitter.com/intent/tweet?text=hello "));
+        Assert.Throws<ArgumentException>(() => WorldService.BuildTweetIntentUri(""));
+        Assert.Throws<ArgumentException>(() => WorldService.BuildTweetIntentUri(null!));
+
+        var exception = Assert.Throws<ArgumentException>(() =>
+            WorldService.BuildTweetIntentUri("https://example.com/intent/tweet?text=invalid-value"));
+        Assert.DoesNotContain("example.com", exception.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Explorer 選択表示の起動情報が、コマンド文字列ではなく分離された引数として構築されることを確認する。
+    ///
+    /// 写真パスに引用符やシェル区切りに見える文字が含まれても、ArgumentList の2番目の値として渡す。
+    /// これにより、表示対象パスと Explorer オプションの境界を保ったまま OS へ渡せる。
+    /// </summary>
+    [Fact]
+    public void BuildExplorerSelectionStartInfo_SeparatesSelectOptionAndPathArgument()
+    {
+        var input = "C:/photos/a\" & calc.jpg";
+        var psi = WorldService.BuildExplorerSelectionStartInfo(input);
+
+        Assert.True(Path.IsPathRooted(psi.FileName));
+        Assert.Equal("explorer.exe", Path.GetFileName(psi.FileName));
+        Assert.False(psi.UseShellExecute);
+        Assert.Equal(["/select,", Path.GetFullPath(input.Replace('/', '\\'))], psi.ArgumentList.ToArray());
+        Assert.Throws<ArgumentException>(() => WorldService.BuildExplorerSelectionStartInfo(""));
+    }
+
+    /// <summary>
     /// 外部起動系メソッドが不正入力を Launcher 呼び出し前に拒否することを確認する。
     ///
     /// OpenWorldUrlAsync と OpenTweetIntentAsync は正常系では OS の既定ブラウザを起動するため、
