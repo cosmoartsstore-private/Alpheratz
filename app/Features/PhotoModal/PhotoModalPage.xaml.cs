@@ -57,6 +57,9 @@ public sealed partial class PhotoModalPage : Page
     /// <summary>タグマスタ画面への遷移（モーダルを閉じてから遷移する想定）。</summary>
     public Action? OnOpenTagMaster { get; set; }
 
+    /// <summary>背面キー操作を止める PhotoModal 内側の overlay が表示されているかを返す。</summary>
+    public bool HasBlockingInnerOverlayOpen => TagAddOverlay.Visibility == Visibility.Visible;
+
     /// <summary>タグ候補リストをコンボボックスに反映する。</summary>
     public void SetMasterTags(UiObservableCollection<string> tags)
     {
@@ -308,16 +311,19 @@ public sealed partial class PhotoModalPage : Page
     {
         try
         {
-            if (TagAddOverlay.Visibility == Visibility.Visible && e.Key == Windows.System.VirtualKey.Escape)
-            {
-                e.Handled = true;
-                CloseTagAddModal();
-                return;
-            }
-
             var isTextInputFocused = FocusManager.GetFocusedElement(XamlRoot) is TextBox;
-            switch (PhotoModalPageLogic.ResolveKeyAction(isTextInputFocused, e.Key))
+            switch (PhotoModalPageLogic.ResolveKeyAction(
+                hasBlockingInnerOverlayOpen: HasBlockingInnerOverlayOpen,
+                isTextInputFocused: isTextInputFocused,
+                key: e.Key))
             {
+                case PhotoModalPageKeyAction.Suppress:
+                    e.Handled = true;
+                    break;
+                case PhotoModalPageKeyAction.CloseInnerOverlay:
+                    e.Handled = true;
+                    CloseTagAddModal();
+                    break;
                 case PhotoModalPageKeyAction.Close:
                     e.Handled = true;
                     OnClose?.Invoke();

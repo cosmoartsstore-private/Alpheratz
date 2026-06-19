@@ -293,9 +293,22 @@ public sealed partial class ShellPage : Page
     private bool isMiddleModalOpen;
 
     /// <summary>
-    /// 各オーバーレイ (最上位モーダル / 中位モーダル / 検索条件パネル) の開閉状態に合わせて、
+    /// ShellPage が保持する分散フラグを、純粋ロジックへ渡す単一の overlay 状態にまとめる。
+    /// Confirm は Esc 優先順位と新規 overlay 起動の抑止に使い、MultiSelect は Esc 優先順位に使う。
+    /// ヘッダー dim は PhotoModal / 中位モーダル / Filter の表示状態だけで決める。
+    /// </summary>
+    private ShellOverlayState currentOverlayState()
+        => new(
+            isModalOpen,
+            isMiddleModalOpen,
+            isFilterOpen,
+            ConfirmOverlay.Visibility == Visibility.Visible,
+            viewModel.galleryViewModel.selectionState.IsMultiSelectMode);
+
+    /// <summary>
+    /// HeaderBar を覆うオーバーレイ (最上位モーダル / 中位モーダル / 検索条件パネル) の開閉状態に合わせて、
     /// ヘッダーの操作可否 (SetControlsInteractive) と dim (Opacity) を一元的に同期する。
-    /// 何らかのオーバーレイ表示中はヘッダーの操作ボタン類を不活性にし、
+    /// dim 対象のオーバーレイ表示中はヘッダーの操作ボタン類を不活性にし、
     /// 裏で別オーバーレイが開かないようにする (1 の不活性化と 2 のガードで二重の安全策)。
     /// 注意: ヘッダーの操作要素 (ContentRoot) だけを不活性にし、UserControl 自身は hit-test 可能なまま
     /// 残すので、ShellPage.xaml で HeaderBar に付けた Tapped=ModalDismissArea_Tapped は発火し続ける
@@ -310,7 +323,7 @@ public sealed partial class ShellPage : Page
     {
         try
         {
-            var state = ShellPageInteractionLogic.ComputeHeaderInteractivity(isModalOpen, isMiddleModalOpen, isFilterOpen);
+            var state = ShellPageInteractionLogic.ComputeHeaderInteractivity(currentOverlayState());
             HeaderBar.SetControlsInteractive(state.ControlsInteractive);
             HeaderBar.Opacity = state.Opacity;
         }
@@ -372,7 +385,8 @@ public sealed partial class ShellPage : Page
 
     /// <summary>
     /// 中位モーダル (Settings / GroupDrillDown / WorldResolve) を閉じる。
-    /// 最上位の PhotoModal が開いていれば、PhotoModal の方を先に閉じる。
+    /// 最上位の PhotoModal が残っている場合でも中位レイヤだけを閉じ、
+    /// ヘッダー状態は残りの最上位レイヤに合わせて再同期する。
     /// </summary>
     private void CloseMiddleModal()
     {
@@ -401,9 +415,9 @@ public sealed partial class ShellPage : Page
     public void ShowSettings(string? initialSection)
     {
         AppLogger.Trace("ShellPage.ShowSettings: enter");
-        // モーダル多重化防止: 何らかのオーバーレイ (最上位/中位モーダル/検索条件) が開いている間は
-        // ヘッダー起動の設定オープンを no-op にする (1 の不活性化と二重の安全策)。
-        if (isModalOpen || isMiddleModalOpen || isFilterOpen) return;
+        // モーダル多重化防止: 何らかのオーバーレイ (最上位/中位モーダル/検索条件/確認) が開いている間は
+        // Settings の新規オープンを no-op にする。Confirm は前面 overlay とこのガードで多重化を防ぐ。
+        if (!ShellPageInteractionLogic.CanOpenSettingsModal(currentOverlayState())) return;
         try
         {
             if (settingsPage is null)
@@ -614,9 +628,9 @@ public sealed partial class ShellPage : Page
         AppLogger.Trace($"ShellPage.ToggleFilter: enter isFilterOpen={isFilterOpen}");
         try
         {
-            // 開く側のみガード: モーダル (最上位/中位) 表示中は検索条件パネルを開かない
-            // (モーダルの上に検索条件を重ねない)。閉じる側は常に許可する。
-            if (!ShellPageInteractionLogic.CanToggleFilter(isFilterOpen, isModalOpen, isMiddleModalOpen)) return;
+            // 開く側のみガード: モーダル (最上位/中位) または確認 UI の表示中は検索条件パネルを開かない。
+            // 既に検索条件が開いている場合の閉じる操作は、残留 overlay を解消するため許可する。
+            if (!ShellPageInteractionLogic.CanToggleFilter(currentOverlayState())) return;
             isFilterOpen = !isFilterOpen;
             SetFilterOverlayOpen(isFilterOpen);
             // 検索条件の開閉に合わせてヘッダーの不活性化 / dim を同期する。
@@ -656,27 +670,41 @@ public sealed partial class ShellPage : Page
     private void FilterPanelContainer_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e) => e.Handled = true;
 
     /// <summary>
-    /// 写真モーダルの ←/→/Esc をフォーカス位置に依存せず確実に効かせるための tunneling ハンドラ。
+    /// Confirm の Esc と写真モーダルの ←/→/Esc を、子ページの KeyDown より先に処理する tunneling ハンドラ。
+    /// Confirm 表示中は背面の Settings / GroupDrillDown / WorldResolve が Esc を消費する前に閉じる。
     /// PreviewKeyDown はルート (ShellPage) から子へ向かって先に発火するので、背後のギャラリー
     /// GridView が矢印キーを消費する前にここで捕捉できる。写真モーダルが開いている時だけ
     /// (isModalOpen==true) 次を処理して e.Handled=true にする:
     ///   - Left  → 前の写真へ (ShowPhotoModal で結線したのと同じ OnGoPrev = goPrevPhoto())
     ///   - Right → 次の写真へ (同 OnGoNext = goNextPhoto())
     ///   - Esc   → 写真モーダルを閉じる (同 OnClose = closePhotoModal()+CloseModal())
-    /// TextBox にフォーカスがあるときはタグ入力等の誤爆を避けてスキップする。
-    /// ここで Handled 済みにするので、PhotoModalPage.Page_PreviewKeyDown・ShellPage_KeyDown
-    /// (bubbling)・背後 GridView のいずれにも届かず二重発火しない。Enter (タグ一括追加) や
-    /// Backspace (戻る) はここでは扱わず、従来通り PhotoModalPage 側 (モーダル内フォーカス時) が処理する。
+    /// TextBox にフォーカスがあるとき、または PhotoModal 内側 overlay が表示されているときはスキップする。
+    /// Shell 側で処理したキーは Handled 済みにするので、PhotoModalPage.Page_KeyDown・ShellPage_KeyDown
+    /// (bubbling)・背後 GridView のいずれにも届かない。内側 overlay 表示中のキーは
+    /// PhotoModalPage 側へ渡し、内側 overlay の close または背面操作の抑止として処理する。
+    /// Enter (タグ一括追加) や Backspace (戻る) はここでは扱わず、従来通り PhotoModalPage 側が処理する。
     /// </summary>
     private void ShellPage_PreviewKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
         try
         {
+            switch (ShellPageInteractionLogic.ResolveShellPreviewKey(currentOverlayState(), e.Key))
+            {
+                case ShellPreviewKeyAction.CloseConfirm:
+                    CloseConfirmDialog(null);
+                    e.Handled = true;
+                    return;
+                case ShellPreviewKeyAction.Suppress:
+                    e.Handled = true;
+                    return;
+            }
+
             var action = ShellPageInteractionLogic.ResolvePhotoModalPreviewKey(
-                isModalOpen,
-                activePhotoModalPage is not null,
-                Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot) is TextBox,
-                e.Key);
+                isPhotoModalOpen: isModalOpen,
+                hasActivePhotoModal: activePhotoModalPage is not null,
+                hasPhotoModalInnerOverlay: activePhotoModalPage?.HasBlockingInnerOverlayOpen == true,
+                isTextInputFocused: Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot) is TextBox,
+                key: e.Key);
             switch (action)
             {
                 case PhotoModalKeyAction.GoPrevious:
@@ -697,10 +725,11 @@ public sealed partial class ShellPage : Page
     }
 
     /// <summary>
-    /// シェルレベルのキーボードショートカット。PhotoModal が開いている時の ←/→/Esc は
-    /// ShellPage_PreviewKeyDown (tunneling) が先に処理して e.Handled=true にするので、
-    /// ここ (bubbling KeyDown) まで来るのはギャラリー / 設定 / タグマスタ画面のいずれか。
-    ///   - Esc       → 検索条件 overlay を閉じる / マルチセレクトを解除
+    /// シェルレベルの bubbling キーボードショートカット。
+    /// PhotoModal の ←/→/Esc と Confirm 表示中の Esc は ShellPage_PreviewKeyDown が先に処理する。
+    /// ここでは通常のギャラリー / 設定 / タグマスタ画面の操作と、preview へ届かなかった場合の
+    /// overlay fallback を扱う。
+    ///   - Esc       → 検索条件 overlay を閉じる / マルチセレクトを解除 / 確認 UI の fallback close
     ///   - Ctrl+F    → 検索条件 overlay を開く
     ///   - Ctrl+,    → 設定画面を開く（一般的な「設定」ショートカット）
     /// </summary>
@@ -711,14 +740,7 @@ public sealed partial class ShellPage : Page
             var ctrlDown = (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control)
                 & Windows.UI.Core.CoreVirtualKeyStates.Down) == Windows.UI.Core.CoreVirtualKeyStates.Down;
 
-            var action = ShellPageInteractionLogic.ResolveShellKey(
-                ConfirmOverlay.Visibility == Visibility.Visible,
-                isFilterOpen,
-                viewModel.galleryViewModel.selectionState.IsMultiSelectMode,
-                isModalOpen,
-                isMiddleModalOpen,
-                ctrlDown,
-                e.Key);
+            var action = ShellPageInteractionLogic.ResolveShellKey(currentOverlayState(), ctrlDown, e.Key);
 
             switch (action)
             {
@@ -755,7 +777,7 @@ public sealed partial class ShellPage : Page
     /// </summary>
     private void ModalDismissArea_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
     {
-        switch (ShellPageInteractionLogic.ResolveModalDismiss(Environment.TickCount64, lastModalOpenTick, isModalOpen, isMiddleModalOpen))
+        switch (ShellPageInteractionLogic.ResolveModalDismiss(Environment.TickCount64, lastModalOpenTick, currentOverlayState()))
         {
             case ModalDismissAction.ClosePhotoModal:
                 // 最上位 PhotoModal を閉じる (closePhotoModal + CloseModal を内包)

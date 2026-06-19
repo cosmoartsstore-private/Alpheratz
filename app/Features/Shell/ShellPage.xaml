@@ -7,6 +7,7 @@
     Background="{ThemeResource ABg}"
     Loaded="ShellPage_Loaded"
     Unloaded="ShellPage_Unloaded"
+    PreviewKeyDown="ShellPage_PreviewKeyDown"
     KeyDown="ShellPage_KeyDown">
 
     <Grid Background="{ThemeResource ABg}">
@@ -20,7 +21,7 @@
 
         <shellControls:ShellStage x:Name="Stage" Grid.Row="1"/>
 
-        <Grid x:Name="ConfirmOverlay" Grid.RowSpan="2" Visibility="Collapsed">
+        <Grid x:Name="ConfirmOverlay" Grid.RowSpan="2" Canvas.ZIndex="20" Visibility="Collapsed">
             <Border Background="{ThemeResource AOverlay}" Tapped="ConfirmBackdrop_Tapped"/>
             <Border MaxWidth="460"
                     Padding="26"
@@ -60,7 +61,7 @@
             表示時に親要素を付け替えると ActualTheme の継承が切れ、
             テーマ切替が反映されないため、開閉は Visibility の変更だけで行う。
         -->
-        <Grid x:Name="FilterOverlay" Grid.Row="1" Visibility="Collapsed">
+        <Grid x:Name="FilterOverlay" Grid.Row="1" Canvas.ZIndex="10" Visibility="Collapsed">
             <Border x:Name="FilterBackdrop"
                     Background="{ThemeResource AOverlay}"
                     Tapped="FilterBackdrop_Tapped"/>

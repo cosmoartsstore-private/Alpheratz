@@ -85,9 +85,22 @@ internal static class PhotoModalPageLogic
         return new TagAddDisplay(availableCount > 0, availableCount);
     }
 
-    /// <summary>テキスト入力へフォーカスがない場合に、モーダルが処理するキー操作を返す。</summary>
-    public static PhotoModalPageKeyAction ResolveKeyAction(bool isTextInputFocused, VirtualKey key)
+    /// <summary>PhotoModalPage が処理または消費するキー操作を返す。</summary>
+    public static PhotoModalPageKeyAction ResolveKeyAction(
+        bool hasBlockingInnerOverlayOpen,
+        bool isTextInputFocused,
+        VirtualKey key)
     {
+        if (hasBlockingInnerOverlayOpen)
+        {
+            return key switch
+            {
+                VirtualKey.Escape => PhotoModalPageKeyAction.CloseInnerOverlay,
+                VirtualKey.Left or VirtualKey.Right or VirtualKey.Back => PhotoModalPageKeyAction.Suppress,
+                _ => PhotoModalPageKeyAction.None,
+            };
+        }
+
         if (isTextInputFocused) return PhotoModalPageKeyAction.None;
         return key switch
         {
@@ -169,10 +182,12 @@ internal sealed record WorldActionDisplay(bool Enabled, string Label, string Too
 /// <summary>タグ追加欄の表示状態と追加可能タグ数。</summary>
 internal sealed record TagAddDisplay(bool HasAvailable, int AvailableCount);
 
-/// <summary>PhotoModalPage が処理するキーボード操作。</summary>
+/// <summary>PhotoModalPage が処理または消費するキーボード操作。</summary>
 internal enum PhotoModalPageKeyAction
 {
     None,
+    Suppress,
+    CloseInnerOverlay,
     Close,
     GoPrevious,
     GoNext,

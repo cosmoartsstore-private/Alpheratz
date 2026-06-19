@@ -130,12 +130,70 @@ public sealed class PhotoModalPageLogicTests
     [Fact]
     public void ResolveKeyAction_MapsModalKeysUnlessTextInputFocused()
     {
-        Assert.Equal(PhotoModalPageKeyAction.Close, PhotoModalPageLogic.ResolveKeyAction(false, VirtualKey.Escape));
-        Assert.Equal(PhotoModalPageKeyAction.GoPrevious, PhotoModalPageLogic.ResolveKeyAction(false, VirtualKey.Left));
-        Assert.Equal(PhotoModalPageKeyAction.GoNext, PhotoModalPageLogic.ResolveKeyAction(false, VirtualKey.Right));
-        Assert.Equal(PhotoModalPageKeyAction.GoBack, PhotoModalPageLogic.ResolveKeyAction(false, VirtualKey.Back));
-        Assert.Equal(PhotoModalPageKeyAction.None, PhotoModalPageLogic.ResolveKeyAction(false, VirtualKey.Enter));
-        Assert.Equal(PhotoModalPageKeyAction.None, PhotoModalPageLogic.ResolveKeyAction(true, VirtualKey.Escape));
+        Assert.Equal(PhotoModalPageKeyAction.Close, PhotoModalPageLogic.ResolveKeyAction(
+            hasBlockingInnerOverlayOpen: false,
+            isTextInputFocused: false,
+            key: VirtualKey.Escape));
+        Assert.Equal(PhotoModalPageKeyAction.GoPrevious, PhotoModalPageLogic.ResolveKeyAction(
+            hasBlockingInnerOverlayOpen: false,
+            isTextInputFocused: false,
+            key: VirtualKey.Left));
+        Assert.Equal(PhotoModalPageKeyAction.GoNext, PhotoModalPageLogic.ResolveKeyAction(
+            hasBlockingInnerOverlayOpen: false,
+            isTextInputFocused: false,
+            key: VirtualKey.Right));
+        Assert.Equal(PhotoModalPageKeyAction.GoBack, PhotoModalPageLogic.ResolveKeyAction(
+            hasBlockingInnerOverlayOpen: false,
+            isTextInputFocused: false,
+            key: VirtualKey.Back));
+        Assert.Equal(PhotoModalPageKeyAction.None, PhotoModalPageLogic.ResolveKeyAction(
+            hasBlockingInnerOverlayOpen: false,
+            isTextInputFocused: false,
+            key: VirtualKey.Enter));
+        Assert.Equal(PhotoModalPageKeyAction.None, PhotoModalPageLogic.ResolveKeyAction(
+            hasBlockingInnerOverlayOpen: false,
+            isTextInputFocused: true,
+            key: VirtualKey.Escape));
+    }
+
+    /// <summary>
+    /// タグ追加などの内側モーダル表示中は、背面の写真移動キーだけを消費することを確認する。
+    ///
+    /// Escape は内側モーダルを閉じ、左右キーや Backspace は写真移動や履歴戻りへ渡さない。
+    /// Enter や Space は overlay 内ボタン操作へ渡すため、PhotoModalPage では処理しない。
+    /// これにより、未確定のタグ選択が別写真へ適用される退行を防ぐ。
+    /// </summary>
+    [Fact]
+    public void ResolveKeyAction_ConsumesBackgroundKeysWhenInnerOverlayIsOpen()
+    {
+        Assert.Equal(PhotoModalPageKeyAction.CloseInnerOverlay, PhotoModalPageLogic.ResolveKeyAction(
+            hasBlockingInnerOverlayOpen: true,
+            isTextInputFocused: false,
+            key: VirtualKey.Escape));
+        Assert.Equal(PhotoModalPageKeyAction.Suppress, PhotoModalPageLogic.ResolveKeyAction(
+            hasBlockingInnerOverlayOpen: true,
+            isTextInputFocused: false,
+            key: VirtualKey.Left));
+        Assert.Equal(PhotoModalPageKeyAction.Suppress, PhotoModalPageLogic.ResolveKeyAction(
+            hasBlockingInnerOverlayOpen: true,
+            isTextInputFocused: false,
+            key: VirtualKey.Right));
+        Assert.Equal(PhotoModalPageKeyAction.Suppress, PhotoModalPageLogic.ResolveKeyAction(
+            hasBlockingInnerOverlayOpen: true,
+            isTextInputFocused: false,
+            key: VirtualKey.Back));
+        Assert.Equal(PhotoModalPageKeyAction.Suppress, PhotoModalPageLogic.ResolveKeyAction(
+            hasBlockingInnerOverlayOpen: true,
+            isTextInputFocused: true,
+            key: VirtualKey.Left));
+        Assert.Equal(PhotoModalPageKeyAction.None, PhotoModalPageLogic.ResolveKeyAction(
+            hasBlockingInnerOverlayOpen: true,
+            isTextInputFocused: false,
+            key: VirtualKey.Enter));
+        Assert.Equal(PhotoModalPageKeyAction.None, PhotoModalPageLogic.ResolveKeyAction(
+            hasBlockingInnerOverlayOpen: true,
+            isTextInputFocused: false,
+            key: VirtualKey.Space));
     }
 
     /// <summary>
