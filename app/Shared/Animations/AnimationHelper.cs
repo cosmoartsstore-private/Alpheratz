@@ -205,12 +205,6 @@ public static class AnimationHelper
     // Combined: slide-up + fade (for toasts, overlays)
     // -----------------------------------------------------------------------
 
-    /// <summary>下方向から上へスライドしながらフェードインする。</summary>
-    public static void SlideUpFadeIn(UIElement element, float fromY = 20f, int durationMs = 250)
-    {
-        SlideIn(element, 0, fromY, durationMs);
-    }
-
     /// <summary>モーダルを下から上へスライドしながら表示する。HTML デモの slide-up と同じ移動量・時間を使う。</summary>
     public static void ModalSlideUpIn(UIElement element, float fromY = 48f, int durationMs = 300)
     {
@@ -236,27 +230,9 @@ public static class AnimationHelper
         visual.StartAnimation("Opacity", opacityAnim);
     }
 
-    /// <summary>上方向へスライドしながらフェードアウトする。</summary>
-    public static void SlideUpFadeOut(UIElement element, float toY = -10f, int durationMs = 200, Action? onCompleted = null)
-    {
-        SlideOut(element, 0, toY, durationMs, onCompleted);
-    }
-
     // -----------------------------------------------------------------------
-    // Utility: set visual properties instantly (no animation)
+    // アニメーション完了後の表示状態を即時に初期化する。
     // -----------------------------------------------------------------------
-
-    /// <summary>アニメーションなしで Opacity を直接設定する。</summary>
-    public static void SetOpacity(UIElement element, float opacity)
-    {
-        ElementCompositionPreview.GetElementVisual(element).Opacity = opacity;
-    }
-
-    /// <summary>アニメーションなしで Offset を直接設定する。</summary>
-    public static void SetOffset(UIElement element, float x, float y)
-    {
-        ElementCompositionPreview.GetElementVisual(element).Offset = new Vector3(x, y, 0);
-    }
 
     /// <summary>Opacity、Offset、Scale を通常表示状態へ戻す。</summary>
     public static void ResetVisual(UIElement element)

@@ -23,7 +23,7 @@ public sealed class AnimatedFavoriteStarLogicTests
     public void TextAndBrushPlan_ReturnLikedAndUnlikedDisplayValues()
     {
         Assert.Equal("お気に入りに追加", AnimatedFavoriteStarLogic.AutomationName(false));
-        Assert.Equal("お気に入り解除", AnimatedFavoriteStarLogic.AutomationName(true));
+        Assert.Equal("お気に入りから削除", AnimatedFavoriteStarLogic.AutomationName(true));
 
         Assert.Equal(
             new FavoriteStarBrushPlan(

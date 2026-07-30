@@ -1,5 +1,6 @@
 using Alpheratz.Core;
 using Alpheratz.Core.Database;
+using Alpheratz.Messages;
 using Alpheratz.Models.Events;
 using Alpheratz.Services;
 using Windows.Graphics.Imaging;
@@ -63,6 +64,65 @@ public sealed class BackgroundServiceBehaviorTests : IDisposable
         File.WriteAllBytes(imagePath, PngHeader(width: 640, height: 320));
         await db.UpsertPhotoAsync(Photo(imagePath, "wide.png", "2026-06-05 10:00:00"));
         var progressEvents = new List<OrientationProgressEvent>();
+        var notificationOrder = new List<string>();
+        var completeCount = 0;
+        var finalProgressStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFinalProgress = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var progressSub = eventBus.Subscribe<OrientationProgressEvent>(
+            EventNames.OrientationProgress,
+            payload =>
+            {
+                progressEvents.Add(payload);
+                notificationOrder.Add("progress");
+                if (payload.running)
+                    return Task.CompletedTask;
+
+                finalProgressStarted.TrySetResult();
+                return releaseFinalProgress.Task;
+            });
+        await using var completeSub = eventBus.Subscribe(
+            EventNames.OrientationComplete,
+            () =>
+            {
+                completeCount++;
+                notificationOrder.Add("complete");
+                return Task.CompletedTask;
+            });
+        var service = new OrientationService(db, eventBus);
+
+        var startTask = service.StartOrientationCalculationAsync();
+        await finalProgressStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        try
+        {
+            Assert.False(startTask.IsCompleted);
+            Assert.Equal(0, completeCount);
+        }
+        finally
+        {
+            releaseFinalProgress.TrySetResult();
+        }
+        await startTask;
+        var record = await db.GetPhotoRecordAsync(imagePath.Replace('\\', '/'));
+        var currentProgress = await service.GetOrientationProgressAsync();
+
+        Assert.NotNull(record);
+        Assert.Equal("landscape", record.orientation);
+        Assert.Equal(640, record.image_width);
+        Assert.Equal(320, record.image_height);
+        Assert.Contains(progressEvents, item => item.running && item.total == 1);
+        Assert.Equal(1, currentProgress.processed);
+        Assert.Equal(1, currentProgress.total);
+        Assert.False(currentProgress.running);
+        Assert.Equal(1, completeCount);
+        Assert.Equal("complete", notificationOrder[^1]);
+        Assert.All(notificationOrder.Take(notificationOrder.Count - 1), item => Assert.Equal("progress", item));
+    }
+
+    /// <summary>中断時は完了通知を出さず、停止状態の最終進捗だけを発行することを確認する。</summary>
+    [Fact]
+    public async Task OrientationService_CancellationDoesNotPublishComplete()
+    {
+        var progressEvents = new List<OrientationProgressEvent>();
         var completeCount = 0;
         await using var progressSub = eventBus.Subscribe<OrientationProgressEvent>(
             EventNames.OrientationProgress,
@@ -79,21 +139,16 @@ public sealed class BackgroundServiceBehaviorTests : IDisposable
                 return Task.CompletedTask;
             });
         var service = new OrientationService(db, eventBus);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
 
-        await service.StartOrientationCalculationAsync();
-        await Task.Delay(50);
-        var record = await db.GetPhotoRecordAsync(imagePath.Replace('\\', '/'));
+        await service.StartOrientationCalculationAsync(cancellation.Token);
         var currentProgress = await service.GetOrientationProgressAsync();
 
-        Assert.NotNull(record);
-        Assert.Equal("landscape", record.orientation);
-        Assert.Equal(640, record.image_width);
-        Assert.Equal(320, record.image_height);
-        Assert.Contains(progressEvents, item => item.running && item.total == 1);
-        Assert.Equal(1, currentProgress.processed);
-        Assert.Equal(1, currentProgress.total);
+        Assert.Equal(0, completeCount);
+        Assert.NotEmpty(progressEvents);
+        Assert.False(progressEvents[^1].running);
         Assert.False(currentProgress.running);
-        Assert.Equal(1, completeCount);
     }
 
     /// <summary>
@@ -134,11 +189,20 @@ public sealed class BackgroundServiceBehaviorTests : IDisposable
     {
         var completeCount = 0;
         var errorMessages = new List<string>();
+        var notificationOrder = new List<string>();
+        await using var progressSub = eventBus.Subscribe<PhashProgressEvent>(
+            EventNames.PhashProgress,
+            _ =>
+            {
+                notificationOrder.Add("progress");
+                return Task.CompletedTask;
+            });
         await using var completeSub = eventBus.Subscribe(
             EventNames.PhashComplete,
             () =>
             {
                 completeCount++;
+                notificationOrder.Add("complete");
                 return Task.CompletedTask;
             });
         await using var errorSub = eventBus.Subscribe<string>(
@@ -159,6 +223,66 @@ public sealed class BackgroundServiceBehaviorTests : IDisposable
         Assert.Equal(0, progress.done);
         Assert.Equal(0, progress.total);
         Assert.Null(progress.current);
+        Assert.Equal("complete", notificationOrder[^1]);
+        Assert.All(notificationOrder.Take(notificationOrder.Count - 1), item => Assert.Equal("progress", item));
+    }
+
+    /// <summary>
+    /// PDQ 解析の中断時はキャンセル文言を発行し、最終進捗の後にエラーとして終えることを確認する。
+    /// </summary>
+    [Fact]
+    public async Task PhashService_CancellationPublishesErrorAfterFinalProgress()
+    {
+        var notificationOrder = new List<string>();
+        var errorMessages = new List<string>();
+        var completeCount = 0;
+        var finalProgressStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFinalProgress = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var progressSub = eventBus.Subscribe<PhashProgressEvent>(
+            EventNames.PhashProgress,
+            _ =>
+            {
+                notificationOrder.Add("progress");
+                finalProgressStarted.TrySetResult();
+                return releaseFinalProgress.Task;
+            });
+        await using var errorSub = eventBus.Subscribe<string>(
+            EventNames.PhashError,
+            message =>
+            {
+                errorMessages.Add(message);
+                notificationOrder.Add("error");
+                return Task.CompletedTask;
+            });
+        await using var completeSub = eventBus.Subscribe(
+            EventNames.PhashComplete,
+            () =>
+            {
+                completeCount++;
+                return Task.CompletedTask;
+            });
+        var service = new PhashService(db, eventBus);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        var startTask = service.StartPdqAnalysisAsync(cancellation.Token);
+        await finalProgressStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        try
+        {
+            Assert.False(startTask.IsCompleted);
+            Assert.Empty(errorMessages);
+            Assert.Equal(0, completeCount);
+        }
+        finally
+        {
+            releaseFinalProgress.TrySetResult();
+        }
+        await startTask;
+
+        Assert.Equal(0, completeCount);
+        Assert.Equal([MessageCatalog.getMsg("PhashService.cancelled")], errorMessages);
+        Assert.Equal("error", notificationOrder[^1]);
+        Assert.All(notificationOrder.Take(notificationOrder.Count - 1), item => Assert.Equal("progress", item));
     }
 
     /// <summary>

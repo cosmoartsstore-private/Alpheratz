@@ -17,8 +17,8 @@ public sealed class ShellPageInteractionLogicTests
     /// <summary>
     /// ShellOverlayState がモーダル系と HeaderBar の dim 対象 overlay を正しく集約することを確認する。
     ///
-    /// Confirm と MultiSelect はヘッダー dim には含めない。
-    /// Confirm は新規 overlay 起動の抑止にも使い、MultiSelect は Esc 優先順位だけに使う。
+    /// Confirm はヘッダー dim には含めないが、操作抑止と新規 overlay 起動の抑止に使う。
+    /// MultiSelect は Esc 優先順位だけに使う。
     /// </summary>
     [Fact]
     public void ShellOverlayState_DerivedFlagsSeparateHeaderDimFromPreviewOnlyState()
@@ -29,11 +29,17 @@ public sealed class ShellPageInteractionLogicTests
         var modalAndFilter = Overlay(
             photoModalOpen: true,
             filterOpen: true);
+        var galleryModal = Overlay(galleryModalOpen: true);
 
         Assert.False(confirmOnly.ModalOpen);
         Assert.False(confirmOnly.HeaderDimOverlayOpen);
+        Assert.True(confirmOnly.HeaderControlsBlocked);
         Assert.True(modalAndFilter.ModalOpen);
         Assert.True(modalAndFilter.HeaderDimOverlayOpen);
+        Assert.True(modalAndFilter.HeaderControlsBlocked);
+        Assert.True(galleryModal.ModalOpen);
+        Assert.True(galleryModal.HeaderDimOverlayOpen);
+        Assert.True(galleryModal.HeaderControlsBlocked);
     }
 
     /// <summary>
@@ -53,8 +59,10 @@ public sealed class ShellPageInteractionLogicTests
             ShellPageInteractionLogic.ComputeHeaderInteractivity(Overlay(photoModalOpen: true, filterOpen: true)));
         Assert.Equal(new ShellHeaderInteractivity(false, 0.4),
             ShellPageInteractionLogic.ComputeHeaderInteractivity(Overlay(middleModalOpen: true)));
-        Assert.Equal(new ShellHeaderInteractivity(true, 1.0),
+        Assert.Equal(new ShellHeaderInteractivity(false, 1.0),
             ShellPageInteractionLogic.ComputeHeaderInteractivity(Overlay(confirmOpen: true)));
+        Assert.Equal(new ShellHeaderInteractivity(false, 0.4),
+            ShellPageInteractionLogic.ComputeHeaderInteractivity(Overlay(galleryModalOpen: true)));
     }
 
     /// <summary>
@@ -69,6 +77,7 @@ public sealed class ShellPageInteractionLogicTests
         Assert.True(ShellPageInteractionLogic.CanToggleFilter(Overlay()));
         Assert.False(ShellPageInteractionLogic.CanToggleFilter(Overlay(photoModalOpen: true)));
         Assert.False(ShellPageInteractionLogic.CanToggleFilter(Overlay(middleModalOpen: true)));
+        Assert.False(ShellPageInteractionLogic.CanToggleFilter(Overlay(galleryModalOpen: true)));
         Assert.True(ShellPageInteractionLogic.CanToggleFilter(Overlay(filterOpen: true)));
         Assert.False(ShellPageInteractionLogic.CanToggleFilter(Overlay(confirmOpen: true)));
         Assert.True(ShellPageInteractionLogic.CanToggleFilter(Overlay(photoModalOpen: true, middleModalOpen: true, filterOpen: true, confirmOpen: true)));
@@ -88,6 +97,7 @@ public sealed class ShellPageInteractionLogicTests
         Assert.False(ShellPageInteractionLogic.CanOpenSettingsModal(Overlay(confirmOpen: true)));
         Assert.False(ShellPageInteractionLogic.CanOpenSettingsModal(Overlay(photoModalOpen: true)));
         Assert.False(ShellPageInteractionLogic.CanOpenSettingsModal(Overlay(middleModalOpen: true)));
+        Assert.False(ShellPageInteractionLogic.CanOpenSettingsModal(Overlay(galleryModalOpen: true)));
         Assert.False(ShellPageInteractionLogic.CanOpenSettingsModal(Overlay(filterOpen: true)));
     }
 
@@ -185,6 +195,8 @@ public sealed class ShellPageInteractionLogicTests
         Assert.Equal(ShellKeyAction.None,
             ShellPageInteractionLogic.ResolveShellKey(Overlay(middleModalOpen: true), true, (VirtualKey)188));
         Assert.Equal(ShellKeyAction.None,
+            ShellPageInteractionLogic.ResolveShellKey(Overlay(galleryModalOpen: true), true, VirtualKey.F));
+        Assert.Equal(ShellKeyAction.None,
             ShellPageInteractionLogic.ResolveShellKey(Overlay(), false, VirtualKey.F));
         Assert.Equal(ShellKeyAction.None,
             ShellPageInteractionLogic.ResolveShellKey(Overlay(filterOpen: true), true, (VirtualKey)188));
@@ -243,13 +255,15 @@ public sealed class ShellPageInteractionLogicTests
         bool middleModalOpen = false,
         bool filterOpen = false,
         bool confirmOpen = false,
-        bool multiSelectMode = false)
+        bool multiSelectMode = false,
+        bool galleryModalOpen = false)
         => new(
             PhotoModalOpen: photoModalOpen,
             MiddleModalOpen: middleModalOpen,
             FilterOpen: filterOpen,
             ConfirmOpen: confirmOpen,
-            MultiSelectMode: multiSelectMode);
+            MultiSelectMode: multiSelectMode,
+            GalleryModalOpen: galleryModalOpen);
 
     /// <summary>テスト実行ディレクトリからリポジトリルートを探索する。</summary>
     private static string FindRepositoryRoot()

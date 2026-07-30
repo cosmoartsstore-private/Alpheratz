@@ -34,7 +34,7 @@ Alpheratz はローカル写真フォルダをスキャンし、写真メタデ�
 
 - 写真を日付・ワールド・タグ・お気に入りで検索可能にする
 - 標準グリッドとメイソンリーレイアウトで写真を閲覧する
-- PDQ ハッシュで類似写真と世界不明写真の候補を検出する
+- PDQ ハッシュで類似写真とワールド名不明写真の候補を検出する
 - Polaris archive の VRChat ログから撮影時刻に対応するワールド名を補完する
 - ローカル完結で動作し、外部サーバ依存を持たない
 
@@ -56,7 +56,6 @@ Alpheratz はローカル写真フォルダをスキャンし、写真メタデ�
 | **ワールド不明写真** | `world_name` が未設定または空の写真 |
 | **PDQ** | 知覚ハッシュ。類似画像検出と世界名候補の算出に使う |
 | **Polaris archive** | Polaris が保持する VRChat ログ archive。ワールド訪問履歴の補完に使う |
-| **StellaRecord** | 姉妹アプリ。ランチャーへ Alpheratz を登録できる |
 
 ---
 
@@ -71,7 +70,7 @@ Alpheratz はローカル写真フォルダをスキャンし、写真メタデ�
 ├──────────────────────────────────────────────────────────────┤
 │ Application Layer                                             │
 │  - Services: PhotoService / WorldService / SettingsService    │
-│  - LocalEventBus: scan / PDQ / thumbnail progress             │
+│  - LocalEventBus: scan / PDQ progress and completion          │
 ├──────────────────────────────────────────────────────────────┤
 │ Core Layer                                                    │
 │  - AlpheratzDb / PhotoScanner / ThumbnailService / PDQ        │
@@ -88,7 +87,7 @@ Alpheratz はローカル写真フォルダをスキャンし、写真メタデ�
 | --- | --- | --- |
 | UI thread | WinUI 3 dispatcher | プロセス全寿命 |
 | Scan worker | `PhotoScanner.ScanAsync` | スキャン 1 回ごと |
-| Thumbnail worker | `ThumbnailWorker` | 表示要求ごと |
+| Thumbnail worker | `ThumbnailWorker` | アプリ全体（各生成要求を追跡） |
 | PDQ worker | `PhashService` | 未計算写真の解析中 |
 
 Tauri / Rust IPC は使用しない。UI とバックグラウンド処理は同一 .NET プロセス内で動作する。
@@ -107,10 +106,10 @@ app/
 │   ├── Shell/                  メインシェル、ヘッダー、モーダル階層
 │   ├── Gallery/                写真一覧、フィルタ、グリッド、メイソンリー
 │   ├── PhotoModal/             写真詳細
-│   ├── Settings/               設定、タグ、テンプレート、連携
+│   ├── Settings/               設定、タグ、テンプレート、クレジット
 │   ├── TagMaster/              タグ管理 ViewModel
 │   ├── Template/               投稿テンプレート ViewModel
-│   └── WorldResolve/           世界不明写真の候補提示
+│   └── WorldResolve/           ワールド名不明写真の候補提示
 ├── Core/
 │   ├── Database/               SQLite schema and queries
 │   ├── Scanner/                写真列挙、メタデータ抽出、Polaris ログ読取
@@ -119,13 +118,14 @@ app/
 │   └── AppPaths.cs             データパス、レジストリ参照
 ├── Services/                   画面横断の操作サービス
 ├── Models/                     DTO / UI model
+├── Messages/                   UI 文言カタログと UTF-8 properties
 ├── Shared/                     共通 UI、サービス、コンバーター
 └── Themes/                     XAML resources
 ```
 
 ### Tests (`tests/Alpheratz.Tests/`)
 
-xUnit で DB、スキャナ、PDQ、ViewModel、UI ロジック、外部連携の振る舞いを特性化する。
+xUnit で DB、スキャナ、PDQ、ViewModel、UI ロジック、ローカル連携の振る舞いを特性化する。
 
 ---
 
@@ -146,7 +146,7 @@ xUnit で DB、スキャナ、PDQ、ViewModel、UI ロジック、外部連携�
 
 - 1st / 2nd 写真フォルダを `source_slot` で区別する。
 - 表示対象の写真だけサムネイル生成を要求する。
-- 欠損ファイルは `is_missing` で管理し、再スキャン時に消さず状態を更新する。
+- 対象フォルダを最後まで列挙できた場合、存在しなくなった写真とタグ関連を DB から削除する。途中で読めない場所があった場合は誤削除を避けるため、そのスロットの削除を見送る。
 - グループドリルダウンは中位モーダルとして Shell の `ModalContent` に表示する。
 
 ### Photo Modal
@@ -161,8 +161,8 @@ xUnit で DB、スキャナ、PDQ、ViewModel、UI ロジック、外部連携�
 
 #### Behavior
 
-- 写真、タグ、お気に入り、ワールド名、類似候補を表示する。
-- PDQ 距離から類似写真を検索する。
+- 写真、タグ、お気に入り、ワールド名、ワールド名の解決元を表示する。
+- 前後の写真へ移動し、投稿、ワールドページ表示、Explorer でのファイル表示を行う。
 - 編集後は `PhotoThumbnailItem` を更新し、一覧側の表示と同期する。
 
 ### Tag Master
@@ -195,7 +195,7 @@ xUnit で DB、スキャナ、PDQ、ViewModel、UI ロジック、外部連携�
 
 ### World Resolve
 
-**Purpose**: 世界不明写真に対し、Polaris archive または PDQ 類似度から候補を提示する。
+**Purpose**: ワールド名不明写真に対し、Polaris archive または PDQ 類似度から候補を提示する。
 
 #### Components
 
@@ -210,10 +210,11 @@ xUnit で DB、スキャナ、PDQ、ViewModel、UI ロジック、外部連携�
 - 撮影時刻が訪問区間に一致する写真へ `match_source = polaris_archive` を付与してワールド名を保存する。
 - PDQ 解決は自動確定せず、WorldResolve UI の確認操作を唯一の確定経路にする。
 - WorldResolve UI は PDQ 候補探索中に対象写真数ベースの進捗を表示する。
+- 画面を閉じるときは候補生成を停止し、サムネイル生成と UI 更新の完了を待ってから画面状態を破棄する。
 
 ### Settings
 
-**Purpose**: アプリ設定、タグ、テンプレート、外部連携を管理する。
+**Purpose**: アプリ設定、タグ、テンプレート、クレジットを管理する。
 
 #### Components
 
@@ -224,8 +225,11 @@ xUnit で DB、スキャナ、PDQ、ViewModel、UI ロジック、外部連携�
 
 #### Behavior
 
-- 写真フォルダ、2nd 写真フォルダ、テーマ、表示モード、起動設定、テンプレートを保存する。
-- StellaRecord が利用可能な場合、`apps` テーブルへ `Alpheratz` を登録する。説明は「VRChat写真ギャラリー化・ワールドリンク展開サポートアプリ」。
+- General / Tag Master / Template / Credits の 4 セクションを左ナビゲーションで切り替える。
+- General では 1st / 2nd 写真フォルダ、起動設定、投稿後のワールドリンク表示、テーマ、ワールド名の推測を扱う。
+- 1st / 2nd 写真フォルダには、同一パスまたは親子関係になるパスを重複して設定できない。
+- 表示モードは Shell ヘッダーで切り替え、`setting.json` に保存する。
+- 投稿テンプレートと選択中テンプレートを `setting.json` に保存する。
 - Settings は Shell の中位モーダルとして表示する。
 
 ### Bootstrap
@@ -251,15 +255,28 @@ xUnit で DB、スキャナ、PDQ、ViewModel、UI ロジック、外部連携�
 1. `App.xaml.cs` が DI コンテナを構築する。
 2. `AlpheratzDb.Initialize` がスキーマを作成・補完する。
 3. `SettingsService.GetSettingAsync` が `setting.json` を読み込む。
-4. Shell が Gallery と Settings 用 ViewModel を初期化する。
+4. Shell が画面用 ViewModel とイベント購読を初期化する。
+5. 未完了のフォルダ初期化が記録されている場合、Gallery の読込とスキャンより前に処理を再開する。
+6. Gallery の初期表示と写真スキャンを開始する。
 
 ### Photo Scan
 
-1. `PhotoScanner` が設定フォルダを列挙する。
+1. `PhotoScanner` が設定フォルダから PNG / JPEG / WebP / PSD / XCF を列挙する。
 2. 画像ファイルから撮影時刻、ワールド ID、ワールド名を抽出する。
-3. `AlpheratzDb` が写真メタデータを upsert する。
-4. 存在しなくなった写真は `is_missing = 1` に更新する。
-5. orientation / 画像サイズ / PDQ / サムネイルをバックグラウンドで補完する。
+3. `AlpheratzDb` が写真メタデータをバッチで upsert する。
+4. 同じパスのファイル更新時刻が変化した場合は内容差し替えとして、旧画像由来のワールド情報と PDQ ハッシュを破棄する。新しい PNG メタデータを取得できた場合は、そのワールド情報を設定する。
+5. フォルダを最後まで列挙できたスロットだけ、存在しなくなった写真とタグ関連を削除する。
+6. orientation / 画像サイズ / PDQ / サムネイルをバックグラウンドで補完する。
+
+### Photo Folder Change
+
+1. `SettingsService` が新しいフォルダパスと未完了処理マーカーを `setting.json` へ同時に保存する。
+2. 進行中のスキャンと Gallery のサムネイル生成を停止して完了を待つ。
+3. アプリ全体の `ThumbnailWorker` を停止し、新しい生成要求も待機させる。
+4. 対象スロットのタグ関連と写真をトランザクションで削除し、コミット後にサムネイルキャッシュを初期化する。
+5. 未完了処理マーカーを消去してサムネイル生成を再開する。
+
+途中で失敗した場合はマーカーを保持し、次回起動時に同じ処理を再開する。起動時の再開に失敗した場合は、旧フォルダ由来の Gallery 読込と写真スキャンを開始しない。
 
 ### World Resolve
 
@@ -282,13 +299,19 @@ xUnit で DB、スキャナ、PDQ、ViewModel、UI ロジック、外部連携�
 | 写真詳細 | `PhotoModalViewModel`, `PhotoModalState` |
 | 設定、タグ、テンプレート | `SettingsViewModel`, `TagMasterViewModel`, `TemplatePageViewModel` |
 
-### Persistence
+### Persisted State
 
 | State | Persistence |
 | --- | --- |
 | 写真メタデータ、タグ、ワールド解決履歴 | SQLite |
-| 写真フォルダ、テーマ、表示モード、テンプレート | `setting.json` |
+| 写真フォルダ、テーマ、表示モード、起動・投稿設定、テンプレート、未完了のフォルダ初期化 | `setting.json` |
 | サムネイル | `Data/cache/*/imgCache` |
+
+### UI Messages
+
+- ユーザー向け文言は `MessageCatalog.getMsg` から取得し、埋め込みの `Messages/messages.ja.properties` に一元管理する。
+- properties は UTF-8 とし、動的な値は `{name}` 形式の名前付きプレースホルダーへ渡す。
+- キー不足、不正な行、重複キーは読み込み時または取得時のエラーとして扱う。
 
 ---
 
@@ -299,14 +322,17 @@ xUnit で DB、スキャナ、PDQ、ViewModel、UI ロジック、外部連携�
 - 設定保存は `SettingsService` の lock で直列化する。
 - スキャンはキャンセルトークンで中断を受け付ける。
 - UI 更新は WinUI dispatcher 経由で行う。
+- 写真フォルダ変更時はスキャン後処理を含む生成処理の停止完了を待ってから DB とキャッシュを初期化する。
+- singleton の `ThumbnailWorker` が Gallery と World Resolve の生成要求を追跡し、初期化中は新しい書き込みを受け付けない。
+- World Resolve の終了処理は候補生成と関連する UI 更新を待ち、終了済みの画面へ結果を反映しない。
 
 ### Write Exclusion
 
-SQLite は接続ごとに WAL / NORMAL / FK ON を設定する。複数行更新は `AlpheratzDb` 内でトランザクション化する。
+SQLite は接続ごとに WAL / NORMAL / FK ON / 5 秒の busy timeout を設定する。複数行更新は `AlpheratzDb` 内でトランザクション化する。
 
 ### Read Concurrency
 
-WAL により、スキャン書き込み中も UI の SELECT がブロックされにくい。
+WAL により、スキャン書き込み中も UI の SELECT がブロックされにくい。一覧の件数、ページ本体、タグは 1 つの読み取りトランザクションで同じスナップショットから取得する。
 
 ---
 
@@ -325,7 +351,7 @@ WAL により、スキャン書き込み中も UI の SELECT がブロックさ�
 
 ### Threat Model
 
-- ローカル画像ファイル、Polaris archive、StellaRecord DB は同一ユーザーが読み取り可能なファイルとして扱う。
+- ローカル画像ファイルと Polaris archive は同一ユーザーが読み取り可能なファイルとして扱う。
 - ネットワーク越しの入力は扱わない。
 
 ### Mitigations
@@ -335,7 +361,7 @@ WAL により、スキャン書き込み中も UI の SELECT がブロックさ�
 | SQL インジェクション | 値はパラメータバインドで渡す |
 | シンボリックリンク等による再帰ループ | 訪問済み正規化パスでディレクトリ列挙を制御する |
 | 巨大ログ行 | `MaxLogLineLength` で 1 行長を制限する |
-| 外部連携先不在 | Polaris / StellaRecord が見つからない場合は連携だけをスキップする |
+| ローカル連携先不在 | Polaris が見つからない場合は archive 補完だけをスキップする |
 
 ### Out-of-Scope
 
@@ -364,8 +390,6 @@ WAL により、スキャン書き込み中も UI の SELECT がブロックさ�
 | `HKCU\Software\CosmoArtsStore\Alpheratz` | `InstallLocation` | installer が書き込むインストール先 |
 | `HKCU\Software\CosmoArtsStore\Alpheratz` | `RuntimeLocation` | WinUI 本体配置先 |
 | `HKCU\Software\CosmoArtsStore\Polaris` | `InstallLocation` | Polaris archive 解決時に参照 |
-| `HKCU\Software\CosmoArtsStore\StellaRecord` | `InstallLocation` | StellaRecord 登録時に `Data\db\stellarecord.db` を優先参照 |
-| `HKCU\Software\CosmoArtsStore\StellaRecord` | `DbPath` | `InstallLocation` から DB を解決できない場合の fallback |
 
 ### LocalStorage
 
@@ -380,4 +404,3 @@ WAL により、スキャン書き込み中も UI の SELECT がブロックさ�
 | Windows のみ対応 | 他 OS で動作不可 | WinUI 3 / Windows App SDK 前提 |
 | コード署名なし | SmartScreen 警告が出る場合がある | 商用配布時に対応予定 |
 | Polaris archive 依存の世界名補完 | Polaris 未導入環境では使用不可 | PDQ 解決と手動編集は利用可能 |
-| StellaRecord 登録 | StellaRecord 未導入環境では使用不可 | Alpheratz 本体機能には影響しない |

@@ -3,8 +3,9 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:converters="using:Alpheratz.Shared.Converters"
-    xmlns:shared="using:Alpheratz.Shared.Controls"
     xmlns:local="using:Alpheratz.Features.WorldResolve"
+    xmlns:messages="using:Alpheratz.Messages"
+    xmlns:shared="using:Alpheratz.Shared.Controls"
     Background="Transparent"
     IsTabStop="True"
     KeyDown="Page_KeyDown">
@@ -23,7 +24,7 @@
                 Tapped="ModalContent_Tapped">
 
             <Grid>
-                <!-- === Main View === -->
+                <!-- 未解決写真の一覧 -->
                 <Grid x:Name="MainView">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -31,23 +32,23 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <!-- Header -->
+                    <!-- タイトルと一括操作 -->
                     <Grid Grid.Row="0" Padding="28,24,28,16">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel>
-                            <TextBlock Text="ワールド解決" FontSize="{StaticResource AFontSize2Xl}" FontWeight="ExtraBold" Foreground="{ThemeResource AText}"/>
+                            <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.title')}" FontSize="{StaticResource AFontSize2Xl}" FontWeight="ExtraBold" Foreground="{ThemeResource AText}"/>
                             <TextBlock x:Name="StatusText" FontSize="{StaticResource AFontSizeSm}" Foreground="{ThemeResource ATextFaint}" Margin="0,4,0,0"/>
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <Button Content="全て適用" Style="{StaticResource GhostButtonStyle}" Click="ApplyAll_Click"/>
-                            <Button Content="全てスキップ" Style="{StaticResource GhostButtonStyle}" Click="SkipAll_Click"/>
+                            <Button Content="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.applyAllButton')}" Style="{StaticResource GhostButtonStyle}" Click="ApplyAll_Click"/>
+                            <Button Content="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.skipAllButton')}" Style="{StaticResource GhostButtonStyle}" Click="SkipAll_Click"/>
                         </StackPanel>
                     </Grid>
 
-                    <!-- List -->
+                    <!-- 推測結果 -->
                     <ListView Grid.Row="1" x:Name="ItemsListView"
                               SelectionMode="None" Padding="16,0,16,0">
                         <ListView.ItemContainerStyle>
@@ -70,7 +71,7 @@
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
 
-                                        <!-- Target photo -->
+                                        <!-- ワールド名不明の写真 -->
                                         <StackPanel Grid.Column="0" Spacing="4">
                                             <Border Height="80" CornerRadius="{StaticResource ARadiusSm}" Background="{ThemeResource ABorder}">
                                                 <Image Source="{x:Bind TargetThumbPath, Mode=OneWay, Converter={StaticResource ThumbConverter}}"
@@ -82,7 +83,7 @@
                                                        HorizontalAlignment="Center"/>
                                         </StackPanel>
 
-                                        <!-- Arrow + world info -->
+                                        <!-- 推測したワールド -->
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4" Padding="8,0">
                                             <TextBlock Text="→" FontSize="{StaticResource AFontSizeXl}" HorizontalAlignment="Center"
                                                        Foreground="{ThemeResource ATextFaint}"/>
@@ -94,29 +95,30 @@
                                                     Background="{ThemeResource APrimarySoft}">
                                                 <TextBlock FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource APrimary}"
                                                            HorizontalAlignment="Center">
-                                                    <Run Text="距離: "/><Run Text="{x:Bind MatchDistance, Mode=OneWay}"/>
+                                                    <Run Text="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.imageDifferenceLabel')}"/>
+                                                    <Run Text="{x:Bind MatchDistance, Mode=OneWay}"/>
                                                 </TextBlock>
                                             </Border>
                                         </StackPanel>
 
-                                        <!-- Match photo + select different -->
+                                        <!-- 比較元の写真と候補選択 -->
                                         <StackPanel Grid.Column="2" Spacing="4">
                                             <Border Height="80" CornerRadius="{StaticResource ARadiusSm}" Background="{ThemeResource ABorder}">
                                                 <Image Source="{x:Bind MatchThumbPath, Mode=OneWay, Converter={StaticResource ThumbConverter}}"
                                                        Stretch="UniformToFill"/>
                                             </Border>
-                                            <HyperlinkButton Content="別を選ぶ" FontSize="10" Padding="0"
+                                            <HyperlinkButton Content="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.chooseAnotherCandidate')}" FontSize="10" Padding="0"
                                                              HorizontalAlignment="Center"
                                                              Click="OpenCandidatePicker_Click"
                                                              Tag="{x:Bind}"/>
                                         </StackPanel>
 
-                                        <!-- Apply toggle -->
+                                        <!-- 適用対象の切替 -->
                                         <ToggleButton Grid.Column="3" VerticalAlignment="Center"
                                                       IsChecked="{x:Bind IsApplied, Mode=OneWay}"
                                                       Click="ToggleApply_Click" Tag="{x:Bind}"
                                                       MinWidth="64" MinHeight="32">
-                                            <TextBlock Text="適用" FontSize="{StaticResource AFontSizeSm}"/>
+                                            <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('common.apply')}" FontSize="{StaticResource AFontSizeSm}"/>
                                         </ToggleButton>
                                     </Grid>
                                 </Border>
@@ -124,14 +126,14 @@
                         </ListView.ItemTemplate>
                     </ListView>
 
-                    <!-- Empty state -->
+                    <!-- 対象なし -->
                     <StackPanel Grid.Row="1" x:Name="EmptyState" Visibility="Collapsed"
                                 VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8">
-                        <TextBlock Text="解決が必要な写真はありません" FontSize="{StaticResource AFontSizeLg}"
+                        <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.emptyState')}" FontSize="{StaticResource AFontSizeLg}"
                                    Foreground="{ThemeResource ATextFaint}" HorizontalAlignment="Center"/>
                     </StackPanel>
 
-                    <!-- Footer -->
+                    <!-- 適用操作 -->
                     <Grid Grid.Row="2" Padding="28,16,28,24">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -143,17 +145,17 @@
                         <Button Grid.Column="1" x:Name="ApplyConfirmedBtn"
                                 Style="{StaticResource PrimaryButtonStyle}"
                                 Click="ApplyConfirmed_Click" Margin="0,0,8,0"/>
-                        <Button Grid.Column="2" Content="閉じる" Style="{StaticResource GhostButtonStyle}"
+                        <Button Grid.Column="2" Content="{x:Bind messages:MessageCatalog.getMsg('common.close')}" Style="{StaticResource GhostButtonStyle}"
                                 Click="Close_Click"/>
                     </Grid>
 
-                    <!-- Loading -->
+                    <!-- 推測処理中 -->
                     <Grid Grid.RowSpan="3" x:Name="LoadingOverlay"
                           Background="{ThemeResource ASurface}" Visibility="Collapsed">
                         <StackPanel Width="360" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
                             <ProgressRing IsActive="True" Width="40" Height="40" Foreground="{ThemeResource APrimary}"/>
                             <TextBlock x:Name="LoadingProgressTitle"
-                                       Text="候補を検索中..."
+                                       Text="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.searchingCandidates')}"
                                        FontSize="{StaticResource AFontSizeMd}"
                                        FontWeight="SemiBold"
                                        Foreground="{ThemeResource AText}"
@@ -170,21 +172,21 @@
                     </Grid>
                 </Grid>
 
-                <!-- === Candidate Picker View === -->
+                <!-- 候補写真の選択 -->
                 <Grid x:Name="CandidatePickerView" Visibility="Collapsed" Background="{ThemeResource ASurface}">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <!-- Picker header -->
+                    <!-- 選択対象と戻る操作 -->
                     <Grid Grid.Row="0" Padding="28,24,28,16">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <Button Content="← 戻る" Style="{StaticResource GhostButtonStyle}"
+                        <Button Content="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.backButton')}" Style="{StaticResource GhostButtonStyle}"
                                 Click="BackFromPicker_Click" VerticalAlignment="Center"/>
                         <Border Grid.Column="1" Width="80" Height="60" CornerRadius="{StaticResource ARadiusSm}"
                                 Background="{ThemeResource ABorder}" Margin="16,0,16,0">
@@ -193,12 +195,12 @@
                         <StackPanel Grid.Column="2" VerticalAlignment="Center">
                             <TextBlock x:Name="PickerTargetFilename" FontSize="{StaticResource AFontSizeMd}" FontWeight="SemiBold"
                                        Foreground="{ThemeResource AText}" TextTrimming="CharacterEllipsis"/>
-                            <TextBlock Text="類似度順で表示しています。クリックで選択。" FontSize="{StaticResource AFontSizeXs}"
+                            <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.candidateGuidance')}" FontSize="{StaticResource AFontSizeXs}"
                                        Foreground="{ThemeResource ATextFaint}"/>
                         </StackPanel>
                     </Grid>
 
-                    <!-- Candidate list -->
+                    <!-- 候補一覧 -->
                     <ListView Grid.Row="1" x:Name="CandidateListView"
                               SelectionMode="None" Padding="16,0,16,16">
                         <ListView.ItemContainerStyle>
@@ -239,7 +241,8 @@
                                         <Border Grid.Column="2" Padding="8,3" CornerRadius="{StaticResource ARadiusSm}"
                                                 Background="{ThemeResource APrimarySoft}" VerticalAlignment="Center">
                                             <TextBlock FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource APrimary}">
-                                                <Run Text="距離: "/><Run Text="{x:Bind Distance}"/>
+                                                <Run Text="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.imageDifferenceLabel')}"/>
+                                                <Run Text="{x:Bind Distance}"/>
                                             </TextBlock>
                                         </Border>
                                     </Grid>
@@ -248,7 +251,7 @@
                         </ListView.ItemTemplate>
                     </ListView>
 
-                    <!-- Candidate loading -->
+                    <!-- 候補読込中 -->
                     <Grid Grid.RowSpan="2" x:Name="CandidateLoadingOverlay" Visibility="Collapsed"
                           Background="{ThemeResource ASurface}">
                         <ProgressRing IsActive="True" Width="40" Height="40"

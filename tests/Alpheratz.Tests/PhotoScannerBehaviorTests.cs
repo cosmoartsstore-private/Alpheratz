@@ -236,11 +236,36 @@ public sealed class PhotoScannerBehaviorTests : IDisposable
         var files = new List<(long slot, string filename, string path)>();
         var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        PhotoScanner.CollectPhotosRecursive(7, root, files, visited, CancellationToken.None);
+        var isComplete = PhotoScanner.CollectPhotosRecursive(7, root, files, visited, CancellationToken.None);
 
         var names = files.Select(f => f.filename).OrderBy(x => x).ToArray();
+        Assert.True(isComplete);
         Assert.Equal(["a.png", "b.webp"], names);
         Assert.All(files, f => Assert.Equal(7, f.slot));
+    }
+
+    /// <summary>
+    /// 読み取れない root は空フォルダではなく不完全走査として返すことを確認する。
+    ///
+    /// 親列挙後の改名・削除や一時的なストレージ切断でも、属性取得時には同じ失敗が発生する。
+    /// 呼出側は false のスロットを欠落写真の物理削除対象から外す必要がある。
+    /// </summary>
+    [Fact]
+    public void CollectPhotosRecursive_ReturnsIncompleteWhenRootCannotBeRead()
+    {
+        var missingRoot = Path.Combine(tempDir, "removed-before-attributes");
+        var files = new List<(long slot, string filename, string path)>();
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var isComplete = PhotoScanner.CollectPhotosRecursive(
+            1,
+            missingRoot,
+            files,
+            visited,
+            CancellationToken.None);
+
+        Assert.False(isComplete);
+        Assert.Empty(files);
     }
 
     /// <summary>
@@ -384,6 +409,63 @@ public sealed class PhotoScannerBehaviorTests : IDisposable
     }
 
     /// <summary>
+    /// 1st と 2nd が同じ実フォルダを指す場合、走査前に設定エラーとして停止することを確認する。
+    ///
+    /// 同じ写真を先に見つけた slot へ誤分類すると、後の slot リセットでタグ等を失うため、
+    /// 既存設定に重複が残っていても DB 更新や欠落削除へ進めない。
+    /// </summary>
+    [Fact]
+    public async Task ScanAsync_RejectsOverlappingFolderConfigurationBeforeDatabaseChanges()
+    {
+        var photoRoot = Path.Combine(tempDir, "partial-root");
+        var settingsDir = Path.Combine(tempDir, "settings-partial");
+        Directory.CreateDirectory(photoRoot);
+        var foundPath = Path.Combine(photoRoot, "VRChat_2026-06-05_10-20-30.123.png");
+        File.WriteAllBytes(foundPath, PngWithItxt(width: 640, height: 480, "継続登録ワールド", "wrld_partial"));
+
+        var config = new AppConfig(settingsDir);
+        config.SaveSetting(new AlpheratzSetting
+        {
+            PhotoFolderPath = photoRoot,
+            // GetFullPath では primary と同じになる別表記を使い、2nd root を重複訪問として不完全にする。
+            SecondaryPhotoFolderPath = Path.Combine(photoRoot, "."),
+        });
+        var db = new AlpheratzDb(Path.Combine(tempDir, "partial.db"));
+        db.Initialize();
+        var retainedPath = AppPaths.NormalizePathForDb(Path.Combine(photoRoot, "missing-secondary.jpg"));
+        await db.UpsertPhotoAsync(new PhotoUpsertData
+        {
+            PhotoPath = retainedPath,
+            PhotoFilename = "missing-secondary.jpg",
+            Timestamp = "2026-06-05 09:00:00",
+            SourceSlot = 2,
+        });
+        var bus = new LocalEventBus();
+        var errors = new List<string>();
+        var completedCount = 0;
+        bus.Subscribe<string>(EventNames.ScanError, error =>
+        {
+            errors.Add(error);
+            return Task.CompletedTask;
+        });
+        bus.Subscribe(EventNames.ScanCompleted, () =>
+        {
+            completedCount++;
+            return Task.CompletedTask;
+        });
+        var scanner = new PhotoScanner(config, db, bus);
+
+        await scanner.ScanAsync();
+
+        var retained = await db.GetPhotoRecordAsync(retainedPath);
+        var inserted = await db.GetPhotoRecordAsync(AppPaths.NormalizePathForDb(foundPath));
+        Assert.NotNull(retained);
+        Assert.Null(inserted);
+        Assert.Equal(0, completedCount);
+        Assert.Contains(errors, error => error.Contains("重複", StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// ScanAsync が未変更の既存写真に対して MetadataOnly と PathOnly の差分更新を選ぶことを確認する。
     ///
     /// MetadataOnly は「画像寸法は既にあるが、PNG XMP からワールドだけ補完したい」場合に使われる。
@@ -455,6 +537,89 @@ public sealed class PhotoScannerBehaviorTests : IDisposable
     }
 
     /// <summary>
+    /// 大小文字だけが異なる既存パスを同じ写真として扱い、DB の主キー表記を維持することを確認する。
+    /// Windows では同じファイルを指していても SQLite の既定主キー比較は大小文字を区別するため、
+    /// 発見時の表記で upsert すると重複行になる。ファイル名更新を伴う再走査でこの境界を固定する。
+    /// </summary>
+    [Fact]
+    public async Task ScanAsync_CaseVariantPathPreservesExistingPrimaryKeyWithoutDuplicateRow()
+    {
+        var photoRoot = Path.Combine(tempDir, "case-variant");
+        var settingsDir = Path.Combine(tempDir, "settings-case-variant");
+        Directory.CreateDirectory(photoRoot);
+        var photoPath = Path.Combine(photoRoot, "current-name.jpg");
+        File.WriteAllText(photoPath, "not an image");
+        var normalizedPath = AppPaths.NormalizePathForDb(photoPath);
+        var storedPath = normalizedPath.ToUpperInvariant();
+        var lastModifiedUtc = File.GetLastWriteTimeUtc(photoPath)
+            .ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
+        var config = new AppConfig(settingsDir);
+        config.SaveSetting(new AlpheratzSetting { PhotoFolderPath = photoRoot });
+        var db = new AlpheratzDb(Path.Combine(tempDir, "case-variant.db"));
+        db.Initialize();
+        await db.UpsertPhotoAsync(new PhotoUpsertData
+        {
+            PhotoPath = storedPath,
+            PhotoFilename = "old-name.jpg",
+            Timestamp = "2026-06-05 10:00:00",
+            LastModifiedUtc = lastModifiedUtc,
+            WorldName = "既存ワールド",
+            WorldId = "wrld_existing",
+            MatchSource = "manual",
+            Orientation = "landscape",
+            ImageWidth = 1920,
+            ImageHeight = 1080,
+            SourceSlot = 1,
+        });
+        var scanner = new PhotoScanner(config, db, new LocalEventBus());
+
+        await scanner.ScanAsync();
+
+        var page = await db.GetPhotosPageAsync(new PhotoQueryParams());
+        var record = Assert.Single(page.Items);
+        Assert.Equal(1, page.Total);
+        Assert.Equal(storedPath, record.photo_path);
+        Assert.Equal("current-name.jpg", record.photo_filename);
+        Assert.Equal("既存ワールド", record.world_name);
+    }
+
+    /// <summary>
+    /// 同じパスの画像内容が更新された場合、旧画像のワールド情報と phash を破棄して
+    /// 再解析対象へ戻すことを確認する。
+    /// </summary>
+    [Fact]
+    public async Task ScanAsync_ContentChangeClearsExistingWorldMetadataAndPhash()
+    {
+        var photoRoot = Path.Combine(tempDir, "content-change");
+        var settingsDir = Path.Combine(tempDir, "settings-content-change");
+        Directory.CreateDirectory(photoRoot);
+        var photoPath = Path.Combine(photoRoot, "VRChat_2026-06-05_10-20-30.123.png");
+        File.WriteAllBytes(photoPath, PngWithItxt(320, 640, "変更前", "wrld_before"));
+        File.SetLastWriteTimeUtc(photoPath, new DateTime(2026, 6, 5, 1, 0, 0, DateTimeKind.Utc));
+        var config = new AppConfig(settingsDir);
+        config.SaveSetting(new AlpheratzSetting { PhotoFolderPath = photoRoot });
+        var db = new AlpheratzDb(Path.Combine(tempDir, "content-change.db"));
+        db.Initialize();
+        var scanner = new PhotoScanner(config, db, new LocalEventBus());
+
+        await scanner.ScanAsync();
+        var normalizedPath = AppPaths.NormalizePathForDb(photoPath);
+        await db.UpdatePhotoPhashAsync(normalizedPath, new string('a', 64));
+
+        File.WriteAllBytes(photoPath, PngWithoutItxt(640, 320));
+        File.SetLastWriteTimeUtc(photoPath, new DateTime(2026, 6, 6, 1, 0, 0, DateTimeKind.Utc));
+        await scanner.ScanAsync();
+
+        var record = await db.GetPhotoRecordAsync(normalizedPath, includePhash: true);
+        Assert.NotNull(record);
+        Assert.Null(record.world_name);
+        Assert.Null(record.world_id);
+        Assert.Equal("unresolved", record.match_source);
+        Assert.Null(record.phash);
+        Assert.Equal(1, await db.GetPendingPhashCountAsync());
+    }
+
+    /// <summary>
     /// 設定された写真フォルダが存在しない場合に scan:error が発行され、scan:completed は発行されないことを確認する。
     ///
     /// ユーザーが設定画面で存在しないパスを保存した場合、スキャンは既定フォルダへ勝手にフォールバックせず、
@@ -487,8 +652,53 @@ public sealed class PhotoScannerBehaviorTests : IDisposable
         await scanner.ScanAsync();
 
         Assert.Single(errors);
-        Assert.Contains(missingPath, errors[0]);
+        Assert.Equal("写真フォルダ1が見つかりません。設定からフォルダを選び直してください。", errors[0]);
         Assert.Equal(0, completedCount);
+    }
+
+    /// <summary>
+    /// 両方の写真フォルダが空なら、既定の Pictures\VRChat を暗黙利用せず未設定エラーにする。
+    ///
+    /// 明示リセット後に scanner が別経路から呼ばれても、旧既定フォルダを再取込しないことが重要である。
+    /// DB の既存行も欠落扱いで削除しない。
+    /// </summary>
+    [Fact]
+    public async Task ScanAsync_PublishesUnsetErrorWithoutDefaultFolderFallback()
+    {
+        var settingsDir = Path.Combine(tempDir, "settings-unset");
+        var config = new AppConfig(settingsDir);
+        config.SaveSetting(new AlpheratzSetting());
+        var db = new AlpheratzDb(Path.Combine(tempDir, "unset.db"));
+        db.Initialize();
+        const string existingPath = "/slot1/existing.jpg";
+        await db.UpsertPhotoAsync(new PhotoUpsertData
+        {
+            PhotoPath = existingPath,
+            PhotoFilename = "existing.jpg",
+            Timestamp = "2026-06-05 10:00:00",
+            SourceSlot = 1,
+        });
+        var bus = new LocalEventBus();
+        var errors = new List<string>();
+        var completedCount = 0;
+        bus.Subscribe<string>(EventNames.ScanError, message =>
+        {
+            errors.Add(message);
+            return Task.CompletedTask;
+        });
+        bus.Subscribe(EventNames.ScanCompleted, () =>
+        {
+            completedCount++;
+            return Task.CompletedTask;
+        });
+        var scanner = new PhotoScanner(config, db, bus);
+
+        await scanner.ScanAsync();
+
+        Assert.Single(errors);
+        Assert.Equal("写真フォルダが設定されていません。設定からフォルダを選択してください。", errors[0]);
+        Assert.Equal(0, completedCount);
+        Assert.NotNull(await db.GetPhotoRecordAsync(existingPath));
     }
 
     /// <summary>

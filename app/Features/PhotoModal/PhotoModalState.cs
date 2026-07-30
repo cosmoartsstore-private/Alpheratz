@@ -9,6 +9,7 @@ using Alpheratz.Services;
 using Alpheratz.Shared.Models;
 using Alpheratz.Shared.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Features.PhotoModal;
 
@@ -122,6 +123,7 @@ public partial class PhotoModalState : UiThreadSafeObservableObject
             var lastPhoto = photoHistory[^1];
             photoHistory.RemoveAt(photoHistory.Count - 1);
             SelectedPhoto = lastPhoto;
+            _ = loadSelectedPhotoAuxiliaryData(lastPhoto);
             notifyNavProps();
         }
         catch (Exception ex)
@@ -291,7 +293,7 @@ public partial class PhotoModalState : UiThreadSafeObservableObject
             AppLogger.Error($"PhotoModalState.loadSelectedPhotoAuxiliaryData: threw: {err}");
             if (!token.IsCancellationRequested)
             {
-                toastService.addToast($"タグの読み込みに失敗しました: {err}", ToastType.error);
+                toastService.addToast(getMsg("PhotoModalState.tagLoadFailed"), ToastType.error);
             }
         }
         AppLogger.Trace("PhotoModalState.loadSelectedPhotoAuxiliaryData: exit");

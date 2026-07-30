@@ -2,6 +2,7 @@
     x:Class="Alpheratz.Features.Shell.Controls.ShellHeaderBar"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:messages="using:Alpheratz.Messages"
     xmlns:primitives="using:Microsoft.UI.Xaml.Controls.Primitives"
     xmlns:shared="using:Alpheratz.Shared.Controls">
 
@@ -29,17 +30,13 @@
                     Style="{StaticResource HeaderPillButtonStyle}"
                     Click="FilterButton_Click"
                     VerticalAlignment="Center"
-                    AutomationProperties.Name="検索条件パネル開閉"
-                    AutomationProperties.HelpText="検索条件パネルを開閉します">
+                    AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('ShellHeaderBar.filterButtonAutomation')}"
+                    AutomationProperties.HelpText="{x:Bind messages:MessageCatalog.getMsg('ShellHeaderBar.filterButtonHelp')}">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <shared:AppIcon IconName="search" IconSize="16" Foreground="{ThemeResource ATextDim}"/>
-                    <TextBlock Text="検索条件" FontSize="{StaticResource AFontSizeSm}" FontWeight="ExtraBold"/>
-                    <ProgressRing x:Name="FilterBusyRing"
-                                  Width="14"
-                                  Height="14"
-                                  IsActive="False"
-                                  Visibility="Collapsed"
-                                  Foreground="{ThemeResource APrimary}"/>
+                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('ShellHeaderBar.filterButton')}" FontSize="{StaticResource AFontSizeSm}" FontWeight="ExtraBold"/>
+                    <ProgressRing x:Name="FilterBusyRing" Width="14" Height="14" IsActive="False"
+                                  Visibility="Collapsed" Foreground="{ThemeResource APrimary}"/>
                     <Border MinWidth="18" Height="18" CornerRadius="{StaticResource ARadiusMd}" Background="{ThemeResource APrimary}">
                         <TextBlock
                             Text="{Binding galleryViewModel.filtersState.ActiveFilterCount}"
@@ -53,84 +50,78 @@
             </Button>
 
             <!-- 中央: 検索ボックス -->
-            <Grid Grid.Column="1"
-                  HorizontalAlignment="Center"
-                  Width="640"
-                  MaxWidth="640">
-
-            <Border x:Name="SearchBoxBorder"
-                    HorizontalAlignment="Stretch"
-                    MinHeight="34"
-                    CornerRadius="{StaticResource ARadiusMd}"
-                    BorderBrush="{ThemeResource ABorder}"
-                    BorderThickness="1"
-                    Background="{ThemeResource ASurfaceSoft}"
-                    Padding="13,0">
-                <Grid ColumnSpacing="9">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <shared:AppIcon IconName="search" IconSize="16"
-                                   Foreground="{ThemeResource ATextFaint}"
-                                   VerticalAlignment="Center"/>
-                    <TextBox x:Name="SearchTextBox" Grid.Column="1"
-                             BorderThickness="0"
-                             Background="Transparent"
-                             Padding="0"
-                             Text="{Binding galleryViewModel.filtersState.SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                             PlaceholderText="ワールド名で検索..."
-                             FontSize="{StaticResource AFontSizeMd}"
-                             VerticalAlignment="Center"
-                             AutomationProperties.Name="ワールド名検索"
-                             GotFocus="SearchTextBox_GotFocus"
-                             LostFocus="SearchTextBox_LostFocus"
-                             TextChanged="SearchTextBox_TextChanged"
-                             KeyDown="SearchTextBox_KeyDown"/>
-                </Grid>
-            </Border>
-            <primitives:Popup x:Name="SearchSuggestionPopup"
-                              IsLightDismissEnabled="True"
-                              Closed="SearchSuggestionPopup_Closed">
-                <Border x:Name="SearchSuggestionSurface"
-                        Width="640"
-                        MaxHeight="260"
-                        Padding="4"
-                        CornerRadius="{StaticResource ARadius}"
-                        Background="{ThemeResource ASurface}"
+            <Grid Grid.Column="1" HorizontalAlignment="Center" Width="640" MaxWidth="640">
+                <Border x:Name="SearchBoxBorder"
+                        HorizontalAlignment="Stretch"
+                        MinHeight="34"
+                        CornerRadius="{StaticResource ARadiusMd}"
                         BorderBrush="{ThemeResource ABorder}"
-                        BorderThickness="1">
-                    <ListView x:Name="SearchSuggestionListView"
-                              ItemsSource="{x:Bind WorldNameSuggestions, Mode=OneWay}"
-                              Background="Transparent"
-                              BorderThickness="0"
-                              IsItemClickEnabled="True"
-                              SelectionMode="Single"
-                              ItemClick="SearchSuggestionListView_ItemClick">
-                        <ListView.ItemTemplate>
-                            <DataTemplate>
-                                <Grid MinWidth="560" Padding="8,6" ColumnSpacing="10">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="{Binding DisplayName}"
-                                               FontSize="{StaticResource AFontSizeSm}"
-                                               FontWeight="SemiBold"
-                                               Foreground="{ThemeResource AText}"
-                                               TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock Grid.Column="1"
-                                               Text="{Binding CountText}"
-                                               FontSize="{StaticResource AFontSizeXs}"
-                                               FontWeight="Bold"
-                                               Foreground="{ThemeResource ATextDisabled}"
-                                               VerticalAlignment="Center"/>
-                                </Grid>
-                            </DataTemplate>
-                        </ListView.ItemTemplate>
-                    </ListView>
+                        BorderThickness="1"
+                        Background="{ThemeResource ASurfaceSoft}"
+                        Padding="13,0">
+                    <Grid ColumnSpacing="9">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <shared:AppIcon IconName="search" IconSize="16" Foreground="{ThemeResource ATextFaint}" VerticalAlignment="Center"/>
+                        <TextBox x:Name="SearchTextBox" Grid.Column="1"
+                                 BorderThickness="0"
+                                 Background="Transparent"
+                                 Padding="0"
+                                 Text="{Binding galleryViewModel.filtersState.SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 PlaceholderText="{x:Bind messages:MessageCatalog.getMsg('ShellHeaderBar.searchPlaceholder')}"
+                                 FontSize="{StaticResource AFontSizeMd}"
+                                 VerticalAlignment="Center"
+                                 AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('ShellHeaderBar.searchAutomation')}"
+                                 GotFocus="SearchTextBox_GotFocus"
+                                 LostFocus="SearchTextBox_LostFocus"
+                                 TextChanged="SearchTextBox_TextChanged"
+                                 KeyDown="SearchTextBox_KeyDown"/>
+                    </Grid>
                 </Border>
-            </primitives:Popup>
+                <primitives:Popup x:Name="SearchSuggestionPopup"
+                                  IsLightDismissEnabled="True"
+                                  Closed="SearchSuggestionPopup_Closed">
+                    <Border x:Name="SearchSuggestionSurface"
+                            Width="640"
+                            MaxHeight="260"
+                            Padding="4"
+                            CornerRadius="{StaticResource ARadius}"
+                            Background="{ThemeResource ASurface}"
+                            BorderBrush="{ThemeResource ABorder}"
+                            BorderThickness="1">
+                        <ListView x:Name="SearchSuggestionListView"
+                                  ItemsSource="{x:Bind WorldNameSuggestions, Mode=OneWay}"
+                                  Background="Transparent"
+                                  BorderThickness="0"
+                                  IsItemClickEnabled="True"
+                                  SelectionMode="Single"
+                                  ItemClick="SearchSuggestionListView_ItemClick">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid MinWidth="560" Padding="8,6" ColumnSpacing="10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding DisplayName}"
+                                                   FontSize="{StaticResource AFontSizeSm}"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{ThemeResource AText}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding CountText}"
+                                                   FontSize="{StaticResource AFontSizeXs}"
+                                                   FontWeight="Bold"
+                                                   Foreground="{ThemeResource ATextDisabled}"
+                                                   VerticalAlignment="Center"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </Border>
+                </primitives:Popup>
             </Grid>
 
             <!--
@@ -144,8 +135,8 @@
             <!-- 表示モード切替 (標準グリッド / マソンリー) -->
             <Button x:Name="ViewModeBtn" Grid.Column="2"
                     Style="{StaticResource HeaderIconButtonStyle}"
-                    AutomationProperties.Name="表示モード切替"
-                    ToolTipService.ToolTip="表示モード切替 (標準グリッド / マソンリー)"
+                    AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('ShellHeaderBar.viewModeAutomation')}"
+                    ToolTipService.ToolTip="{x:Bind messages:MessageCatalog.getMsg('ShellHeaderBar.viewModeTooltip')}"
                     Click="ViewModeBtn_Click"
                     VerticalAlignment="Center">
                 <shared:AppIcon x:Name="ViewModeIcon" IconName="grid" IconSize="16" Foreground="{ThemeResource ATextDim}"/>
@@ -154,8 +145,8 @@
             <!-- グループ化切替 (なし / ワールド)。Masonry 表示中は無効化される。 -->
             <Button x:Name="GroupingBtn" Grid.Column="3"
                     Style="{StaticResource HeaderIconButtonStyle}"
-                    AutomationProperties.Name="グループ化切替"
-                    ToolTipService.ToolTip="ワールド単位でグループ化"
+                    AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('ShellHeaderBar.groupingAutomation')}"
+                    ToolTipService.ToolTip="{x:Bind messages:MessageCatalog.getMsg('ShellHeaderBar.groupingTooltip')}"
                     Click="GroupingBtn_Click"
                     VerticalAlignment="Center">
                 <shared:AppIcon x:Name="GroupingIcon" IconName="group" IconSize="16" Foreground="{ThemeResource ATextDim}"/>
@@ -164,8 +155,8 @@
             <!-- 複数選択モード切替 -->
             <Button x:Name="MultiSelectBtn" Grid.Column="4"
                     Style="{StaticResource HeaderIconButtonStyle}"
-                    AutomationProperties.Name="複数選択モード切替"
-                    ToolTipService.ToolTip="複数選択モードを切り替える"
+                    AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('ShellHeaderBar.multiSelectAutomation')}"
+                    ToolTipService.ToolTip="{x:Bind messages:MessageCatalog.getMsg('ShellHeaderBar.multiSelectTooltip')}"
                     Click="MultiSelectBtn_Click"
                     VerticalAlignment="Center">
                 <shared:AppIcon x:Name="MultiSelectIcon" IconName="selectMultiple" IconSize="16" Foreground="{ThemeResource ATextDim}"/>
@@ -174,9 +165,8 @@
             <!-- 右端: 設定ボタン -->
             <Button x:Name="SettingsGearBtn" Grid.Column="5"
                     Style="{StaticResource HeaderIconButtonStyle}"
-                    ToolTipService.ToolTip="設定"
-                    AutomationProperties.Name="設定"
-                    AutomationProperties.HelpText="アプリの設定画面を開きます"
+                    ToolTipService.ToolTip="{x:Bind messages:MessageCatalog.getMsg('ShellHeaderBar.settings')}"
+                    AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('ShellHeaderBar.settings')}"
                     Click="SettingsGearBtn_Click"
                     VerticalAlignment="Center">
                 <shared:AppIcon IconName="settings" IconSize="16" Foreground="{ThemeResource ATextDim}"/>

@@ -11,6 +11,7 @@ using Alpheratz.Services;
 using Alpheratz.Shared.Models;
 using Alpheratz.Shared.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Features.Gallery;
 
@@ -35,6 +36,7 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
     private readonly DispatcherService dispatcherService;
     private readonly Dictionary<string, PhotoThumbnailItem> selectedPhotoVisuals = new(StringComparer.Ordinal);
     private CancellationTokenSource? selectedPhotoRefsCancellation;
+    private long selectionVersion;
 
     [ObservableProperty] private bool isMultiSelectMode;
     public UiObservableCollection<string> selectedPhotoPaths { get; } = [];
@@ -42,6 +44,9 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
     public UiObservableCollection<string> bulkTagSelections { get; } = [];
     [ObservableProperty] private bool isBulkTagModalOpen;
     public UiObservableCollection<SelectedPhotoRefDto> selectedPhotoRefs { get; } = [];
+
+    /// <summary>選択パスが変わるたびに進む世代。非同期一括操作の結果が現在選択へ適用可能かの判定に使う。</summary>
+    public long SelectionVersion => Interlocked.Read(ref selectionVersion);
 
     /// <summary>写真サービスと通知サービスを受け取り、選択変更の監視を開始する。</summary>
     public GallerySelectionState(PhotoService photoService, ToastService toastService, DispatcherService? dispatcherService = null)
@@ -60,6 +65,7 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
         AppLogger.Trace($"GallerySelectionState.selectedPhotoPathsChanged: enter action={e.Action}");
         try
         {
+            Interlocked.Increment(ref selectionVersion);
             _ = loadSelectedPhotoRefs();
         }
         catch (Exception ex)
@@ -266,17 +272,22 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
         }
 
         var photoPaths = selectedPhotoPaths.ToArray();
+        var requestVersion = SelectionVersion;
         try
         {
             var refs = await photoService.GetSelectedPhotoRefsAsync(photoPaths).ConfigureAwait(false);
-            await dispatcherService.RunOnUiThread(() => setSelectedPhotoRefs(refs)).ConfigureAwait(false);
+            await dispatcherService.RunOnUiThread(() =>
+            {
+                if (SelectionVersion == requestVersion)
+                    setSelectedPhotoRefs(refs);
+            }).ConfigureAwait(false);
             AppLogger.Trace($"GallerySelectionState.getSelectedPhotoRefsSnapshot: exit count={refs.Count}");
             return refs;
         }
         catch (Exception ex)
         {
             AppLogger.Error($"GallerySelectionState.getSelectedPhotoRefsSnapshot: threw: {ex}");
-            toastService.addToast($"選択写真情報の取得に失敗しました: {ex}", ToastType.error);
+            toastService.addToast(getMsg("GallerySelectionState.selectedPhotoInfoLoadFailed"), ToastType.error);
             return [];
         }
     }
@@ -342,16 +353,24 @@ public partial class GallerySelectionState : UiThreadSafeObservableObject, IDisp
                 return;
             }
 
-            await dispatcherService.RunOnUiThread(() => setSelectedPhotoRefs(refs)).ConfigureAwait(false);
+            await dispatcherService.RunOnUiThread(() =>
+            {
+                // DB 完了後に UI キューへ載るまでにも選択は変わり得るため、適用直前に再確認する。
+                if (!token.IsCancellationRequested
+                    && ReferenceEquals(Volatile.Read(ref selectedPhotoRefsCancellation), newCts))
+                {
+                    setSelectedPhotoRefs(refs);
+                }
+            }).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            AppLogger.Trace("GallerySelectionState.loadSelectedPhotoRefs: cancelled");
         }
         catch (Exception err)
         {
-            // キャンセルは通常操作なので通知しない。実際の取得失敗だけをトーストで知らせる。
             AppLogger.Error($"GallerySelectionState.loadSelectedPhotoRefs: threw: {err}");
-            if (!token.IsCancellationRequested)
-            {
-                toastService.addToast($"選択写真情報の取得に失敗しました: {err}", ToastType.error);
-            }
+            toastService.addToast(getMsg("GallerySelectionState.selectedPhotoInfoLoadFailed"), ToastType.error);
         }
         AppLogger.Trace("GallerySelectionState.loadSelectedPhotoRefs: exit");
     }

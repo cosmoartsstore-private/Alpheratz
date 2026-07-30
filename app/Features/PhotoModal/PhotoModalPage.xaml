@@ -2,8 +2,9 @@
     x:Class="Alpheratz.Features.PhotoModal.PhotoModalPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:shared="using:Alpheratz.Shared.Controls"
     xmlns:converters="using:Alpheratz.Shared.Converters"
+    xmlns:messages="using:Alpheratz.Messages"
+    xmlns:shared="using:Alpheratz.Shared.Controls"
     Background="Transparent"
     IsTabStop="True"
     Loaded="Page_Loaded"
@@ -67,7 +68,8 @@
                                    Opacity="0.72"
                                    HorizontalAlignment="Left"
                                    Margin="18,0,0,0"
-                                   VerticalAlignment="Center"/>
+                                   VerticalAlignment="Center"
+                                   AutomationProperties.AccessibilityView="Raw"/>
                     </Border>
                     <Border x:Name="NextPhotoEdgeVisual"
                             HorizontalAlignment="Right"
@@ -89,7 +91,8 @@
                                    Opacity="0.72"
                                    HorizontalAlignment="Right"
                                    Margin="0,0,18,0"
-                                   VerticalAlignment="Center"/>
+                                   VerticalAlignment="Center"
+                                   AutomationProperties.AccessibilityView="Raw"/>
                     </Border>
                     <Button x:Name="PrevPhotoButton" HorizontalAlignment="Left" VerticalAlignment="Stretch"
                             Width="96"
@@ -97,7 +100,7 @@
                             CornerRadius="0"
                             HorizontalContentAlignment="Center"
                             VerticalContentAlignment="Center"
-                            AutomationProperties.Name="前の写真"
+                            AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.previousPhotoAutomation')}"
                             Background="Transparent"
                             BorderBrush="Transparent"
                             BorderThickness="0"
@@ -112,7 +115,7 @@
                             CornerRadius="0"
                             HorizontalContentAlignment="Center"
                             VerticalContentAlignment="Center"
-                            AutomationProperties.Name="次の写真"
+                            AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.nextPhotoAutomation')}"
                             Background="Transparent"
                             BorderBrush="Transparent"
                             BorderThickness="0"
@@ -162,8 +165,8 @@
                                 CornerRadius="{StaticResource ARadiusButton}"
                                 Background="{ThemeResource ASurfaceSoft}"
                                 BorderThickness="0"
-                                AutomationProperties.Name="閉じる"
-                                ToolTipService.ToolTip="写真詳細を閉じる (Esc)"
+                                AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('common.close')}"
+                                ToolTipService.ToolTip="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.closeHelp')}"
                                 Click="CloseButton_Click">
                             <shared:AppIcon IconName="close" IconSize="12" Foreground="{ThemeResource ATextDim}"/>
                         </Button>
@@ -171,7 +174,7 @@
                     <Rectangle Grid.Row="1" Height="1" Fill="{ThemeResource ABorder}" Opacity="0.9"/>
                     <ScrollViewer Grid.Row="2" Padding="20,16,20,24" VerticalScrollBarVisibility="Auto">
                         <StackPanel Spacing="10">
-                            <TextBlock Text="タグ" FontSize="{StaticResource AFontSizeSm}" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}" CharacterSpacing="60"/>
+                            <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.tagsHeading')}" FontSize="{StaticResource AFontSizeSm}" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}" CharacterSpacing="60"/>
                             <Border MinHeight="78"
                                     Padding="10"
                                     CornerRadius="{StaticResource ARadius}"
@@ -180,7 +183,7 @@
                                     BorderThickness="1">
                                 <Grid>
                                     <TextBlock x:Name="AssignedTagEmptyNote"
-                                               Text="タグなし"
+                                               Text="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.noAssignedTags')}"
                                                Visibility="Collapsed"
                                                FontSize="{StaticResource AFontSizeSm}"
                                                FontWeight="SemiBold"
@@ -195,12 +198,15 @@
                                         </ItemsControl.ItemsPanel>
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <Button Tag="{Binding}" Click="RemoveTag_Click" Style="{StaticResource ChipButtonStyle}">
+                                                <Button Tag="{Binding}" Click="RemoveTag_Click" Style="{StaticResource ChipButtonStyle}"
+                                                        AutomationProperties.Name="{Binding}"
+                                                        AutomationProperties.HelpText="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.removeTagHelp')}"
+                                                        ToolTipService.ToolTip="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.removeTagHelp')}">
                                                     <StackPanel Orientation="Horizontal" Spacing="4">
                                                         <TextBlock Text="{Binding}" FontSize="{StaticResource AFontSizeXs}" FontWeight="Bold"
                                                                    Foreground="{ThemeResource APrimary}" VerticalAlignment="Center"
                                                                    MaxWidth="210" TextTrimming="CharacterEllipsis"/>
-                                                        <TextBlock Text="×" FontSize="{StaticResource AFontSizeXs}" Foreground="{ThemeResource ATextFaint}" VerticalAlignment="Center"/>
+                                                        <TextBlock Text="×" FontSize="{StaticResource AFontSizeXs}" Foreground="{ThemeResource ATextFaint}" VerticalAlignment="Center" AutomationProperties.AccessibilityView="Raw"/>
                                                     </StackPanel>
                                                 </Button>
                                             </DataTemplate>
@@ -209,15 +215,15 @@
                                 </Grid>
                             </Border>
                             <Button x:Name="TagAddRow"
-                                    Content="タグを追加"
+                                    Content="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.addTags')}"
                                     Style="{StaticResource PrimaryButtonStyle}"
                                     HorizontalAlignment="Stretch"
                                     Padding="14,10"
                                     CornerRadius="{StaticResource ARadius}"
                                     FontWeight="ExtraBold"
                                     Click="OpenTagAddModal_Click"/>
-                            <TextBlock x:Name="EmptyTagNote" Visibility="Collapsed" Text="追加できるタグがありません。" FontSize="{StaticResource AFontSizeMd}" Foreground="{ThemeResource ATextFaint}" Margin="0,4,0,0"/>
-                            <Button x:Name="OpenTagMasterButton" Content="タグマスタを開く" Style="{StaticResource GhostButtonStyle}" HorizontalAlignment="Left" Click="OpenTagMaster_Click"/>
+                            <TextBlock x:Name="EmptyTagNote" Visibility="Collapsed" Text="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.noAvailableTags')}" FontSize="{StaticResource AFontSizeMd}" Foreground="{ThemeResource ATextFaint}" Margin="0,4,0,0"/>
+                            <Button x:Name="OpenTagMasterButton" Content="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.openTagMaster')}" Style="{StaticResource GhostButtonStyle}" HorizontalAlignment="Left" Click="OpenTagMaster_Click"/>
                         </StackPanel>
                     </ScrollViewer>
                     <Grid Grid.Row="3" BorderBrush="{ThemeResource ABorder}" BorderThickness="0,1,0,0">
@@ -230,8 +236,8 @@
                         <Button Grid.Column="0" MinHeight="66" Background="Transparent" BorderThickness="0" CornerRadius="0" Padding="0"
                                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                                 HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
-                                AutomationProperties.Name="お気に入り切り替え"
-                                ToolTipService.ToolTip="お気に入りに追加 / 解除" Click="Favorite_Click"
+                                AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.favoriteToggleAutomation')}"
+                                ToolTipService.ToolTip="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.favoriteToggleHelp')}" Click="Favorite_Click"
                                 PointerEntered="BottomAction_PointerEntered" PointerExited="BottomAction_PointerExited">
                             <Grid HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
                                 <Path Data="M0,0 L1,0 L1,1 Z"
@@ -252,7 +258,7 @@
                                             VerticalAlignment="Center"
                                             Spacing="5">
                                     <shared:AnimatedFavoriteStar Width="30" Height="30" Liked="{Binding state.SelectedPhoto.IsFavorite}" Interactive="False"/>
-                                    <TextBlock Text="お気に入り" FontSize="{StaticResource AFontSizeXs}" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.favoriteLabel')}" FontSize="{StaticResource AFontSizeXs}" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}" HorizontalAlignment="Center"/>
                                 </StackPanel>
                                 <Border Height="2"
                                         VerticalAlignment="Bottom"
@@ -263,35 +269,35 @@
                         <Border Grid.Column="1" HorizontalAlignment="Left" Width="1" Background="{ThemeResource ABorder}"/>
                         <Button Grid.Column="1" MinHeight="66" Background="Transparent" BorderThickness="0" CornerRadius="0" Padding="4,8"
                                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Center"
-                                AutomationProperties.Name="ツイート投稿"
-                                ToolTipService.ToolTip="ツイート投稿画面を開く" Click="Tweet_Click"
+                                AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.postAutomation')}"
+                                ToolTipService.ToolTip="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.postHelp')}" Click="Tweet_Click"
                                 PointerEntered="BottomAction_PointerEntered" PointerExited="BottomAction_PointerExited">
                             <StackPanel HorizontalAlignment="Center" Spacing="5">
                                 <shared:AppIcon IconName="pen" IconSize="16" Foreground="{ThemeResource ATextFaint}"/>
-                                <TextBlock Text="投稿" FontSize="{StaticResource AFontSizeXs}" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}" HorizontalAlignment="Center"/>
+                                <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.postLabel')}" FontSize="{StaticResource AFontSizeXs}" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}" HorizontalAlignment="Center"/>
                             </StackPanel>
                         </Button>
                         <Border Grid.Column="2" HorizontalAlignment="Left" Width="1" Background="{ThemeResource ABorder}"/>
                         <Button x:Name="WorldActionButton"
                                 Grid.Column="2" MinHeight="66" Background="Transparent" BorderThickness="0" CornerRadius="0" Padding="4,8"
                                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Center"
-                                AutomationProperties.Name="ワールドを開く"
-                                ToolTipService.ToolTip="ワールドリンクを開く" Click="OpenWorld_Click"
+                                AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.openWorldHelp')}"
+                                ToolTipService.ToolTip="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.openWorldHelp')}" Click="OpenWorld_Click"
                                 PointerEntered="BottomAction_PointerEntered" PointerExited="BottomAction_PointerExited">
                             <StackPanel HorizontalAlignment="Center" Spacing="5">
                                 <shared:AppIcon x:Name="WorldActionIcon" IconName="globe" IconSize="16" Foreground="{ThemeResource ATextFaint}"/>
-                                <TextBlock x:Name="WorldActionLabel" Text="ワールド" FontSize="{StaticResource AFontSizeXs}" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}" HorizontalAlignment="Center"/>
+                                <TextBlock x:Name="WorldActionLabel" Text="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.worldLabel')}" FontSize="{StaticResource AFontSizeXs}" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}" HorizontalAlignment="Center"/>
                             </StackPanel>
                         </Button>
                         <Border Grid.Column="3" HorizontalAlignment="Left" Width="1" Background="{ThemeResource ABorder}"/>
                         <Button Grid.Column="3" MinHeight="66" Background="Transparent" BorderThickness="0" CornerRadius="0" Padding="4,8"
                                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Center"
-                                AutomationProperties.Name="エクスプローラーで表示"
-                                ToolTipService.ToolTip="エクスプローラーで表示" Click="OpenExplorer_Click"
+                                AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.openExplorerAutomation')}"
+                                ToolTipService.ToolTip="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.openExplorerHelp')}" Click="OpenExplorer_Click"
                                 PointerEntered="BottomAction_PointerEntered" PointerExited="BottomAction_PointerExited">
                             <StackPanel HorizontalAlignment="Center" Spacing="5">
                                 <shared:AppIcon IconName="explorer" IconSize="16" Foreground="{ThemeResource ATextFaint}"/>
-                                <TextBlock Text="表示" FontSize="{StaticResource AFontSizeXs}" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}" HorizontalAlignment="Center"/>
+                                <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.openExplorerLabel')}" FontSize="{StaticResource AFontSizeXs}" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}" HorizontalAlignment="Center"/>
                             </StackPanel>
                         </Button>
                     </Grid>
@@ -302,7 +308,7 @@
             <Border Background="{ThemeResource AOverlay}" CornerRadius="{StaticResource ARadiusModal}"/>
             <Border HorizontalAlignment="Center" VerticalAlignment="Center" Padding="32,18" CornerRadius="{StaticResource ARadiusXl}"
                     Background="{ThemeResource ASurfaceSoft}" BorderBrush="{ThemeResource ABorder}" BorderThickness="1">
-                <TextBlock Text="クリップボードにコピーしました" FontSize="{StaticResource AFontSizeLg}" FontWeight="Bold" Foreground="{ThemeResource AText}"/>
+                <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.clipboardCopied')}" FontSize="{StaticResource AFontSizeLg}" FontWeight="Bold" Foreground="{ThemeResource AText}" AutomationProperties.LiveSetting="Polite"/>
             </Border>
         </Grid>
         <Grid x:Name="TagAddOverlay"
@@ -317,10 +323,11 @@
                     Background="{ThemeResource ASurface}"
                     BorderBrush="{ThemeResource ABorder}"
                     BorderThickness="1"
+                    AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.tagDialogTitle')}"
+                    AutomationProperties.HelpText="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.tagDialogHelp')}"
                     Tapped="TagAddModalContent_Tapped">
                 <StackPanel Spacing="14">
-                    <TextBlock Text="タグを追加"
-                               Style="{StaticResource SectionTitleStyle}"/>
+                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.tagDialogTitle')}" Style="{StaticResource SectionTitleStyle}"/>
                     <Border MaxHeight="260"
                             Padding="6"
                             CornerRadius="{StaticResource ARadius}"
@@ -333,13 +340,13 @@
                     <StackPanel Orientation="Horizontal"
                                 HorizontalAlignment="Right"
                                 Spacing="8">
-                        <Button Content="キャンセル"
-                                Style="{StaticResource GhostButtonStyle}"
-                                Click="CloseTagAddModal_Click"/>
+                        <Button Content="{x:Bind messages:MessageCatalog.getMsg('common.cancel')}" Style="{StaticResource GhostButtonStyle}"
+                                AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.cancelTagAdditionAutomation')}" Click="CloseTagAddModal_Click"/>
                         <Button x:Name="TagAddConfirmButton"
-                                Content="追加"
+                                Content="{x:Bind messages:MessageCatalog.getMsg('common.add')}"
                                 Style="{StaticResource PrimaryButtonStyle}"
                                 FontWeight="ExtraBold"
+                                AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.confirmTagAdditionAutomation')}"
                                 Click="AddExistingTag_Click"/>
                     </StackPanel>
                 </StackPanel>

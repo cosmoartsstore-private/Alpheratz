@@ -2,6 +2,7 @@
     x:Class="Alpheratz.Features.Settings.SettingsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:messages="using:Alpheratz.Messages"
     xmlns:shared="using:Alpheratz.Shared.Controls"
     Background="Transparent"
     IsTabStop="True"
@@ -20,16 +21,16 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
-                <!-- Header bar with title + close -->
+                <!-- タイトルと閉じる操作 -->
                 <Grid Grid.Row="0" Padding="20,15">
-                    <TextBlock Text="設定" Style="{StaticResource HeadingTextStyle}"/>
+                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.title')}" Style="{StaticResource HeadingTextStyle}"/>
                     <Button x:Name="CloseButtonOverlay" HorizontalAlignment="Right" VerticalAlignment="Top"
                             Width="34" Height="34"
                             CornerRadius="{StaticResource ARadiusButton}"
                             Background="{ThemeResource ASurfaceSoft}"
                             BorderThickness="0"
-                            AutomationProperties.Name="閉じる"
-                            ToolTipService.ToolTip="設定を閉じる (Esc)"
+                            AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.closeAutomationName')}"
+                            ToolTipService.ToolTip="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.closeTooltip')}"
                             Click="CloseButton_Click">
                         <shared:AppIcon IconName="close" IconSize="12" Foreground="{ThemeResource ATextDim}"/>
                     </Button>
@@ -55,7 +56,7 @@
                                     Click="SettingsNav_Click">
                                 <StackPanel Orientation="Horizontal" Spacing="9">
                                     <shared:AppIcon IconName="settings" IconSize="15" Foreground="{ThemeResource ATextDim}"/>
-                                    <TextBlock Text="全般"/>
+                                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.generalTitle')}"/>
                                 </StackPanel>
                             </Button>
                             <Button x:Name="TagMasterNavButton"
@@ -67,7 +68,7 @@
                                     Click="SettingsNav_Click">
                                 <StackPanel Orientation="Horizontal" Spacing="9">
                                     <shared:AppIcon IconName="tag" IconSize="15" Foreground="{ThemeResource ATextDim}"/>
-                                    <TextBlock Text="タグマスタ"/>
+                                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.tagMasterTitle')}"/>
                                 </StackPanel>
                             </Button>
                             <Button x:Name="TemplateNavButton"
@@ -79,7 +80,7 @@
                                     Click="SettingsNav_Click">
                                 <StackPanel Orientation="Horizontal" Spacing="9">
                                     <shared:AppIcon IconName="template" IconSize="15" Foreground="{ThemeResource ATextDim}"/>
-                                    <TextBlock Text="テンプレート"/>
+                                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.templateTitle')}"/>
                                 </StackPanel>
                             </Button>
                             <Button x:Name="CreditsNavButton"
@@ -91,7 +92,7 @@
                                     Click="SettingsNav_Click">
                                 <StackPanel Orientation="Horizontal" Spacing="9">
                                     <shared:AppIcon IconName="globe" IconSize="15" Foreground="{ThemeResource ATextDim}"/>
-                                    <TextBlock Text="クレジット"/>
+                                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.creditsTitle')}"/>
                                 </StackPanel>
                             </Button>
                         </StackPanel>
@@ -113,13 +114,13 @@
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
-                        <!-- ============ 全般設定 ============ -->
+                        <!-- 全般 -->
                         <StackPanel x:Name="GeneralSection" Grid.Row="0" Grid.Column="0" Spacing="22">
-                            <TextBlock Text="全般" Style="{StaticResource SectionTitleStyle}"/>
+                            <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.generalTitle')}" Style="{StaticResource SectionTitleStyle}"/>
 
                             <StackPanel Spacing="18">
                                 <StackPanel Spacing="9">
-                                    <TextBlock Text="写真フォルダ 1st" FontWeight="SemiBold"/>
+                                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.primaryPhotoFolderLabel')}" FontWeight="SemiBold"/>
                                     <Grid ColumnSpacing="12">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
@@ -136,12 +137,20 @@
                                                        TextTrimming="CharacterEllipsis"
                                                        VerticalAlignment="Center"/>
                                         </Border>
-                                        <Button Grid.Column="1" Content="変更" Style="{StaticResource PrimaryButtonStyle}" Click="ChoosePrimaryFolder_Click"/>
-                                        <Button Grid.Column="2" Content="リセット" Style="{StaticResource GhostButtonStyle}" Click="ResetPrimaryFolder_Click"/>
+                                        <Button Grid.Column="1"
+                                                Content="{x:Bind messages:MessageCatalog.getMsg('common.change')}"
+                                                AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.changePrimaryPhotoFolderAutomationName')}"
+                                                Style="{StaticResource PrimaryButtonStyle}"
+                                                Click="ChoosePrimaryFolder_Click"/>
+                                        <Button Grid.Column="2"
+                                                Content="{x:Bind messages:MessageCatalog.getMsg('common.reset')}"
+                                                AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.resetPrimaryPhotoFolderAutomationName')}"
+                                                Style="{StaticResource GhostButtonStyle}"
+                                                Click="ResetPrimaryFolder_Click"/>
                                     </Grid>
                                 </StackPanel>
                                 <StackPanel Spacing="9">
-                                    <TextBlock Text="写真フォルダ 2nd" FontWeight="SemiBold"/>
+                                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.secondaryPhotoFolderLabel')}" FontWeight="SemiBold"/>
                                     <Grid ColumnSpacing="12">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
@@ -158,17 +167,28 @@
                                                        TextTrimming="CharacterEllipsis"
                                                        VerticalAlignment="Center"/>
                                         </Border>
-                                        <Button Grid.Column="1" Content="変更" Style="{StaticResource PrimaryButtonStyle}" Click="ChooseSecondaryFolder_Click"/>
-                                        <Button Grid.Column="2" Content="リセット" Style="{StaticResource GhostButtonStyle}" Click="ResetSecondaryFolder_Click"/>
+                                        <Button Grid.Column="1"
+                                                Content="{x:Bind messages:MessageCatalog.getMsg('common.change')}"
+                                                AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.changeSecondaryPhotoFolderAutomationName')}"
+                                                Style="{StaticResource PrimaryButtonStyle}"
+                                                Click="ChooseSecondaryFolder_Click"/>
+                                        <Button Grid.Column="2"
+                                                Content="{x:Bind messages:MessageCatalog.getMsg('common.reset')}"
+                                                AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.resetSecondaryPhotoFolderAutomationName')}"
+                                                Style="{StaticResource GhostButtonStyle}"
+                                                Click="ResetSecondaryFolder_Click"/>
                                     </Grid>
                                 </StackPanel>
                             </StackPanel>
 
                             <Grid MinHeight="58" ColumnSpacing="18">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
                                 <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Text="ログイン時に起動" FontWeight="SemiBold"/>
-                                    <TextBlock Text="Windows ログイン時に Alpheratz を自動起動します。" Style="{StaticResource HintTextStyle}" TextWrapping="WrapWholeWords"/>
+                                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.startupLabel')}" FontWeight="SemiBold"/>
+                                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.startupDescription')}" Style="{StaticResource HintTextStyle}" TextWrapping="WrapWholeWords"/>
                                 </StackPanel>
                                 <ToggleSwitch Grid.Column="1"
                                               MinWidth="0"
@@ -177,15 +197,19 @@
                                               VerticalAlignment="Center"
                                               OnContent=""
                                               OffContent=""
+                                              AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.startupLabel')}"
                                               IsOn="{Binding Settings.StartupEnabled, Mode=TwoWay}"
                                               Toggled="StartupToggle_Toggled"/>
                             </Grid>
 
                             <Grid MinHeight="58" ColumnSpacing="18">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
                                 <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Text="投稿時にワールドリンクを開く" FontWeight="SemiBold"/>
-                                    <TextBlock Text="投稿画面を開くとき、選択写真の VRChat ワールドリンクも開きます。" Style="{StaticResource HintTextStyle}" TextWrapping="WrapWholeWords"/>
+                                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.openWorldLinkLabel')}" FontWeight="SemiBold"/>
+                                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.openWorldLinkDescription')}" Style="{StaticResource HintTextStyle}" TextWrapping="WrapWholeWords"/>
                                 </StackPanel>
                                 <ToggleSwitch Grid.Column="1"
                                               MinWidth="0"
@@ -194,15 +218,19 @@
                                               VerticalAlignment="Center"
                                               OnContent=""
                                               OffContent=""
+                                              AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.openWorldLinkLabel')}"
                                               IsOn="{Binding Settings.OpenWorldLinkOnPost, Mode=TwoWay}"
                                               Toggled="OpenWorldOnPostToggle_Toggled"/>
                             </Grid>
 
                             <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
                                 <StackPanel>
-                                    <TextBlock Text="テーマ" FontWeight="SemiBold"/>
-                                    <TextBlock Text="アプリの外観テーマを切り替えます。" Style="{StaticResource HintTextStyle}"/>
+                                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.themeLabel')}" FontWeight="SemiBold"/>
+                                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.themeDescription')}" Style="{StaticResource HintTextStyle}"/>
                                 </StackPanel>
                                 <Button x:Name="ThemeSwitchButton"
                                         Grid.Column="1"
@@ -214,20 +242,30 @@
                                         Click="ThemeSwitch_Click"/>
                             </Grid>
 
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <!-- TODO: StellaRecord の提供を再開するときに、この連携設定を再表示する。 -->
+                            <Grid Visibility="Collapsed">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
                                 <StackPanel>
-                                    <TextBlock Text="StellaRecord 連携" FontWeight="SemiBold"/>
-                                    <TextBlock Text="StellaRecord のランチャーにこのアプリを登録します。" Style="{StaticResource HintTextStyle}"/>
+                                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.stellaRecordIntegrationLabel')}" FontWeight="SemiBold"/>
+                                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.stellaRecordIntegrationDescription')}" Style="{StaticResource HintTextStyle}"/>
                                 </StackPanel>
-                                <Button Grid.Column="1" Content="登録" Style="{StaticResource PrimaryButtonStyle}" Click="RegisterStellaRecord_Click"/>
+                                <Button Grid.Column="1"
+                                        Content="{x:Bind messages:MessageCatalog.getMsg('common.register')}"
+                                        Style="{StaticResource PrimaryButtonStyle}"
+                                        Click="RegisterStellaRecord_Click"/>
                             </Grid>
 
                             <Grid MinHeight="58" ColumnSpacing="18">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
                                 <StackPanel VerticalAlignment="Center" Spacing="2">
-                                    <TextBlock Text="ワールド名不明の写真の推測" FontWeight="SemiBold"/>
-                                    <TextBlock Text="ワールド名不明の写真を分析済みの写真から推測します。" Style="{StaticResource HintTextStyle}" TextWrapping="WrapWholeWords"/>
+                                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.worldNameInferenceLabel')}" FontWeight="SemiBold"/>
+                                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.worldNameInferenceDescription')}" Style="{StaticResource HintTextStyle}" TextWrapping="WrapWholeWords"/>
                                     <StackPanel x:Name="WorldAnalysisProgressPanel"
                                                 Margin="0,7,0,0"
                                                 Spacing="5"
@@ -245,21 +283,21 @@
                                 </StackPanel>
                                 <Button x:Name="StartWorldAnalysisButton"
                                         Grid.Column="1"
-                                        Content="分析"
+                                        Content="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.startWorldNameInferenceButton')}"
                                         Style="{StaticResource PrimaryButtonStyle}"
                                         Click="StartWorldAnalysis_Click"
                                         VerticalAlignment="Center"/>
                             </Grid>
                         </StackPanel>
 
-                        <!-- ============ タグマスタ ============ -->
+                        <!-- タグマスタ -->
                         <StackPanel x:Name="TagMasterSection" Grid.Row="1" Grid.Column="0" Spacing="18" Visibility="Collapsed">
-                            <TextBlock Text="タグマスタ" Style="{StaticResource SectionTitleStyle}"/>
+                            <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.tagMasterTitle')}" Style="{StaticResource SectionTitleStyle}"/>
 
                             <Border Style="{StaticResource SectionCardBorderStyle}"
                                     Background="{ThemeResource ASurface}">
                                 <StackPanel Spacing="12">
-                                    <TextBlock Text="タグを追加する" Style="{StaticResource SubHeadingTextStyle}"/>
+                                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.addTagHeading')}" Style="{StaticResource SubHeadingTextStyle}"/>
                                     <Grid ColumnSpacing="10">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
@@ -267,10 +305,10 @@
                                         </Grid.ColumnDefinitions>
                                         <TextBox x:Name="TagInputBox"
                                                  Text="{Binding TagMaster.TagDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                 PlaceholderText="タグ名"
+                                                 PlaceholderText="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.tagNamePlaceholder')}"
                                                  KeyDown="TagInput_KeyDown"/>
                                         <Button Grid.Column="1"
-                                                Content="追加"
+                                                Content="{x:Bind messages:MessageCatalog.getMsg('common.add')}"
                                                 Style="{StaticResource PrimaryButtonStyle}"
                                                 Click="AddTag_Click"/>
                                     </Grid>
@@ -280,7 +318,7 @@
                             <Border Style="{StaticResource SectionCardBorderStyle}"
                                     Background="{ThemeResource ASurface}">
                                 <StackPanel Spacing="12">
-                                    <TextBlock Text="追加済みタグ" Style="{StaticResource SubHeadingTextStyle}"/>
+                                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.savedTagsHeading')}" Style="{StaticResource SubHeadingTextStyle}"/>
 
                                     <Border x:Name="TagEmptyState"
                                             Padding="14,12"
@@ -289,7 +327,7 @@
                                             BorderThickness="1"
                                             Background="{ThemeResource ASurfaceSoft}"
                                             Visibility="Collapsed">
-                                        <TextBlock Text="タグマスタはまだありません。"
+                                        <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.noSavedTags')}"
                                                    Foreground="{ThemeResource ATextFaint}"
                                                    FontSize="{StaticResource AFontSizeMd}"/>
                                     </Border>
@@ -315,7 +353,7 @@
                                                                    Foreground="{ThemeResource AText}"
                                                                    MaxWidth="220"
                                                                    TextTrimming="CharacterEllipsis"/>
-                                                        <Button Content="削除"
+                                                        <Button Content="{x:Bind messages:MessageCatalog.getMsg('common.delete')}"
                                                                 Style="{StaticResource DangerChipButtonStyle}"
                                                                 Click="DeleteTag_Click"/>
                                                     </StackPanel>
@@ -327,15 +365,15 @@
                             </Border>
                         </StackPanel>
 
-                        <!-- ============ 投稿テンプレート ============ -->
+                        <!-- 投稿テンプレート -->
                         <StackPanel x:Name="TemplateSection" Grid.Row="2" Grid.Column="0" Spacing="18" Visibility="Collapsed">
-                            <TextBlock Text="投稿テンプレート" Style="{StaticResource SectionTitleStyle}"/>
+                            <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.templateTitle')}" Style="{StaticResource SectionTitleStyle}"/>
 
                             <Border Style="{StaticResource SectionCardBorderStyle}"
                                     Background="{ThemeResource ASurface}">
                                 <StackPanel Spacing="12">
                                     <TextBlock x:Name="EditorModeLabel"
-                                               Text="新規テンプレート"
+                                               Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPageLogic.templateNewHeading')}"
                                                Style="{StaticResource SubHeadingTextStyle}"/>
                                     <TextBox Text="{Binding Template.TweetTemplateDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                              AcceptsReturn="True"
@@ -343,19 +381,19 @@
                                              MinHeight="220"
                                              FontFamily="{StaticResource AFontMono}"
                                              FontSize="{StaticResource AFontSizeMd}"
-                                             PlaceholderText="例:&#x0a;World: {}{world-name}&#x0a;&#x0a;#VRChat_world紹介"/>
+                                             PlaceholderText="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.templatePlaceholder')}"/>
                                     <TextBlock Style="{StaticResource HintTextStyle}">
-                                        <Run Text="使える置換: "/>
-                                        <Run Text="{}{world-name}" Foreground="{ThemeResource APrimary}" FontFamily="{StaticResource AFontMono}"/>
+                                        <Run Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.templateTokenGuidance')}"/>
+                                        <Run Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.worldNameToken')}" Foreground="{ThemeResource APrimary}" FontFamily="{StaticResource AFontMono}"/>
                                     </TextBlock>
                                     <StackPanel Orientation="Horizontal" Spacing="10">
                                         <Button x:Name="CancelEditButton"
-                                                Content="キャンセル"
+                                                Content="{x:Bind messages:MessageCatalog.getMsg('common.cancel')}"
                                                 Style="{StaticResource GhostButtonStyle}"
                                                 Visibility="Collapsed"
                                                 Click="CancelEdit_Click"/>
                                         <Button x:Name="SaveButton"
-                                                Content="登録"
+                                                Content="{x:Bind messages:MessageCatalog.getMsg('common.register')}"
                                                 Style="{StaticResource PrimaryButtonStyle}"
                                                 Click="SaveTemplate_Click"/>
                                     </StackPanel>
@@ -365,7 +403,7 @@
                             <Border Style="{StaticResource SectionCardBorderStyle}"
                                     Background="{ThemeResource ASurface}">
                                 <StackPanel Spacing="12">
-                                    <TextBlock Text="登録済みテンプレート" Style="{StaticResource SubHeadingTextStyle}"/>
+                                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.savedTemplatesHeading')}" Style="{StaticResource SubHeadingTextStyle}"/>
                                     <ItemsControl x:Name="TemplateList" ItemsSource="{Binding Template.tweetTemplates}">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
@@ -388,7 +426,7 @@
                                                         </Grid.ColumnDefinitions>
                                                         <StackPanel Spacing="4">
                                                             <TextBlock x:Name="TemplateLabel"
-                                                                       Text="テンプレート"
+                                                                       Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPageLogic.templateInactiveLabel')}"
                                                                        Style="{StaticResource SectionTitleStyle}"/>
                                                             <TextBlock Text="{Binding}"
                                                                        TextWrapping="Wrap"
@@ -399,13 +437,13 @@
                                                                        Foreground="{ThemeResource AText}"/>
                                                         </StackPanel>
                                                         <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Top">
-                                                            <Button Content="編集"
+                                                            <Button Content="{x:Bind messages:MessageCatalog.getMsg('common.edit')}"
                                                                     Style="{StaticResource GhostButtonStyle}"
                                                                     Padding="10,4"
                                                                     MinWidth="0" MinHeight="0"
                                                                     FontSize="{StaticResource AFontSizeSm}"
                                                                     Click="EditTemplate_Click"/>
-                                                            <Button Content="削除"
+                                                            <Button Content="{x:Bind messages:MessageCatalog.getMsg('common.delete')}"
                                                                     Padding="10,4"
                                                                     MinWidth="0" MinHeight="0"
                                                                     Style="{StaticResource DangerChipButtonStyle}"
@@ -420,14 +458,14 @@
                             </Border>
                         </StackPanel>
 
-                        <!-- ============ クレジット ============ -->
+                        <!-- クレジット -->
                         <StackPanel x:Name="CreditsSection"
                                     Grid.Row="3"
                                     Grid.Column="0"
                                     Spacing="18"
                                     Visibility="Collapsed"
                                     MaxWidth="980">
-                            <TextBlock Text="クレジット" Style="{StaticResource SectionTitleStyle}"/>
+                            <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.creditsTitle')}" Style="{StaticResource SectionTitleStyle}"/>
                             <Border Padding="26"
                                     CornerRadius="{StaticResource ARadius}"
                                     Background="{ThemeResource ASurface}"
@@ -440,7 +478,7 @@
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
 
-                                        <!-- Profile image only. Do not add this avatar to the material-credit list. -->
+                                        <!-- プロフィール画像専用。使用素材の一覧には追加しない。 -->
                                         <Border Grid.Column="0"
                                                 Width="56"
                                                 Height="56"
@@ -457,11 +495,11 @@
                                         <StackPanel Grid.Column="1"
                                                     VerticalAlignment="Center"
                                                     Spacing="3">
-                                            <TextBlock Text="CosmoArtsStore"
+                                            <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.creatorBrand')}"
                                                        FontSize="{StaticResource AFontSizeXl}"
                                                        FontWeight="ExtraBold"
                                                        Foreground="{ThemeResource AText}"/>
-                                            <TextBlock Text="Creator:ぷらねっと/planet"
+                                            <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.creatorName')}"
                                                        FontSize="{StaticResource AFontSizeSm}"
                                                        FontWeight="SemiBold"
                                                        Foreground="{ThemeResource ATextFaint}"/>
@@ -488,7 +526,7 @@
                                             <StackPanel Padding="8,4"
                                                         Spacing="4"
                                                         HorizontalAlignment="Center">
-                                                <TextBlock Text="Lit.Link"
+                                                <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.litLinkLabel')}"
                                                            FontWeight="Bold"
                                                            Foreground="{ThemeResource AText}"
                                                            HorizontalAlignment="Center"/>
@@ -509,7 +547,7 @@
                                             <StackPanel Padding="8,4"
                                                         Spacing="4"
                                                         HorizontalAlignment="Center">
-                                                <TextBlock Text="X / Twitter"
+                                                <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.xProfileLabel')}"
                                                            FontWeight="Bold"
                                                            Foreground="{ThemeResource AText}"
                                                            HorizontalAlignment="Center"/>
@@ -530,7 +568,7 @@
                                             <StackPanel Padding="8,4"
                                                         Spacing="4"
                                                         HorizontalAlignment="Center">
-                                                <TextBlock Text="BOOTH"
+                                                <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.boothLabel')}"
                                                            FontWeight="Bold"
                                                            Foreground="{ThemeResource AText}"
                                                            HorizontalAlignment="Center"/>
@@ -548,7 +586,7 @@
                                             Background="{ThemeResource ABorder}"/>
 
                                     <StackPanel Spacing="10">
-                                        <TextBlock Text="使用素材"
+                                        <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.materialsHeading')}"
                                                    FontSize="{StaticResource AFontSizeMd}"
                                                    FontWeight="ExtraBold"
                                                    Foreground="{ThemeResource AText}"/>
@@ -569,10 +607,10 @@
                                             <StackPanel Grid.Row="0"
                                                         Grid.Column="1"
                                                         Spacing="2">
-                                                <TextBlock Text="UIアイコン"
+                                                <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.uiIconsLabel')}"
                                                            FontWeight="SemiBold"
                                                            Foreground="{ThemeResource ATextDim}"/>
-                                                <TextBlock Text="Bootstrap Icons / MIT License / Copyright (c) 2019-2024 The Bootstrap Authors"
+                                                <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.bootstrapIconsCredit')}"
                                                            FontSize="{StaticResource AFontSizeXs}"
                                                            Foreground="{ThemeResource ATextFaint}"/>
                                             </StackPanel>

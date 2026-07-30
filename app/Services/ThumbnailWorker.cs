@@ -28,6 +28,9 @@ public sealed class ThumbnailWorker
     private const int MaxConcurrency = 2;
 
     private readonly ThumbnailService thumbnailService;
+    private readonly object operationGate = new();
+    private readonly Dictionary<Task, CancellationTokenSource> activeOperations = [];
+    private bool operationsSuspended;
 
     public ThumbnailWorker(ThumbnailService thumbnailService)
     {
@@ -45,7 +48,80 @@ public sealed class ThumbnailWorker
         IReadOnlyList<(string path, long slot)> targets,
         Action<ThumbnailResult> onReady,
         CancellationToken ct = default)
-        => RunAsync("Grid", targets, thumbnailService.EnsureGridThumbAsync, onReady, ct);
+    {
+        CancellationTokenSource operationCts;
+        Task operation;
+        lock (operationGate)
+        {
+            if (operationsSuspended || ct.IsCancellationRequested)
+                return Task.CompletedTask;
+
+            operationCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            // 実処理を別タスクへ送ることで、外部コールバックを gate の内側で実行しない。
+            // gate を解放する前に登録するため、停止処理は開始直後の書込みも必ず捕捉できる。
+            operation = Task.Run(
+                () => RunAsync("Grid", targets, thumbnailService.EnsureGridThumbAsync, onReady, operationCts.Token),
+                CancellationToken.None);
+            activeOperations.Add(operation, operationCts);
+        }
+
+        _ = operation.ContinueWith(
+            completeOperation,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+        return operation;
+    }
+
+    /// <summary>
+    /// すべてのサムネイル生成を停止し、キャッシュへの書込みが終了するまで待つ。
+    /// ResumeOperations を呼ぶまでは新しい生成要求を受け付けない。
+    /// </summary>
+    public async Task SuspendOperationsAndWaitAsync()
+    {
+        Task[] operations;
+        CancellationTokenSource[] sources;
+        lock (operationGate)
+        {
+            operationsSuspended = true;
+            operations = activeOperations.Keys.ToArray();
+            sources = activeOperations.Values.Distinct().ToArray();
+        }
+
+        foreach (var source in sources)
+        {
+            try { source.Cancel(); }
+            catch (ObjectDisposedException) { }
+        }
+
+        if (operations.Length == 0)
+            return;
+
+        try
+        {
+            await Task.WhenAll(operations).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            AppLogger.Warn($"ThumbnailWorker.SuspendOperationsAndWaitAsync: completion failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>フォルダ整理完了後、新しいサムネイル生成要求を許可する。</summary>
+    public void ResumeOperations()
+    {
+        lock (operationGate)
+            operationsSuspended = false;
+    }
+
+    private void completeOperation(Task operation)
+    {
+        CancellationTokenSource? source = null;
+        lock (operationGate)
+            activeOperations.Remove(operation, out source);
+        source?.Dispose();
+    }
 
     /// <summary>
     /// SemaphoreSlim で同時実行数を制限しつつ全ターゲットを並列処理する。

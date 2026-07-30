@@ -7,6 +7,10 @@ $InstallerOutputPath = Join-Path $BuildWorksRoot "Alpheratz-Installer.exe"
 # Windows App Runtime preflight is intentionally skipped for the self-contained build.
 # WindowsAppSDKSelfContained=true copies WinAppSDK dependencies into the app output.
 
+if (Test-Path $InstallerOutputPath) {
+    Remove-Item -LiteralPath $InstallerOutputPath -Force
+}
+
 $MakensisCandidates = @(
     "C:\Program Files (x86)\NSIS\makensis.exe",
     "C:\Program Files (x86)\NSIS\Bin\makensis.exe"
@@ -21,6 +25,9 @@ if ([string]::IsNullOrWhiteSpace($MakensisPath)) {
 }
 
 & $MakensisPath $InstallerScriptPath
+if ($LASTEXITCODE -ne 0) {
+    throw "makensis に失敗しました。終了コード: $LASTEXITCODE"
+}
 
 if (!(Test-Path $InstallerOutputPath)) {
     throw "Installer output is missing: $InstallerOutputPath"

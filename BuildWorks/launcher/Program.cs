@@ -40,8 +40,10 @@ internal static class Program
         }
         catch (Exception ex)
         {
-            WriteLaunchError(ex);
-            ShowError("Alpheratz failed to start. See Data\\logs\\launcher_error.log for details.");
+            var logWritten = TryWriteLaunchError(ex);
+            ShowError(logWritten
+                ? "Alpheratzを起動できませんでした。詳細は Data\\logs\\launcher_error.log を確認してください。"
+                : "Alpheratzを起動できませんでした。エラー情報も保存できませんでした。");
             return 1;
         }
     }
@@ -81,11 +83,20 @@ internal static class Program
         return key?.GetValue(valueName) as string;
     }
 
-    private static void WriteLaunchError(Exception ex)
+    private static bool TryWriteLaunchError(Exception ex)
     {
-        var logDir = ResolveDataRoot();
-        Directory.CreateDirectory(logDir);
-        File.WriteAllText(Path.Combine(logDir, "launcher_error.log"), ex.ToString());
+        try
+        {
+            var logDir = ResolveDataRoot();
+            Directory.CreateDirectory(logDir);
+            File.WriteAllText(Path.Combine(logDir, "launcher_error.log"), ex.ToString());
+            return true;
+        }
+        catch
+        {
+            // ログ保存が失敗しても、起動エラーの画面表示は継続する。
+            return false;
+        }
     }
 
     private static void ShowError(string message)

@@ -1,6 +1,7 @@
 using Alpheratz.Shared.Converters;
 using Alpheratz.Shared.Icons;
 using Alpheratz.Shared.Models;
+using Alpheratz.Messages;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media.Imaging;
 
@@ -56,7 +57,7 @@ public sealed class ConvertersAndModelsBehaviorTests
     /// <summary>
     /// MatchPercentConverter が PDQ ハミング距離を一致率表示へ変換することを確認する。
     ///
-    /// 類似写真候補の UI は距離そのものではなく「一致率: xx%」を表示する。
+    /// 類似写真候補の UI は距離そのものではなく「一致率：xx%」を表示する。
     /// 距離 0、半分程度、最大距離、範囲外、null の代表値を確認し、丸めと上下限クランプを固定する。
     /// </summary>
     [Fact]
@@ -64,12 +65,12 @@ public sealed class ConvertersAndModelsBehaviorTests
     {
         var converter = new MatchPercentConverter();
 
-        Assert.Equal("一致率: 100%", converter.Convert(0, typeof(string), "", ""));
-        Assert.Equal("一致率: 52%", converter.Convert(124, typeof(string), "", ""));
-        Assert.Equal("一致率: 0%", converter.Convert(256, typeof(string), "", ""));
-        Assert.Equal("一致率: 0%", converter.Convert(999, typeof(string), "", ""));
-        Assert.Equal("一致率: —", converter.Convert(null!, typeof(string), "", ""));
-        Assert.Throws<NotSupportedException>(() => converter.ConvertBack("一致率: 100%", typeof(int), "", ""));
+        Assert.Equal(MessageCatalog.getMsg("MatchPercentConverter.value", ("percent", 100)), converter.Convert(0, typeof(string), "", ""));
+        Assert.Equal(MessageCatalog.getMsg("MatchPercentConverter.value", ("percent", 52)), converter.Convert(124, typeof(string), "", ""));
+        Assert.Equal(MessageCatalog.getMsg("MatchPercentConverter.value", ("percent", 0)), converter.Convert(256, typeof(string), "", ""));
+        Assert.Equal(MessageCatalog.getMsg("MatchPercentConverter.value", ("percent", 0)), converter.Convert(999, typeof(string), "", ""));
+        Assert.Equal(MessageCatalog.getMsg("MatchPercentConverter.empty"), converter.Convert(null!, typeof(string), "", ""));
+        Assert.Throws<NotSupportedException>(() => converter.ConvertBack("一致率：100%", typeof(int), "", ""));
     }
 
     /// <summary>

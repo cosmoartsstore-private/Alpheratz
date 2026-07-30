@@ -9,6 +9,9 @@ public static class AppPaths
     private const string RegistryKeyPath = @"Software\CosmoArtsStore\Alpheratz";
     private const string PolarisKeyPath = @"Software\CosmoArtsStore\Polaris";
 
+    /// <summary>テスト時に利用者のデータ領域へ書き込まないための一時データディレクトリ。</summary>
+    internal static string? DataDirOverrideForTests { get; set; }
+
     public static string? InstallLocation { get; } = ResolveInstallLocation();
 
     /// <summary>レジストリ、実行ファイル隣接 Data、LocalAppData の順でインストール場所を決める。</summary>
@@ -32,7 +35,9 @@ public static class AppPaths
     }
 
     /// <summary>アプリデータのルートディレクトリを返す。</summary>
-    public static string? GetDataDir() => EnsureDir(InstallLocation is null ? null : Path.Combine(InstallLocation, "Data"));
+    public static string? GetDataDir()
+        => EnsureDir(DataDirOverrideForTests
+            ?? (InstallLocation is null ? null : Path.Combine(InstallLocation, "Data")));
 
     /// <summary>ログ保存ディレクトリを返す。</summary>
     public static string? GetLogDir() => EnsureDir(GetDataDir() is { } d ? Path.Combine(d, "logs") : null);
@@ -52,6 +57,7 @@ public static class AppPaths
     /// <summary>指定 source_slot のサムネイルキャッシュディレクトリを返す。</summary>
     public static string? GetImgCacheDir(long sourceSlot = 1)
     {
+        if (sourceSlot is not (1 or 2)) return null;
         var slotName = sourceSlot == 2 ? "2nd-cache" : "1st-cache";
         return EnsureDir(GetCacheDir() is { } c ? Path.Combine(c, slotName, "imgCache") : null);
     }
@@ -72,6 +78,39 @@ public static class AppPaths
 
     /// <summary>DB 保存用に Windows パス区切りをスラッシュへ正規化する。</summary>
     public static string NormalizePathForDb(string path) => path.Replace('\\', '/');
+
+    /// <summary>末尾区切りと相対表記を除いた、比較用の絶対ディレクトリパスを返す。</summary>
+    internal static string NormalizeDirectoryPath(string path)
+        => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+
+    /// <summary>大文字小文字や末尾区切りの違いを無視して、同じディレクトリか判定する。</summary>
+    internal static bool AreSameDirectory(string first, string second)
+        => string.Equals(
+            NormalizeDirectoryPath(first),
+            NormalizeDirectoryPath(second),
+            StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 2 つのディレクトリが同一、または一方が他方の配下なら true を返す。
+    /// source_slot 間でこの関係を許すと、同じ写真を別スロットとして安定して管理できない。
+    /// </summary>
+    internal static bool AreOverlappingDirectories(string first, string second)
+    {
+        var normalizedFirst = NormalizeDirectoryPath(first);
+        var normalizedSecond = NormalizeDirectoryPath(second);
+        return IsSameOrParentDirectory(normalizedFirst, normalizedSecond)
+            || IsSameOrParentDirectory(normalizedSecond, normalizedFirst);
+    }
+
+    private static bool IsSameOrParentDirectory(string parent, string candidate)
+    {
+        if (string.Equals(parent, candidate, StringComparison.OrdinalIgnoreCase))
+            return true;
+        var prefix = Path.EndsInDirectorySeparator(parent)
+            ? parent
+            : parent + Path.DirectorySeparatorChar;
+        return candidate.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>ディレクトリを作成してからパスを返す。作成できない場合は null を返す。</summary>
     private static string? EnsureDir(string? path)

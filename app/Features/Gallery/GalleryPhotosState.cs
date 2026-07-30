@@ -10,6 +10,7 @@ using Alpheratz.Services;
 using Alpheratz.Shared.Models;
 using Alpheratz.Shared.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Features.Gallery;
 
@@ -29,7 +30,19 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
     private readonly ThumbnailWorker thumbnailWorker;
 
     private PhotoQueryFilters filters = new("", [], "", "", "all", false, [], false, false, ViewMode.standard, null, GroupingMode.none);
+    private readonly object thumbnailGenerationGate = new();
+    private readonly Dictionary<Task, CancellationTokenSource> thumbnailOperations = [];
+    private readonly HashSet<CancellationTokenSource> retiredThumbnailSources = [];
     private CancellationTokenSource? thumbnailCts;
+    private bool thumbnailRequestsSuspended;
+    private bool thumbnailFolderMutationSuspended;
+    private bool thumbnailStateDisposed;
+    private long thumbnailSuspensionVersion;
+
+    private sealed record ThumbnailSuspension(
+        long Version,
+        Task[] Operations,
+        CancellationTokenSource[] Sources);
 
     private int transitionToken;
 
@@ -77,6 +90,13 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
         AppLogger.Trace("GalleryPhotosState.SetFilters: exit");
     }
 
+    /// <summary>DB 再取得を行わず、現在の検索条件と表示項目へ同じグループ化方式を反映する。</summary>
+    public void SetGroupingMode(GroupingMode groupingMode)
+    {
+        filters = filters with { groupingMode = groupingMode };
+        rebuildDisplayItems(groupingMode);
+    }
+
     /// <summary>DB から全期間の月別件数を取得し、MonthNav 用のグループリストを構築する。</summary>
     public async Task loadMonthSummary()
     {
@@ -118,7 +138,13 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
         foreach (var s in summaries)
         {
             var key = $"{s.Year:D4}-{s.Month:D2}";
-            groups.Add(new GalleryMonthGroup(key, s.Year, s.Month, $"{s.Month}月", runningIndex, s.Count));
+            groups.Add(new GalleryMonthGroup(
+                key,
+                s.Year,
+                s.Month,
+                getMsg("GalleryMonthGroup.monthLabel", ("month", s.Month)),
+                runningIndex,
+                s.Count));
             runningIndex += s.Count;
         }
 
@@ -131,22 +157,25 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
     /// 初回ロードが完了してから購読を開始することで、
     /// 起動直後にスキャンが即完了するケースの DB 二重発行を防ぐ。
     /// </summary>
-    public async Task InitializeAsync()
+    public async Task InitializeAsync(bool loadInitialData = true)
     {
         AppLogger.Trace("GalleryPhotosState.InitializeAsync: enter");
-        try
+        if (loadInitialData)
         {
-            await loadPhotos(0).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Error($"GalleryPhotosState.InitializeAsync: initial load threw: {ex}");
+            try
+            {
+                await loadPhotos(0).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error($"GalleryPhotosState.InitializeAsync: initial load threw: {ex}");
+            }
         }
 
         try
         {
-            scanCompletedUnlisten = eventBus.Subscribe(EventNames.ScanCompleted, () => loadPhotos());
-            scanEnrichCompletedUnlisten = eventBus.Subscribe(EventNames.ScanEnrichCompleted, () => loadPhotos());
+            scanCompletedUnlisten ??= eventBus.Subscribe(EventNames.ScanCompleted, () => loadPhotos());
+            scanEnrichCompletedUnlisten ??= eventBus.Subscribe(EventNames.ScanEnrichCompleted, () => loadPhotos());
         }
         catch (Exception ex)
         {
@@ -231,85 +260,191 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
     ///   スクロール中に何度も呼ばれる経路で CTS を作り直すと、走り始めの生成が
     ///   即キャンセルされて UI が真っ白なまま、という症状になるため。
     ///
-    /// CTS の交換では、Volatile.Read + CompareExchange で
-    /// 「null チェック → null なら自分の CTS を代入」を一体の処理にしている。
-    /// 単純な ??= だと読み込みと代入の間に別スレッドが介入する余地がある。
+    /// タスクと CTS は thumbnailGenerationGate 配下で同時に登録する。
+    /// フォルダ変更時は全登録タスクを停止して完了まで待つため、登録前後の隙間を作らない。
     /// </summary>
     private void kickThumbnailGeneration(IReadOnlyDictionary<string, PhotoThumbnailItem> photoMap, bool cancelPrevious = true)
     {
-        CancellationTokenSource cts;
-        if (cancelPrevious)
-        {
-            // Cancel/Dispose をアトミックに置換して、旧 CTS の Dispose と
-            // バックグラウンドの ct.IsCancellationRequested 参照が交差しないようにする。
-            var nextCts = new CancellationTokenSource();
-            var prevCts = Interlocked.Exchange(ref thumbnailCts, nextCts);
-            if (prevCts is not null)
-            {
-                try { prevCts.Cancel(); } catch { }
-                prevCts.Dispose();
-            }
-            cts = nextCts;
-        }
-        else
-        {
-            // `??=` は読み込み→比較→代入が一体ではないため、連続要求で複数の CTS が作られる。
-            // CompareExchange で「null のときだけ自分の CTS を代入」を一体化する。
-            var existing = Volatile.Read(ref thumbnailCts);
-            if (existing is null)
-            {
-                var candidate = new CancellationTokenSource();
-                var prior = Interlocked.CompareExchange(ref thumbnailCts, candidate, null);
-                if (prior is null)
-                {
-                    cts = candidate;
-                }
-                else
-                {
-                    candidate.Dispose();
-                    cts = prior;
-                }
-            }
-            else
-            {
-                cts = existing;
-            }
-        }
-
-        // 既存 CTS を取った直後に loadPhotos 側が Interlocked.Exchange + Dispose を
-        // 走らせると、ローカル変数 cts は Disposed になっている可能性がある。
-        // cts.Token は ObjectDisposedException を投げるので捕捉して早期 return。
-        CancellationToken ct;
-        try { ct = cts.Token; }
-        catch (ObjectDisposedException)
-        {
-            AppLogger.Trace("GalleryPhotosState.kickThumbnailGeneration: cts disposed mid-flight, skip");
-            return;
-        }
-
         var targets = GalleryPhotosStateLogic.BuildThumbnailTargets(photoMap.Values);
         if (targets.Count == 0) return;
 
-        AppLogger.Trace($"GalleryPhotosState.kickThumbnailGeneration: dispatching count={targets.Count} cancel={cancelPrevious}");
-        // Task.Run の第二引数に ct を渡すと、Task.Run 起動前に CTS が Dispose された場合
-        // ObjectDisposedException を避けるため、token は Task 内で参照するだけにする。
-        _ = Task.Run(async () =>
+        CancellationTokenSource? previousCts = null;
+        CancellationTokenSource cts;
+        CancellationToken ct;
+        Task operation;
+        lock (thumbnailGenerationGate)
         {
-            try
+            if (thumbnailRequestsSuspended
+                || thumbnailFolderMutationSuspended
+                || thumbnailStateDisposed)
             {
-                await thumbnailWorker.GenerateGridAsync(targets, result =>
-                {
-                    if (ct.IsCancellationRequested) return;
-                    if (!photoMap.TryGetValue(result.PhotoPath, out var item)) return;
-                    _ = dispatcherService.RunOnUiThread(() => item.GridThumbPath = result.ThumbPath);
-                }, ct).ConfigureAwait(false);
+                AppLogger.Trace("GalleryPhotosState.kickThumbnailGeneration: skip (suspended)");
+                return;
             }
+
+            if (cancelPrevious || thumbnailCts is null)
+            {
+                previousCts = thumbnailCts;
+                if (previousCts is not null)
+                    retiredThumbnailSources.Add(previousCts);
+                thumbnailCts = new CancellationTokenSource();
+            }
+
+            cts = thumbnailCts!;
+            ct = cts.Token;
+            operation = Task.Run(async () =>
+            {
+                try
+                {
+                    await thumbnailWorker.GenerateGridAsync(targets, result =>
+                    {
+                        if (ct.IsCancellationRequested) return;
+                        if (!photoMap.TryGetValue(result.PhotoPath, out var item)) return;
+                        _ = dispatcherService.RunOnUiThread(() =>
+                        {
+                            if (!ct.IsCancellationRequested)
+                                item.GridThumbPath = result.ThumbPath;
+                        });
+                    }, ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) { }
+                catch (Exception ex)
+                {
+                    AppLogger.Error($"GalleryPhotosState.kickThumbnailGeneration: threw: {ex}");
+                }
+            });
+            thumbnailOperations.Add(operation, cts);
+        }
+
+        _ = operation.ContinueWith(
+            completeThumbnailOperation,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+
+        if (previousCts is not null)
+        {
+            try { previousCts.Cancel(); }
+            catch (ObjectDisposedException) { }
+            disposeIdleRetiredThumbnailSources();
+        }
+        AppLogger.Trace($"GalleryPhotosState.kickThumbnailGeneration: dispatching count={targets.Count} cancel={cancelPrevious}");
+    }
+
+    private void completeThumbnailOperation(Task operation)
+    {
+        CancellationTokenSource? sourceToDispose = null;
+        lock (thumbnailGenerationGate)
+        {
+            if (!thumbnailOperations.Remove(operation, out var source))
+                return;
+            if (!ReferenceEquals(source, thumbnailCts)
+                && !thumbnailOperations.Values.Any(candidate => ReferenceEquals(candidate, source)))
+            {
+                retiredThumbnailSources.Remove(source);
+                sourceToDispose = source;
+            }
+        }
+        sourceToDispose?.Dispose();
+    }
+
+    private void disposeIdleRetiredThumbnailSources()
+    {
+        CancellationTokenSource[] sourcesToDispose;
+        lock (thumbnailGenerationGate)
+        {
+            sourcesToDispose = retiredThumbnailSources
+                .Where(source => !thumbnailOperations.Values.Any(candidate => ReferenceEquals(candidate, source)))
+                .ToArray();
+            foreach (var source in sourcesToDispose)
+                retiredThumbnailSources.Remove(source);
+        }
+        foreach (var source in sourcesToDispose)
+            source.Dispose();
+    }
+
+    /// <summary>
+    /// 現在登録済みのサムネイル生成をすべて停止し、ファイル書込みが終わるまで待つ。
+    /// 停止後の新規要求は、次の loadPhotos が新一覧を反映するまで受け付けない。
+    /// </summary>
+    public async Task suspendThumbnailGenerationAndWait()
+    {
+        // フォルダ整理開始前の停止は、進行中の写真一覧読込も旧世代にする。
+        // 旧一覧の適用経路からサムネイル生成が再開されることを防ぐために必要となる。
+        ThumbnailSuspension suspension;
+        lock (thumbnailGenerationGate)
+        {
+            thumbnailFolderMutationSuspended = true;
+            Interlocked.Increment(ref transitionToken);
+            suspension = beginThumbnailSuspensionLocked();
+        }
+        await waitThumbnailSuspension(suspension).ConfigureAwait(false);
+        await dispatcherService.RunOnUiThread(() => IsLoading = false).ConfigureAwait(false);
+    }
+
+    /// <summary>フォルダ整理完了後、新しい一覧読込だけを許可する。生成再開は一覧適用時に行う。</summary>
+    public void allowThumbnailReloadAfterFolderCleanup()
+    {
+        lock (thumbnailGenerationGate)
+            thumbnailFolderMutationSuspended = false;
+    }
+
+    // transitionToken と同じ gate 内で呼び、写真一覧世代と停止世代の順序を一致させる。
+    private ThumbnailSuspension beginThumbnailSuspensionLocked()
+    {
+        thumbnailRequestsSuspended = true;
+        var suspensionVersion = unchecked(++thumbnailSuspensionVersion);
+        if (thumbnailCts is not null)
+        {
+            retiredThumbnailSources.Add(thumbnailCts);
+            thumbnailCts = null;
+        }
+        return new ThumbnailSuspension(
+            suspensionVersion,
+            thumbnailOperations.Keys.ToArray(),
+            retiredThumbnailSources
+                .Concat(thumbnailOperations.Values)
+                .Distinct()
+                .ToArray());
+    }
+
+    private async Task waitThumbnailSuspension(ThumbnailSuspension suspension)
+    {
+        foreach (var source in suspension.Sources)
+        {
+            try { source.Cancel(); }
+            catch (ObjectDisposedException) { }
+        }
+
+        if (suspension.Operations.Length > 0)
+        {
+            try { await Task.WhenAll(suspension.Operations).ConfigureAwait(false); }
             catch (OperationCanceledException) { }
             catch (Exception ex)
             {
-                AppLogger.Error($"GalleryPhotosState.kickThumbnailGeneration: threw: {ex}");
+                AppLogger.Warn($"GalleryPhotosState.suspendThumbnailGenerationAndWait: completion failed: {ex.Message}");
             }
-        });
+        }
+        disposeIdleRetiredThumbnailSources();
+    }
+
+    private bool resumeThumbnailGeneration(long suspensionVersion)
+    {
+        lock (thumbnailGenerationGate)
+        {
+            if (thumbnailStateDisposed
+                || thumbnailFolderMutationSuspended
+                || thumbnailSuspensionVersion != suspensionVersion)
+                return false;
+            thumbnailRequestsSuspended = false;
+            return true;
+        }
+    }
+
+    private bool isThumbnailStateDisposed()
+    {
+        lock (thumbnailGenerationGate)
+            return thumbnailStateDisposed;
     }
 
     // PhotoQueryFilters を PhotoService が受け取る DTO へ変換する。
@@ -388,7 +523,7 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
     ///   transitionToken が変わっていたら「自分は古い世代」と判断して破棄する。
     ///
     /// フロー：
-    ///   1. transitionToken++ → サムネイル CTS をキャンセル → IsLoading = true
+    ///   1. transitionToken++ → 全サムネイル生成をキャンセル・完了待ち → IsLoading = true
     ///   2. fetchAllPhotos と loadMonthSummary を Task.WhenAll で並列取得
     ///   3. トークン整合性チェック → photosRef / photos / displayItems を更新
     ///   4. 新しい photoMap でサムネイル生成をキック
@@ -396,20 +531,29 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
     public async Task loadPhotos(int page = 0)
     {
         AppLogger.Trace("GalleryPhotosState.loadPhotos: enter");
-        var token = transitionToken + 1;
-        transitionToken = token;
-
-        // 既存のサムネイル生成 CTS をアトミックに引き抜いてキャンセル + Dispose。
-        var prevCts = Interlocked.Exchange(ref thumbnailCts, null);
-        if (prevCts is not null)
+        long token;
+        ThumbnailSuspension thumbnailSuspension;
+        lock (thumbnailGenerationGate)
         {
-            try { prevCts.Cancel(); } catch { }
-            prevCts.Dispose();
+            if (thumbnailStateDisposed || thumbnailFolderMutationSuspended)
+            {
+                AppLogger.Trace("GalleryPhotosState.loadPhotos: skip (thumbnail generation suspended)");
+                return;
+            }
+            token = Interlocked.Increment(ref transitionToken);
+            thumbnailSuspension = beginThumbnailSuspensionLocked();
+        }
+        await waitThumbnailSuspension(thumbnailSuspension).ConfigureAwait(false);
+        if (Volatile.Read(ref transitionToken) != token || isThumbnailStateDisposed())
+        {
+            AppLogger.Trace("GalleryPhotosState.loadPhotos: superseded while stopping thumbnails");
+            return;
         }
 
         await dispatcherService.RunOnUiThread(() =>
         {
-            IsLoading = true;
+            if (Volatile.Read(ref transitionToken) == token)
+                IsLoading = true;
         }).ConfigureAwait(false);
 
         try
@@ -421,7 +565,7 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
             await Task.WhenAll(photosTask, monthTask).ConfigureAwait(false);
             var allPhotos = await photosTask.ConfigureAwait(false);
             var nextMonthGroups = await monthTask.ConfigureAwait(false);
-            if (transitionToken != token)
+            if (Volatile.Read(ref transitionToken) != token)
             {
                 AppLogger.Trace("GalleryPhotosState.loadPhotos: superseded by newer load");
                 return;
@@ -431,6 +575,11 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
 
             await dispatcherService.RunOnUiThread(() =>
             {
+                // 世代確認から UI キュー実行までにも新しい読込が始まり得る。
+                // 適用直前に再確認し、古い結果で現在の一覧を置き換えない。
+                if (Volatile.Read(ref transitionToken) != token)
+                    return;
+
                 monthGroups = nextMonthGroups;
                 OnMonthGroupsChanged?.Invoke(nextMonthGroups);
 
@@ -443,21 +592,25 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
                 OnPhotosReplaced?.Invoke();
 
                 var photoMap = GalleryPhotosStateLogic.BuildReplacementMap(allPhotos);
-                kickThumbnailGeneration(photoMap);
+                if (resumeThumbnailGeneration(thumbnailSuspension.Version))
+                    kickThumbnailGeneration(photoMap);
             }).ConfigureAwait(false);
         }
         catch (Exception err)
         {
             AppLogger.Error($"GalleryPhotosState.loadPhotos: threw: {err}");
-            toastService.addToast($"写真一覧の読み込みに失敗しました: {err}", ToastType.error);
+            if (Volatile.Read(ref transitionToken) == token)
+                toastService.addToast(getMsg("GalleryPhotosState.photoLoadFailed"), ToastType.error);
         }
         finally
         {
-            if (transitionToken == token)
+            if (Volatile.Read(ref transitionToken) == token)
             {
+                resumeThumbnailGeneration(thumbnailSuspension.Version);
                 await dispatcherService.RunOnUiThread(() =>
                 {
-                    IsLoading = false;
+                    if (Volatile.Read(ref transitionToken) == token)
+                        IsLoading = false;
                 }).ConfigureAwait(false);
             }
         }
@@ -468,19 +621,21 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
     public async ValueTask DisposeAsync()
     {
         AppLogger.Trace("GalleryPhotosState.DisposeAsync: enter");
+        ThumbnailSuspension suspension;
+        lock (thumbnailGenerationGate)
+        {
+            thumbnailStateDisposed = true;
+            Interlocked.Increment(ref transitionToken);
+            suspension = beginThumbnailSuspensionLocked();
+        }
+
         try { await dispose(scanCompletedUnlisten).ConfigureAwait(false); }
         catch (Exception ex) { AppLogger.Error($"GalleryPhotosState.DisposeAsync: scanCompleted unlisten threw: {ex}"); }
 
         try { await dispose(scanEnrichCompletedUnlisten).ConfigureAwait(false); }
         catch (Exception ex) { AppLogger.Error($"GalleryPhotosState.DisposeAsync: scanEnrichCompleted unlisten threw: {ex}"); }
 
-        var prevCts = Interlocked.Exchange(ref thumbnailCts, null);
-        if (prevCts is not null)
-        {
-            try { prevCts.Cancel(); } catch { }
-            prevCts.Dispose();
-        }
-        transitionToken += 1;
+        await waitThumbnailSuspension(suspension).ConfigureAwait(false);
         AppLogger.Trace("GalleryPhotosState.DisposeAsync: exit");
 
         static async ValueTask dispose(IAsyncDisposable? disposable)

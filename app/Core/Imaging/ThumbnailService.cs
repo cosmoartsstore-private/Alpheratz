@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -19,10 +20,25 @@ namespace Alpheratz.Core.Imaging;
 /// </summary>
 public sealed class ThumbnailService
 {
-    // 同一サムネイルファイルへの並列生成衝突を防ぐ per-path セマフォ。
-    // 別パスの生成は並列に走らせたいので、ConcurrentDictionary で path -> Semaphore を引く。
+    // 同一サムネイルファイルへの並列生成衝突を防ぐ per-path ロック。
+    // 別パスの生成は並列に走らせたいので、ConcurrentDictionary で path -> lock entry を引く。
     // OrdinalIgnoreCase: Windows ファイルシステムは大文字小文字を区別しないため。
-    private static readonly ConcurrentDictionary<string, SemaphoreSlim> _pathLocks = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, PathLockEntry> _pathLocks = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Func<string, string, uint, CancellationToken, Task> _generateThumbnailAsync;
+
+    public ThumbnailService()
+        : this(GenerateThumbnailAsync)
+    {
+    }
+
+    internal ThumbnailService(Func<string, string, uint, CancellationToken, Task> generateThumbnailAsync)
+    {
+        _generateThumbnailAsync = generateThumbnailAsync
+            ?? throw new ArgumentNullException(nameof(generateThumbnailAsync));
+    }
+
+    /// <summary>指定出力先のロックエントリが解放後も残留していないかを診断する。</summary>
+    internal static bool IsPathLockTracked(string thumbPath) => _pathLocks.ContainsKey(thumbPath);
 
     /// <summary>
     /// グリッド用サムネイル（長辺 512px）を取得する。無ければ生成。
@@ -65,13 +81,13 @@ public sealed class ThumbnailService
     }
 
     /// <summary>
-    /// キャッシュ存在チェック → 古ければ削除 → 必要なら生成、を per-path セマフォの排他下で行う。
+    /// キャッシュ存在チェック → 必要なら一時ファイルへ生成 → 最終ファイルを置換、を per-path セマフォの排他下で行う。
     /// 並列で同一パスのサムネイルを生成しようとすると File.Create が衝突するため、
     /// パス単位の SemaphoreSlim で 1 つに絞る。別パスは並列のまま。
-    /// 元画像のタイムスタンプ &gt; キャッシュタイムスタンプなら旧キャッシュを破棄して再生成する
+    /// 元画像のタイムスタンプ &gt; キャッシュタイムスタンプなら完成後に旧キャッシュを置き換える
     /// （ユーザがファイルを差し替えたケースで古いサムネが表示され続けるのを防ぐ）。
     /// </summary>
-    private static async Task<string> EnsureThumbAsync(string photoPath, long sourceSlot, uint maxSize, string variant, CancellationToken ct)
+    private async Task<string> EnsureThumbAsync(string photoPath, long sourceSlot, uint maxSize, string variant, CancellationToken ct)
     {
         AppLogger.Trace($"ThumbnailService.EnsureThumbAsync: enter variant={variant} maxSize={maxSize}");
         try
@@ -83,11 +99,14 @@ public sealed class ThumbnailService
             var cacheKey = BuildCacheKey(photoPath);
             var thumbPath = Path.Combine(imgCacheDir, $"{filename}.{cacheKey}.thumb.{variant}.jpg");
 
-            var pathLock = _pathLocks.GetOrAdd(thumbPath, _ => new SemaphoreSlim(1, 1));
-            await pathLock.WaitAsync(ct).ConfigureAwait(false);
+            var pathLock = RentPathLock(thumbPath);
+            var lockTaken = false;
             try
             {
-                if (File.Exists(thumbPath))
+                await pathLock.Semaphore.WaitAsync(ct).ConfigureAwait(false);
+                lockTaken = true;
+
+                if (File.Exists(thumbPath) && IsUsableThumbnailFile(thumbPath))
                 {
                     // DB に保存されている photo_path は forward-slash 正規化されているが、
                     // .NET の File API は OS ネイティブセパレータを要求する場面があるため、
@@ -99,26 +118,122 @@ public sealed class ThumbnailService
                         AppLogger.Trace("ThumbnailService.EnsureThumbAsync: exit (cache hit)");
                         return thumbPath;
                     }
-                    File.Delete(thumbPath);
                 }
 
-                await GenerateThumbnailAsync(photoPath, thumbPath, maxSize, ct).ConfigureAwait(false);
+                var temporaryPath = BuildTemporaryPath(thumbPath);
+                try
+                {
+                    await _generateThumbnailAsync(photoPath, temporaryPath, maxSize, ct).ConfigureAwait(false);
+                    ct.ThrowIfCancellationRequested();
+                    if (!IsUsableThumbnailFile(temporaryPath))
+                        throw new InvalidDataException("生成したサムネイルが完全な JPEG ではありません");
+
+                    // 同一ディレクトリ内の rename によって、完成済みファイルだけを最終名へ公開する。
+                    // 既存キャッシュがある場合も、生成が完了するまでは旧ファイルを維持する。
+                    File.Move(temporaryPath, thumbPath, overwrite: true);
+                }
+                finally
+                {
+                    DeleteTemporaryFile(temporaryPath);
+                }
+
+                AppLogger.Trace("ThumbnailService.EnsureThumbAsync: exit (generated)");
+                return thumbPath;
             }
             finally
             {
-                pathLock.Release();
+                if (lockTaken)
+                    pathLock.Semaphore.Release();
+                ReturnPathLock(thumbPath, pathLock);
             }
-
-            if (pathLock.CurrentCount == 1)
-                _pathLocks.TryRemove(thumbPath, out _);
-
-            AppLogger.Trace("ThumbnailService.EnsureThumbAsync: exit (generated)");
-            return thumbPath;
         }
         catch (Exception ex)
         {
             AppLogger.Warn($"ThumbnailService.EnsureThumbAsync: threw: {ex.Message}");
             throw;
+        }
+    }
+
+    /// <summary>同じ出力先を使う呼び出しが、辞書から除去されるまで同一ロックを参照するよう貸し出す。</summary>
+    private static PathLockEntry RentPathLock(string thumbPath)
+    {
+        while (true)
+        {
+            if (_pathLocks.TryGetValue(thumbPath, out var existing))
+            {
+                if (existing.TryAddReference())
+                    return existing;
+
+                RemoveMatchingPathLock(thumbPath, existing);
+                continue;
+            }
+
+            var created = new PathLockEntry();
+            if (_pathLocks.TryAdd(thumbPath, created))
+            {
+                // 登録直後に別呼び出しが先に利用・返却すると、ここへ戻る前に廃止され得る。
+                // 参照追加に失敗した場合は、廃止済みエントリを返さず新しい登録を取り直す。
+                if (created.TryAddReference())
+                    return created;
+                continue;
+            }
+
+            created.Dispose();
+        }
+    }
+
+    /// <summary>最後の利用者だけがロックを廃止し、同じインスタンスが登録中の場合に限って辞書から除去する。</summary>
+    private static void ReturnPathLock(string thumbPath, PathLockEntry pathLock)
+    {
+        if (pathLock.ReleaseReference() != 0 || !pathLock.TryRetire())
+            return;
+
+        RemoveMatchingPathLock(thumbPath, pathLock);
+        pathLock.Dispose();
+    }
+
+    private static void RemoveMatchingPathLock(string thumbPath, PathLockEntry pathLock)
+    {
+        ((ICollection<KeyValuePair<string, PathLockEntry>>)_pathLocks)
+            .Remove(new KeyValuePair<string, PathLockEntry>(thumbPath, pathLock));
+    }
+
+    /// <summary>同じディレクトリ内で生成し、最終ファイル名と衝突しない一時パスを返す。</summary>
+    private static string BuildTemporaryPath(string thumbPath)
+        => $"{thumbPath}.{Guid.NewGuid():N}.tmp";
+
+    /// <summary>生成途中の切断ファイルをキャッシュヒットとして扱わないよう JPEG の開始・終了マーカーを確認する。</summary>
+    private static bool IsUsableThumbnailFile(string path)
+    {
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            if (stream.Length < 4)
+                return false;
+
+            if (stream.ReadByte() != 0xFF || stream.ReadByte() != 0xD8)
+                return false;
+
+            stream.Seek(-2, SeekOrigin.End);
+            return stream.ReadByte() == 0xFF && stream.ReadByte() == 0xD9;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>生成失敗時の一時ファイルを消し、元の例外を清掃失敗で置き換えない。</summary>
+    private static void DeleteTemporaryFile(string temporaryPath)
+    {
+        try
+        {
+            if (File.Exists(temporaryPath))
+                File.Delete(temporaryPath);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Warn($"ThumbnailService.DeleteTemporaryFile: failed path={temporaryPath}: {ex.Message}");
         }
     }
 
@@ -156,8 +271,10 @@ public sealed class ThumbnailService
             var orientedH = decoder.OrientedPixelHeight;
             double scale = Math.Min((double)maxSize / orientedW, (double)maxSize / orientedH);
             scale = Math.Min(scale, 1.0); // 元画像より拡大はしない（無駄な処理 + blur）
-            var finalW = (uint)Math.Round(orientedW * scale);
-            var finalH = (uint)Math.Round(orientedH * scale);
+            // 有効な極端な縦長・横長画像では、短辺を丸めた結果が 0 になり得る。
+            // BitmapTransform / BitmapEncoder は 0px を受け付けないため、両辺を最低 1px に保つ。
+            var finalW = Math.Max(1u, (uint)Math.Round(orientedW * scale));
+            var finalH = Math.Max(1u, (uint)Math.Round(orientedH * scale));
 
             // raw 寸法とオリエンテッド寸法が違う = EXIF 回転で縦横が入れ替わっている、ということ。
             // この場合 Transform の入力サイズも入れ替える（詳細はメソッド doc コメント参照）。
@@ -193,5 +310,40 @@ public sealed class ThumbnailService
             throw;
         }
         AppLogger.Trace("ThumbnailService.GenerateThumbnailAsync: exit");
+    }
+
+    /// <summary>
+    /// 待機中を含む利用者数と廃止状態を単一の整数で管理する。
+    /// 参照数 0 から廃止済みへの CAS と参照追加を競合させることで、古いロックを除去した直後に
+    /// 同じインスタンスを取得する呼び出しが生じず、同一出力先に複数の SemaphoreSlim が共存しない。
+    /// </summary>
+    private sealed class PathLockEntry : IDisposable
+    {
+        private const int RetiredState = -1;
+        private int referenceState;
+
+        public SemaphoreSlim Semaphore { get; } = new(1, 1);
+
+        public bool TryAddReference()
+        {
+            while (true)
+            {
+                var state = Volatile.Read(ref referenceState);
+                if (state < 0)
+                    return false;
+                if (state == int.MaxValue)
+                    throw new InvalidOperationException("サムネイル生成ロックの参照数が上限に達しました");
+
+                if (Interlocked.CompareExchange(ref referenceState, state + 1, state) == state)
+                    return true;
+            }
+        }
+
+        public int ReleaseReference() => Interlocked.Decrement(ref referenceState);
+
+        public bool TryRetire()
+            => Interlocked.CompareExchange(ref referenceState, RetiredState, 0) == 0;
+
+        public void Dispose() => Semaphore.Dispose();
     }
 }

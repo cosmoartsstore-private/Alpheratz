@@ -10,10 +10,12 @@ using Alpheratz.Shared.Models;
 using Alpheratz.Shared.Services;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.System;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Features.Shell.Controls;
 
@@ -56,7 +58,9 @@ public sealed partial class ShellHeaderBar : UserControl
     private string pendingSuggestionQuery = string.Empty;
     private bool isSearchTextBoxFocused;
     private bool suppressSearchTextChange;
+    private bool controlsInteractive = true;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? searchSuggestionTimer;
+    private Windows.Foundation.TypedEventHandler<Microsoft.UI.Dispatching.DispatcherQueueTimer, object>? searchSuggestionTimerTickHandler;
     public UiObservableCollection<HeaderWorldSuggestion> WorldNameSuggestions { get; } = [];
 
     // ヘッダー UI を初期化し、現在状態に合わせたトグル表示へ同期する。
@@ -80,7 +84,7 @@ public sealed partial class ShellHeaderBar : UserControl
         {
             ActualThemeChanged -= OnActualThemeChanged;
             DetachWorldFilterOptions();
-            searchSuggestionTimer?.Stop();
+            DisposeSearchSuggestionTimer();
         };
         AppLogger.Trace("ShellHeaderBar.ctor: exit");
     }
@@ -144,7 +148,20 @@ public sealed partial class ShellHeaderBar : UserControl
     {
         try
         {
+            controlsInteractive = interactive;
+            if (!interactive)
+            {
+                searchSuggestionTimer?.Stop();
+                CloseSearchSuggestions();
+            }
             ContentRoot.IsHitTestVisible = interactive;
+            FilterPillBtn.IsEnabled = interactive;
+            SearchTextBox.IsEnabled = interactive;
+            SearchSuggestionListView.IsEnabled = interactive;
+            ViewModeBtn.IsEnabled = interactive;
+            MultiSelectBtn.IsEnabled = interactive;
+            SettingsGearBtn.IsEnabled = interactive;
+            SyncGroupingStyle();
         }
         catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.SetControlsInteractive: threw: {ex}"); }
     }
@@ -249,6 +266,9 @@ public sealed partial class ShellHeaderBar : UserControl
     private void SyncMultiSelectStyle()
     {
         ApplyActiveStyle(MultiSelectBtn, MultiSelectIcon, isMultiSelectActive);
+        AutomationProperties.SetName(
+            MultiSelectBtn,
+            getMsg(isMultiSelectActive ? "ShellHeaderBar.multiSelectEnd" : "ShellHeaderBar.multiSelectStart"));
     }
 
     // グループ化ボタンのアクティブ色と、masonry 中の無効状態を同期する。
@@ -257,8 +277,14 @@ public sealed partial class ShellHeaderBar : UserControl
         var state = ShellHeaderBarLogic.GroupingToggleState(currentGroupingMode, currentViewMode);
         ApplyActiveStyle(GroupingBtn, GroupingIcon, state.Active);
         // masonry 表示中はグループ化を無効化 (UI 側の制約)
-        GroupingBtn.IsEnabled = state.Enabled;
+        GroupingBtn.IsEnabled = controlsInteractive && state.Enabled;
         GroupingBtn.Opacity = state.Opacity;
+        var nameKey = !state.Enabled
+            ? "ShellHeaderBar.groupingUnavailable"
+            : state.Active
+                ? "ShellHeaderBar.groupingDisable"
+                : "ShellHeaderBar.groupingEnable";
+        AutomationProperties.SetName(GroupingBtn, getMsg(nameKey));
     }
 
     // 表示モードボタンのアイコンとアクティブ色を現在モードへ同期する。
@@ -268,6 +294,11 @@ public sealed partial class ShellHeaderBar : UserControl
         // 現状のモードを示すアイコン: standard → "grid"、gallery → "gallery"
         ViewModeIcon.IconName = state.IconName ?? "grid";
         ApplyActiveStyle(ViewModeBtn, ViewModeIcon, state.Active);
+        AutomationProperties.SetName(
+            ViewModeBtn,
+            getMsg(currentViewMode == ViewMode.gallery
+                ? "ShellHeaderBar.viewModeToGrid"
+                : "ShellHeaderBar.viewModeToGallery"));
     }
 
     /// <summary>
@@ -426,12 +457,24 @@ public sealed partial class ShellHeaderBar : UserControl
     {
         var timer = DispatcherQueue.CreateTimer();
         timer.Interval = TimeSpan.FromMilliseconds(220);
-        timer.Tick += (_, _) =>
+        searchSuggestionTimerTickHandler = (_, _) =>
         {
             timer.Stop();
             RefreshWorldNameSuggestions(pendingSuggestionQuery, open: true);
         };
+        timer.Tick += searchSuggestionTimerTickHandler;
         return timer;
+    }
+
+    private void DisposeSearchSuggestionTimer()
+    {
+        if (searchSuggestionTimer is not { } timer)
+            return;
+        timer.Stop();
+        if (searchSuggestionTimerTickHandler is not null)
+            timer.Tick -= searchSuggestionTimerTickHandler;
+        searchSuggestionTimerTickHandler = null;
+        searchSuggestionTimer = null;
     }
 
     private void RefreshWorldNameSuggestions(string? query = null, bool open = false)

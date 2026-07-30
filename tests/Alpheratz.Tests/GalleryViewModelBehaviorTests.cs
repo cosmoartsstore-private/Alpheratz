@@ -4,6 +4,7 @@ using Alpheratz.Core.Imaging;
 using Alpheratz.Core.Scanner;
 using Alpheratz.Features.Gallery;
 using Alpheratz.Models;
+using Alpheratz.Messages;
 using Alpheratz.Services;
 using Alpheratz.Shared.Models;
 using Alpheratz.Shared.Services;
@@ -18,6 +19,7 @@ namespace Alpheratz.Tests;
 /// XAML なしで実 DB と実サービスを使い、画面から呼ばれる公開メソッドが
 /// State と DB の両方を期待どおり更新することを固定する。
 /// </summary>
+[Collection(AppPathsCacheTestCollection.Name)]
 public sealed class GalleryViewModelBehaviorTests : IDisposable
 {
     private readonly string tempDir;
@@ -244,6 +246,81 @@ public sealed class GalleryViewModelBehaviorTests : IDisposable
     }
 
     /// <summary>
+    /// 一括更新が部分失敗した場合、完了済み写真だけを画面へ反映し、失敗写真だけを選択して通知することを確認する。
+    /// </summary>
+    [Fact]
+    public void BulkMutationResults_UpdateSucceededPhotoAndRetainFailedPhotoForRetry()
+    {
+        var first = Thumb("/photo/a.jpg", "a.jpg");
+        var second = Thumb("/photo/b.jpg", "b.jpg");
+        viewModel.photosState.setPhotos([first, second], autoGenerateThumbnails: false);
+        viewModel.photosState.rebuildDisplayItems(GroupingMode.none);
+        viewModel.selectionState.selectedPhotoPaths.Add(first.PhotoPath);
+        viewModel.selectionState.selectedPhotoPaths.Add(second.PhotoPath);
+        viewModel.selectionState.syncSelectionWithVisiblePhotos([first, second]);
+
+        var result = new PhotoBulkUpdateResult(
+            [new SelectedPhotoRefDto { photo_path = first.PhotoPath, source_slot = 1 }],
+            [
+                new PhotoBulkUpdateFailure(
+                    new SelectedPhotoRefDto { photo_path = second.PhotoPath, source_slot = 1 },
+                    "書き込み失敗",
+                    IsCanceled: false),
+            ]);
+
+        viewModel.applyBulkFavoriteResult(result, isFavorite: true);
+        viewModel.applyBulkTagResult(result, ["night"]);
+
+        Assert.True(first.IsFavorite);
+        Assert.False(second.IsFavorite);
+        Assert.Equal(["night"], first.Tags);
+        Assert.Empty(second.Tags);
+        Assert.False(first.IsSelected);
+        Assert.True(second.IsSelected);
+        Assert.Equal([second.PhotoPath], viewModel.selectionState.selectedPhotoPaths);
+        Assert.Contains(
+            toastService.toasts,
+            toast => toast.Msg.Contains("未完了の1枚", StringComparison.Ordinal)
+                && toast.Msg.Contains("b.jpg", StringComparison.Ordinal)
+                && toast.Msg.Contains("同じ操作を実行できます", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// 写真参照キャッシュだけから開始した一括更新でも、失敗写真の選択パスと表示を再試行用に復元することを確認する。
+    /// </summary>
+    [Fact]
+    public void BulkMutationResults_FromCachedRefs_RestoreFailedPhotoSelectionForRetry()
+    {
+        var first = Thumb("/photo/a.jpg", "a.jpg");
+        var second = Thumb("/photo/b.jpg", "b.jpg");
+        viewModel.photosState.setPhotos([first, second], autoGenerateThumbnails: false);
+        viewModel.photosState.rebuildDisplayItems(GroupingMode.none);
+        viewModel.selectionState.setSelectedPhotoRefs(
+        [
+            new SelectedPhotoRefDto { photo_path = first.PhotoPath, source_slot = 1 },
+            new SelectedPhotoRefDto { photo_path = second.PhotoPath, source_slot = 1 },
+        ]);
+
+        var failedRef = new SelectedPhotoRefDto
+        {
+            photo_path = second.PhotoPath,
+            source_slot = 1,
+        };
+        var result = new PhotoBulkUpdateResult(
+            [new SelectedPhotoRefDto { photo_path = first.PhotoPath, source_slot = 1 }],
+            [new PhotoBulkUpdateFailure(failedRef, "書き込み失敗", IsCanceled: false)]);
+
+        viewModel.applyBulkFavoriteResult(result, isFavorite: true);
+
+        Assert.True(first.IsFavorite);
+        Assert.False(second.IsFavorite);
+        Assert.False(first.IsSelected);
+        Assert.True(second.IsSelected);
+        Assert.Equal([second.PhotoPath], viewModel.selectionState.selectedPhotoPaths);
+        Assert.Equal([second.PhotoPath], viewModel.selectionState.selectedPhotoRefs.Select(item => item.photo_path));
+    }
+
+    /// <summary>
     /// 一括タグ追加が空文字・長すぎるタグ・選択なしを no-op として扱うことを確認する。
     ///
     /// 一括操作バーでは、ユーザー入力が未確定のまま実行されることがある。
@@ -397,8 +474,15 @@ public sealed class GalleryViewModelBehaviorTests : IDisposable
         await viewModel.bulkCopyPhotos(destinationDir);
 
         Assert.True(File.Exists(Path.Combine(destinationDir, "a.jpg")));
-        Assert.Contains(toastService.toasts, toast => toast.Msg.Contains("1 枚のファイルをコピーしました"));
-        Assert.Contains(toastService.toasts, toast => toast.Msg.Contains("1 枚はスキップ"));
+        Assert.Contains(
+            toastService.toasts,
+            toast => toast.Msg == MessageCatalog.getMsg("GalleryViewModel.photosCopied", ("count", 1)));
+        Assert.Contains(
+            toastService.toasts,
+            toast => toast.Msg == MessageCatalog.getMsg(
+                "GalleryViewModel.photosCopiedWithFailures",
+                ("copied", 0),
+                ("failed", 1)));
     }
 
     /// <summary>
@@ -412,7 +496,9 @@ public sealed class GalleryViewModelBehaviorTests : IDisposable
     {
         await viewModel.handleStartUnknownWorldAnalysis();
 
-        Assert.Contains(toastService.toasts, toast => toast.Msg.Contains("一括分析を開始しました"));
+        Assert.Contains(
+            toastService.toasts,
+            toast => toast.Msg == MessageCatalog.getMsg("GalleryViewModel.unknownWorldAnalysisStarted"));
     }
 
     /// <summary>

@@ -7,6 +7,7 @@ using Alpheratz.Core.Database;
 using Alpheratz.Shared.Models;
 using Alpheratz.Shared.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Features.TagMaster;
 
@@ -41,8 +42,8 @@ public partial class TagMasterViewModel : UiThreadSafeObservableObject
     }
 
     /// <summary>
-    /// 全タグを DB からロードし masterTags を置換する。失敗時は rethrow して起動を中断させる
-    /// （タグリストが空の状態で UI を立ち上げると、ユーザがタグ追加と既存タグの区別を失う）。
+    /// 全タグを DB から読み込み masterTags を置換する。失敗時は例外を再送出して起動を中断させる
+    /// （タグリストが空の状態で UI を立ち上げると、利用者がタグ追加と既存タグの区別を失う）。
     /// </summary>
     public async Task loadTags()
     {
@@ -63,7 +64,7 @@ public partial class TagMasterViewModel : UiThreadSafeObservableObject
     }
 
     /// <summary>
-    /// TagDraft の内容で新規タグを作成する。trim 後空文字なら no-op、長さ超過は toast でエラー表示。
+    /// TagDraft の内容で新規タグを作成する。前後の空白を除いた結果が空なら処理せず、長さ超過は通知する。
     /// DB 追加成功時は loadTags() で一覧再取得し、ドラフトをクリアする。
     /// </summary>
     public async Task createTag()
@@ -73,35 +74,58 @@ public partial class TagMasterViewModel : UiThreadSafeObservableObject
         if (string.IsNullOrEmpty(normalized))
         {
             AppLogger.Trace("TagMasterViewModel.createTag: skip (empty)");
+            toastService.addToast(getMsg("TagMasterViewModel.tagNameRequired"), ToastType.error);
             return;
         }
 
         if (normalized.Length > MAX_TAG_LENGTH)
         {
             AppLogger.Trace("TagMasterViewModel.createTag: skip (too long)");
-            toastService.addToast($"タグは{MAX_TAG_LENGTH}文字以内で入力してください。", ToastType.error);
+            toastService.addToast(
+                getMsg("TagMasterViewModel.tagTooLong", ("maxLength", MAX_TAG_LENGTH)),
+                ToastType.error);
+            return;
+        }
+
+        if (masterTags.Any(existing => string.Equals(existing, normalized, StringComparison.OrdinalIgnoreCase)))
+        {
+            AppLogger.Trace("TagMasterViewModel.createTag: skip (duplicate)");
+            toastService.addToast(getMsg("TagMasterViewModel.tagAlreadyExists"), ToastType.error);
             return;
         }
 
         try
         {
             await RunDbWriteOffUiThread(() => db.CreateTagMasterAsync(normalized)).ConfigureAwait(false);
+            try
+            {
+                await loadTags().ConfigureAwait(false);
+            }
+            catch (Exception refreshError)
+            {
+                // DB への追加は完了しているため、再読込だけ失敗した場合は現在一覧へ追加結果を反映する。
+                AppLogger.Warn($"TagMasterViewModel.createTag: refresh failed after write: {refreshError.Message}");
+                await dispatcherService.RunOnUiThread(() =>
+                {
+                    if (!masterTags.Any(existing => string.Equals(existing, normalized, StringComparison.OrdinalIgnoreCase)))
+                        masterTags.ReplaceAll(masterTags.Append(normalized).OrderBy(tag => tag).ToArray());
+                }).ConfigureAwait(false);
+            }
             await dispatcherService.RunOnUiThread(() => TagDraft = string.Empty).ConfigureAwait(false);
-            await loadTags();
-            toastService.addToast("タグを追加しました。");
+            toastService.addToast(getMsg("TagMasterViewModel.tagSaved"));
         }
         catch (Exception err)
         {
             // 入力操作の失敗は画面上の通知に変換し、編集状態は維持する。
             AppLogger.Error($"TagMasterViewModel.createTag: threw: {err}");
-            toastService.addToast($"タグの追加に失敗しました: {err}", ToastType.error);
+            toastService.addToast(getMsg("TagMasterViewModel.tagAddFailed"), ToastType.error);
         }
         AppLogger.Trace("TagMasterViewModel.createTag: exit");
     }
 
     /// <summary>
     /// タグマスタからタグを削除する。photo_tags の中間行も DB 側でカスケード削除されるため、
-    /// 既に写真に付与されていたタグも一括で外れる。失敗時は toast でエラー通知。
+    /// 既に写真に付与されていたタグも一括で外れる。失敗時は画面上で通知する。
     /// </summary>
     public async Task<bool> tryDeleteTag(string tag)
     {
@@ -109,15 +133,30 @@ public partial class TagMasterViewModel : UiThreadSafeObservableObject
         try
         {
             await RunDbWriteOffUiThread(() => db.DeleteTagMasterAsync(tag)).ConfigureAwait(false);
-            await loadTags();
-            toastService.addToast("タグを削除しました。");
+            try
+            {
+                await loadTags().ConfigureAwait(false);
+            }
+            catch (Exception refreshError)
+            {
+                // DB への削除は完了しているため、再読込だけ失敗した場合は現在一覧から削除結果を反映する。
+                AppLogger.Warn($"TagMasterViewModel.deleteTag: refresh failed after write: {refreshError.Message}");
+                await dispatcherService.RunOnUiThread(() =>
+                {
+                    var existing = masterTags.FirstOrDefault(current =>
+                        string.Equals(current, tag, StringComparison.OrdinalIgnoreCase));
+                    if (existing is not null)
+                        masterTags.Remove(existing);
+                }).ConfigureAwait(false);
+            }
+            toastService.addToast(getMsg("TagMasterViewModel.tagDeleted"));
             AppLogger.Trace("TagMasterViewModel.deleteTag: exit result=true");
             return true;
         }
         catch (Exception err)
         {
             AppLogger.Error($"TagMasterViewModel.deleteTag: threw: {err}");
-            toastService.addToast($"タグの削除に失敗しました: {err}", ToastType.error);
+            toastService.addToast(getMsg("TagMasterViewModel.tagDeleteFailed"), ToastType.error);
             AppLogger.Trace("TagMasterViewModel.deleteTag: exit result=false");
             return false;
         }

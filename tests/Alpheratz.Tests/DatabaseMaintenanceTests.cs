@@ -91,6 +91,34 @@ public sealed class DatabaseMaintenanceTests : IDisposable
         Assert.Equal("metadata", record.match_source);
     }
 
+    /// <summary>画像内容の変更指定がある場合だけ既存 phash を破棄することを確認する。</summary>
+    [Fact]
+    public async Task UpsertPhotoAsync_ResetsPhashOnlyWhenRequested()
+    {
+        const string path = "/photo/a.jpg";
+        var hash = new string('a', 64);
+        await db.UpsertPhotoAsync(Photo(path, "a.jpg", "2026-06-05 10:00:00"));
+        await db.UpdatePhotoPhashAsync(path, hash);
+
+        await db.UpsertPhotoAsync(Photo(
+            path,
+            "a.jpg",
+            "2026-06-05 10:00:00",
+            resetPhash: false));
+        var preserved = await db.GetPhotoRecordAsync(path, includePhash: true);
+
+        await db.UpsertPhotoAsync(Photo(
+            path,
+            "a.jpg",
+            "2026-06-05 10:00:00",
+            resetPhash: true));
+        var reset = await db.GetPhotoRecordAsync(path, includePhash: true);
+
+        Assert.Equal(hash, preserved?.phash);
+        Assert.Null(reset?.phash);
+        Assert.Equal(1, await db.GetPendingPhashCountAsync());
+    }
+
     /// <summary>
     /// UpsertPhotosAsync が単体 upsert と同じ保持規則で複数写真をまとめて保存することを確認する。
     ///
@@ -208,6 +236,21 @@ public sealed class DatabaseMaintenanceTests : IDisposable
         Assert.DoesNotContain("primary", tagCounts.Keys);
     }
 
+    /// <summary>定義外の slot を受け入れず、既存写真を変更しないことを確認する。</summary>
+    [Fact]
+    public async Task ResetPhotoCacheBySlotAsync_RejectsUnsupportedSlotWithoutChangingRows()
+    {
+        await db.UpsertPhotoAsync(Photo("/slot1/a.jpg", "a.jpg", "2026-06-05 10:00:00", sourceSlot: 1));
+        await db.UpsertPhotoAsync(Photo("/slot2/b.jpg", "b.jpg", "2026-06-05 11:00:00", sourceSlot: 2));
+
+        var exception = await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            db.ResetPhotoCacheBySlotAsync(3));
+
+        Assert.Equal("slot", exception.ParamName);
+        Assert.NotNull(await db.GetPhotoRecordAsync("/slot1/a.jpg"));
+        Assert.NotNull(await db.GetPhotoRecordAsync("/slot2/b.jpg"));
+    }
+
     /// <summary>
     /// GetExistingPhotosAsync がスキャナ差分判定に必要なメタデータを辞書で返すことを確認する。
     ///
@@ -233,6 +276,7 @@ public sealed class DatabaseMaintenanceTests : IDisposable
 
         var existing = await db.GetExistingPhotosAsync();
         var item = existing["/photo/a.jpg"];
+        var itemWithDifferentCase = existing["/PHOTO/A.JPG"];
 
         Assert.Equal("a.jpg", item.PhotoFilename);
         Assert.Equal("World", item.WorldName);
@@ -244,6 +288,25 @@ public sealed class DatabaseMaintenanceTests : IDisposable
         Assert.Equal("2026-06-05 01:00:00", item.LastModifiedUtc);
         Assert.False(item.IsMissing);
         Assert.Equal("title", item.MatchSource);
+        Assert.Same(item, itemWithDifferentCase);
+    }
+
+    /// <summary>
+    /// 接続文字列の区切り文字を含む DB パスでも、パス全体を DataSource として扱えることを確認する。
+    /// </summary>
+    [Fact]
+    public async Task DatabasePathContainingSemicolon_CanInitializeAndQuery()
+    {
+        var databaseDirectory = Path.Combine(tempDir, "database;folder");
+        Directory.CreateDirectory(databaseDirectory);
+        var database = new AlpheratzDb(Path.Combine(databaseDirectory, "Alpheratz;test.db"));
+
+        database.Initialize();
+        await database.UpsertPhotoAsync(Photo("/photo/a.jpg", "a.jpg", "2026-06-05 10:00:00"));
+        var page = await database.GetPhotosPageAsync(new PhotoQueryParams());
+
+        Assert.Equal(1, page.Total);
+        Assert.Equal("/photo/a.jpg", Assert.Single(page.Items).photo_path);
     }
 
     /// <summary>
@@ -444,7 +507,8 @@ public sealed class DatabaseMaintenanceTests : IDisposable
         long? height = null,
         long sourceSlot = 1,
         string? lastModifiedUtc = null,
-        string? matchSource = null)
+        string? matchSource = null,
+        bool resetPhash = false)
         => new()
         {
             PhotoPath = path,
@@ -458,5 +522,6 @@ public sealed class DatabaseMaintenanceTests : IDisposable
             SourceSlot = sourceSlot,
             LastModifiedUtc = lastModifiedUtc,
             MatchSource = matchSource,
+            ResetPhash = resetPhash,
         };
 }

@@ -6,6 +6,7 @@ using System.Threading;
 using Alpheratz.Core;
 using Alpheratz.Shared.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Features.Gallery;
 
@@ -29,7 +30,7 @@ public partial class GalleryDisplayState : UiThreadSafeObservableObject
     private int viewPreparationTokenRef;
     private CancellationTokenSource? viewPreparationTimeoutRef;
 
-    public string groupedPhotoLabel => "ワールド";
+    public string groupedPhotoLabel => getMsg("GalleryDisplayState.groupedPhotoLabel");
     public bool isGroupingUnavailableInMasonry => ViewMode == ViewMode.gallery;
 
     public int measuredColumnCount => Math.Max(1, (int)Math.Floor(PanelWidth / CARD_WIDTH));

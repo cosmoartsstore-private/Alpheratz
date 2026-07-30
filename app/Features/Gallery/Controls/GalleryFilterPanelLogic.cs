@@ -1,5 +1,6 @@
 using Alpheratz.Models;
 using Alpheratz.Shared.Models;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Features.Gallery.Controls;
 
@@ -10,16 +11,25 @@ namespace Alpheratz.Features.Gallery.Controls;
 internal static class GalleryFilterPanelLogic
 {
     public const string UnknownWorldFilterValue = WorldFilterValues.Unknown;
-    public const string UnknownWorldLabel = "ワールド不明";
-    public const string AllTagsEmptyLabel = "すべてのタグ";
-    public const string AllWorldsEmptyLabel = "すべてのワールド";
-    public const string WorldGroupLabel = "訪問済みワールド";
+    public static string UnknownWorldLabel => getMsg("common.unknownWorld");
+    public static string AllTagsEmptyLabel => getMsg("GalleryFilterPanel.allTags");
+    public static string AllWorldsEmptyLabel => getMsg("GalleryFilterPanel.allWorlds");
+    public static string WorldGroupLabel => getMsg("GalleryFilterPanel.visitedWorldsHeading");
     public const string DateFieldFrom = "from";
     public const string DateFieldTo = "to";
     public const string DatePresetNone = "none";
     public const string DatePresetCustom = "custom";
 
-    public static readonly string[] WeekLabels = ["日", "月", "火", "水", "木", "金", "土"];
+    public static IReadOnlyList<string> WeekLabels =>
+    [
+        getMsg("GalleryFilterPanel.weekdaySunday"),
+        getMsg("GalleryFilterPanel.weekdayMonday"),
+        getMsg("GalleryFilterPanel.weekdayTuesday"),
+        getMsg("GalleryFilterPanel.weekdayWednesday"),
+        getMsg("GalleryFilterPanel.weekdayThursday"),
+        getMsg("GalleryFilterPanel.weekdayFriday"),
+        getMsg("GalleryFilterPanel.weekdaySaturday"),
+    ];
 
     /// <summary>GalleryFiltersState の変更通知から、再同期すべき UI 領域を返す。</summary>
     public static FilterPanelSyncPlan SyncPlanForFilterProperty(string? propertyName)
@@ -54,13 +64,20 @@ internal static class GalleryFilterPanelLogic
     {
         var hasFrom = !string.IsNullOrEmpty(from);
         var hasTo = !string.IsNullOrEmpty(to);
-        if (!hasFrom && !hasTo) return "すべての期間";
-        return $"{(hasFrom ? from : "...")} ~ {(hasTo ? to : "...")}";
+        if (!hasFrom && !hasTo)
+            return getMsg("GalleryFilterPanel.allDates");
+        if (hasFrom && hasTo)
+            return getMsg("GalleryFilterPanel.dateRange", ("from", from), ("to", to));
+        return hasFrom
+            ? getMsg("GalleryFilterPanel.dateFrom", ("from", from))
+            : getMsg("GalleryFilterPanel.dateTo", ("to", to));
     }
 
     /// <summary>複数選択フィルタの件数を、未選択時ラベルまたは選択中件数へ変換する。</summary>
     public static string FormatSelectionSummary(int count, string emptyLabel)
-        => count == 0 ? emptyLabel : $"{count}件選択中";
+        => count == 0
+            ? emptyLabel
+            : getMsg("GalleryFilterPanel.selectedFilterCount", ("count", count));
 
     /// <summary>active ボタンに適用するテーマキーと枠線幅を返す。</summary>
     public static FilterPanelButtonStyle ActiveButtonStyle(bool active)
@@ -108,8 +125,8 @@ internal static class GalleryFilterPanelLogic
     /// <summary>日付ドラフトの表示テキストと範囲ラベルを作る。</summary>
     public static DateDraftDisplay DraftDisplay(string? from, string? to)
         => new(
-            string.IsNullOrEmpty(from) ? "---" : from,
-            string.IsNullOrEmpty(to) ? "---" : to,
+            string.IsNullOrEmpty(from) ? getMsg("common.emptyMarker") : from,
+            string.IsNullOrEmpty(to) ? getMsg("common.emptyMarker") : to,
             FormatDateRangeLabel(from, to));
 
     /// <summary>日付ドラフトのプリセット選択状態を返す。</summary>
@@ -298,16 +315,20 @@ internal static class GalleryFilterPanelLogic
         var selected = selectedTags.ToHashSet(StringComparer.Ordinal);
         var rows = new List<FilterChoiceRow>
         {
-            new("すべてのタグ", null, selected.Count == 0, null),
+            new(getMsg("GalleryFilterPanel.allTags"), null, selected.Count == 0, null),
         };
 
         foreach (var tag in FilterTags(allTags, query))
         {
-            var countText = tagCounts.TryGetValue(tag, out var count) ? $"{count}枚" : "0枚";
+            var countText = getMsg(
+                "GalleryFilterPanel.photoCount",
+                ("count", tagCounts.TryGetValue(tag, out var count) ? count : 0));
             rows.Add(new FilterChoiceRow(tag, countText, selected.Contains(tag), tag));
         }
 
-        return new FilterChoiceList(rows, $"{allTags.Count()} タグ");
+        return new FilterChoiceList(
+            rows,
+            getMsg("GalleryFilterPanel.tagOptionCount", ("count", allTags.Count())));
     }
 
     /// <summary>ワールド候補を表示名で絞り込む。検索語が空なら元の候補順を保つ。</summary>
@@ -332,7 +353,11 @@ internal static class GalleryFilterPanelLogic
         var filtered = FilterWorldOptions(worlds, query);
         var rows = new List<FilterChoiceRow>
         {
-            new("すべてのワールド", $"{TotalWorldCount(worlds)}枚", selected.Count == 0, null),
+            new(
+                getMsg("GalleryFilterPanel.allWorlds"),
+                getMsg("GalleryFilterPanel.photoCount", ("count", TotalWorldCount(worlds))),
+                selected.Count == 0,
+                null),
         };
 
         foreach (var opt in filtered)
@@ -340,12 +365,15 @@ internal static class GalleryFilterPanelLogic
             var filterValue = GetWorldFilterValue(opt.world_name);
             rows.Add(new FilterChoiceRow(
                 GetWorldDisplayName(opt.world_name),
-                $"{opt.count}枚",
+                getMsg("GalleryFilterPanel.photoCount", ("count", opt.count)),
                 selected.Contains(filterValue),
                 filterValue));
         }
 
-        return new WorldChoiceList(rows, $"{worlds.Count} ワールド", filtered.Count > 0);
+        return new WorldChoiceList(
+            rows,
+            getMsg("GalleryFilterPanel.worldOptionCount", ("count", worlds.Count)),
+            filtered.Count > 0);
     }
 
     /// <summary>DB の world_name 値をフィルタ内部値へ変換する。</summary>

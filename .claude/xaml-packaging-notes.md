@@ -36,6 +36,9 @@ Observed evidence during the incident:
   - Installs `XamlControlsResources` from `OnLaunched` before any window/page/control XAML is loaded.
 - `app/Program.cs`
   - Calls `WinRT.ComWrappersSupport.InitializeComWrappers()` in the custom entry point.
+- `app/Alpheratz.Frontend.csproj`
+  - Disables the Windows App SDK automatic bootstrap module initializer for all configurations.
+  - Debug startup uses the explicit bootstrap call in `Program.Main`; Release startup uses reg-free WinRT initialization.
 
 ## Do Not Regress
 
@@ -69,7 +72,7 @@ For future XAML startup fixes, verify all of these before handoff:
 - Clean `app/artifacts`, `BuildWorks/artifacts`, launcher `bin/obj`, and old installer output.
 - Run `BuildWorks/scripts/build-release.ps1`.
 - Confirm publish output contains root `App.xbf`, root `MainWindow.xbf`, and root `resources.pri`.
-- Install `BuildWorks/Alpheratz-v2-Installer.exe` silently or interactively.
+- Install `BuildWorks/Alpheratz-Installer.exe` silently or interactively.
 - Launch `$env:LOCALAPPDATA\CosmoArtsStore\Alpheratz\Alpheratz.exe`.
 - Wait long enough for splash-to-shell transition and confirm `Alpheratz.Frontend` has a non-zero `MainWindowHandle`.
 - Check the Application event log for `Alpheratz` WER/Application Error entries after launch time.

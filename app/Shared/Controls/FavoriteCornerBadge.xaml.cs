@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Shared.Controls;
 
@@ -84,7 +85,7 @@ public sealed partial class FavoriteCornerBadge : UserControl
         try
         {
             if (d is FavoriteCornerBadge badge)
-                badge.InteractiveButton.IsHitTestVisible = badge.Interactive;
+                badge.ApplyInteractiveState();
         }
         catch (Exception ex) { AppLogger.Error($"FavoriteCornerBadge.OnInteractiveChanged: {ex}"); }
     }
@@ -97,10 +98,17 @@ public sealed partial class FavoriteCornerBadge : UserControl
         StarIcon.IconName = liked ? "starFill" : "star";
         StarIcon.Foreground = new SolidColorBrush(Colors.White);
         StarIcon.Opacity = 1.0;
-        InteractiveButton.IsHitTestVisible = Interactive;
+        ApplyInteractiveState();
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
-            this,
-            liked ? "お気に入り解除" : "お気に入りに追加");
+            InteractiveButton,
+            getMsg(liked ? "common.favoriteRemove" : "common.favoriteAdd"));
+    }
+
+    private void ApplyInteractiveState()
+    {
+        InteractiveButton.IsHitTestVisible = Interactive;
+        InteractiveButton.IsEnabled = Interactive;
+        InteractiveButton.IsTabStop = Interactive;
     }
 
     private static Brush ActiveFill()

@@ -16,4 +16,6 @@ public sealed class PhotoUpsertData
     public long? ImageHeight { get; init; }
     public long SourceSlot { get; init; } = 1;
     public string? MatchSource { get; init; }
+    /// <summary>画像ファイルの内容が変わったため、バイト列由来の PDQ ハッシュを再計算する。</summary>
+    public bool ResetPhash { get; init; }
 }

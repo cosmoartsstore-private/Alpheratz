@@ -7,6 +7,7 @@ using Alpheratz.Features.Settings;
 using Alpheratz.Features.TagMaster;
 using Alpheratz.Features.Template;
 using Alpheratz.Models;
+using Alpheratz.Messages;
 using Alpheratz.Services;
 using Alpheratz.Shared.Models;
 using Alpheratz.Shared.Services;
@@ -433,6 +434,31 @@ public sealed class StateViewModelBehaviorTests : IDisposable
         Assert.Equal("Alpha|wrld_123|2026-06-05 12:34|2026-06-05T12:34:56|a.jpg||#bluesky #夜", text);
     }
 
+    /// <summary>投稿テンプレートが未選択の場合は外部処理を開始せず、失敗結果を返すことを確認する。</summary>
+    [Fact]
+    public async Task TemplatePageViewModel_OpenTweetIntentReturnsFalseWithoutActiveTemplate()
+    {
+        var viewModel = new TemplatePageViewModel(null!, null!, toastService);
+
+        var succeeded = await viewModel.openTweetIntent(Thumb("/photo/a.jpg", "a.jpg", "Alpha"));
+
+        Assert.False(succeeded);
+    }
+
+    /// <summary>コピーまたは投稿画面の起動に失敗した場合は、成功表示を抑止できる結果を返すことを確認する。</summary>
+    [Fact]
+    public async Task TemplatePageViewModel_OpenTweetIntentReturnsFalseWhenExternalOperationFails()
+    {
+        var viewModel = new TemplatePageViewModel(null!, null!, toastService)
+        {
+            ActiveTweetTemplate = "{world}",
+        };
+
+        var succeeded = await viewModel.openTweetIntent(Thumb("/photo/a.jpg", "a.jpg", "Alpha"));
+
+        Assert.False(succeeded);
+    }
+
     /// <summary>
     /// TemplatePageViewModel の削除と保存が、テンプレート一覧・アクティブ選択・設定ファイルへ反映されることを確認する。
     ///
@@ -492,8 +518,12 @@ public sealed class StateViewModelBehaviorTests : IDisposable
         Assert.Empty(viewModel.masterTags);
         Assert.Empty(await db.GetAllTagsAsync());
         Assert.Contains(toastService.toasts, toast => toast.Msg.Contains("40文字以内"));
-        Assert.Contains(toastService.toasts, toast => toast.Msg.Contains("タグを追加しました"));
-        Assert.Contains(toastService.toasts, toast => toast.Msg.Contains("タグを削除しました"));
+        Assert.Contains(
+            toastService.toasts,
+            toast => toast.Msg == MessageCatalog.getMsg("TagMasterViewModel.tagSaved"));
+        Assert.Contains(
+            toastService.toasts,
+            toast => toast.Msg == MessageCatalog.getMsg("TagMasterViewModel.tagDeleted"));
     }
 
     /// <summary>

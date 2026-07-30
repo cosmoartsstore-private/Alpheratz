@@ -59,10 +59,10 @@
         <thead><tr><th>Screen</th><th>Purpose</th><th>Primary Operations</th><th>Source</th></tr></thead>
         <tbody>
           <tr><td>Bootstrap</td><td>起動初期化状態を表示する。</td><td>初期化進捗表示、Shell 遷移</td><td>Features/Bootstrap</td></tr>
-          <tr><td>Gallery</td><td>写真一覧の閲覧、検索、選択を行う。</td><td>スキャン、フィルタ、表示モード切替、写真選択</td><td>Features/Gallery</td></tr>
-          <tr><td>Photo Modal</td><td>選択写真の詳細を表示・編集する。</td><td>タグ編集、お気に入り、ワールド編集、類似写真確認</td><td>Features/PhotoModal</td></tr>
-          <tr><td>Settings</td><td>アプリ設定とマスタを管理する。</td><td>フォルダ設定、テーマ、タグ、テンプレート、連携登録</td><td>Features/Settings</td></tr>
-          <tr><td>World Resolve</td><td>世界不明写真の候補を確認する。</td><td>候補選択、ワールド名確定</td><td>Features/WorldResolve</td></tr>
+          <tr><td>Gallery</td><td>写真一覧の閲覧、検索、選択を行う。</td><td>フィルタ、ワールド検索、表示・グループ切替、複数選択</td><td>Features/Gallery</td></tr>
+          <tr><td>Photo Modal</td><td>選択写真の詳細を表示・編集する。</td><td>タグ編集、お気に入り、投稿、ワールド・ファイル表示</td><td>Features/PhotoModal</td></tr>
+          <tr><td>Settings</td><td>アプリ設定とマスタを管理する。</td><td>フォルダ設定、起動・投稿設定、テーマ、タグ、テンプレート、クレジット</td><td>Features/Settings</td></tr>
+          <tr><td>World Resolve</td><td>ワールド名不明写真の候補を確認する。</td><td>候補選択、一括適用、ワールド名確定</td><td>Features/WorldResolve</td></tr>
           <tr><td>Group Drill Down</td><td>月・ワールド等のグループ内写真を表示する。</td><td>グループ内閲覧、写真選択</td><td>Features/Gallery</td></tr>
         </tbody>
       </table>
@@ -80,7 +80,7 @@
       │   ├─ General
       │   ├─ Tag Master
       │   ├─ Template
-      │   └─ Credits / Integrations
+      │   └─ Credits
       └─ World Resolve (middle modal)</pre>
     </section>
 
@@ -89,7 +89,7 @@
       <table>
         <thead><tr><th>Area</th><th>Definition</th></tr></thead>
         <tbody>
-          <tr><td>Header</td><td>ロゴ、検索・フィルタ入口、表示モード、設定ボタン、進捗表示を配置する。</td></tr>
+          <tr><td>Header</td><td>フィルタ入口、ワールド検索、表示モード、ワールド別表示、複数選択、設定ボタンを配置する。</td></tr>
           <tr><td>Main content</td><td>Gallery を常設し、選択状態とフィルタ状態に応じて表示を更新する。</td></tr>
           <tr><td>Middle modal</td><td>Settings / WorldResolve / Group Drill Down を表示する。背景 Gallery は維持する。</td></tr>
           <tr><td>Top modal</td><td>Photo Modal を表示する。中位モーダルが開いていても最上位に重ねる。</td></tr>
@@ -103,47 +103,49 @@
       <div class="layout">
         <article class="screen">
           <h3>Gallery</h3>
-          <p>写真一覧の標準表示。フィルタ、月別グループ、サムネイル要求、選択状態を扱う。</p>
-          <pre class="wireframe">┌ Header: logo / search / filter / view / settings ┐
-├ Toolbar: scan status / PDQ progress / actions    ┤
-├ Filter summary / month navigation                ┤
-├──────────────────────────────────────────────────┤
-│ Photo grid or masonry viewport                   │
-│ [thumb][thumb][thumb][thumb]                     │
-│ [thumb][thumb][thumb][thumb]                     │
-└ Status: count / selected / warnings              ┘</pre>
+          <p>写真一覧の標準表示。フィルタ、サムネイル要求、選択状態を扱い、日付順では月ナビゲーションを表示する。</p>
+          <pre class="wireframe">┌ Header: filter | world search | view/group/select | settings ┐
+├──────────────────────────────────────────────┬ Month navigation
+│ Photo grid or masonry viewport               │ month list
+│ [thumb][thumb][thumb][thumb]                 │
+│ [thumb][thumb][thumb][thumb]                 │
+├──────────────────────────────────────────────┴───────────────┤
+└ Bulk actions: selected / clear / favorite / tag / copy      ┘</pre>
         </article>
         <article class="screen">
           <h3>Photo Modal</h3>
-          <p>写真詳細、タグ、類似候補を 1 画面で扱う。</p>
-          <pre class="wireframe">┌ Modal header: filename / close ┐
-├ Image preview                  ┬ Metadata
-│                                │ world / timestamp / slot
-│                                │ favorite / missing
-├ Tags                           │
-├ Similar photos                 │
-└ Actions: save / open / copy / tweet</pre>
+          <p>大きな写真表示とワールド・タグ操作を 1 画面で扱う。</p>
+          <pre class="wireframe">┌ Photo Modal ────────────────────────────── close ┐
+├ Image preview                    ┬ World name     │
+│ previous / next                  │ match source   │
+│                                  ├ Tags           │
+│ filename                         │                │
+├──────────────────────────────────┴────────────────┤
+└ Actions: favorite / post / world / Explorer      ┘</pre>
         </article>
         <article class="screen">
           <h3>Settings</h3>
           <p>左ナビゲーションで設定カテゴリを切り替える。</p>
           <pre class="wireframe">┌ Settings modal ───────────────────────┐
 │ Nav       │ Content                    │
-│ General   │ folder / theme / startup   │
+│ General   │ folders / startup / post   │
+│           │ theme / world resolve      │
 │ Tags      │ tag list / add / delete    │
 │ Template  │ template list / editor     │
-│ Credits   │ StellaRecord registration  │
+│ Credits   │ creator / material credits │
 └────────────────────────────────────────┘</pre>
         </article>
         <article class="screen">
           <h3>World Resolve</h3>
-          <p>世界不明写真と候補ワールドを並べて確認する。</p>
+          <p>ワールド名不明写真と候補ワールドを並べて確認する。</p>
           <pre class="wireframe">┌ World Resolve ────────────────────────┐
 │ 候補探索の進捗                         │
-│ Unknown photo list │ Candidate panel   │
-│ [photo]            │ world candidates  │
-│ [photo]            │ PDQ distance      │
-│ [photo]            │ apply / skip      │
+│ target → predicted world / distance    │
+│          matched photo / other choice  │
+│ target → predicted world / distance    │
+│ apply toggle / apply all / skip all    │
+│ candidate picker                       │
+│                    confirm / close      │
 └────────────────────────────────────────┘</pre>
         </article>
       </div>
@@ -156,7 +158,7 @@
         <tbody>
           <tr><td>Settings</td><td>Middle</td><td>閉じるボタンまたは Esc</td><td>SettingsViewModel</td></tr>
           <tr><td>Group Drill Down</td><td>Middle</td><td>戻る/閉じる操作</td><td>GalleryViewModel</td></tr>
-          <tr><td>World Resolve</td><td>Middle</td><td>閉じるボタンまたは完了</td><td>WorldResolveViewModel</td></tr>
+          <tr><td>World Resolve</td><td>Middle</td><td>閉じる操作時に候補生成と UI 更新の停止完了を待つ</td><td>WorldResolveViewModel</td></tr>
           <tr><td>Photo Modal</td><td>Top</td><td>閉じるボタンまたは Esc</td><td>PhotoModalViewModel</td></tr>
         </tbody>
       </table>
@@ -170,6 +172,7 @@
           <tr><td>Scanning</td><td>進捗、現在処理中ワールド、キャンセル状態</td><td>PhotoScanner events</td></tr>
           <tr><td>PDQ running</td><td>解析件数、完了通知、World Resolve 利用可否</td><td>PhashService events</td></tr>
           <tr><td>Thumbnail pending</td><td>プレースホルダからサムネイルへ差し替え</td><td>ThumbnailWorker</td></tr>
+          <tr><td>Folder cleanup</td><td>進行中操作を停止し、失敗時は警告して次回起動時に再開</td><td>SettingsService / ShellViewModel</td></tr>
           <tr><td>Save error</td><td>トーストまたはダイアログ</td><td>DB / setting save failure</td></tr>
         </tbody>
       </table>

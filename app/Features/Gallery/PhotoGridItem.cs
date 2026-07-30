@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Alpheratz.Core;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.UI.Xaml;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Features.Gallery;
 
@@ -22,7 +23,9 @@ public partial class PhotoGridItem : UiThreadSafeObservableObject
 
     /// <summary>グループ件数バッジの表示文字列。</summary>
     public string GroupCountLabel =>
-        GroupCount is > 1 ? $"{GroupCount}枚" : "";
+        GroupCount is > 1
+            ? getMsg("PhotoGridItem.groupCount", ("count", GroupCount))
+            : string.Empty;
 
     /// <summary>件数変更時に、件数バッジ関連の派生プロパティを更新する。</summary>
     partial void OnGroupCountChanged(int? value)

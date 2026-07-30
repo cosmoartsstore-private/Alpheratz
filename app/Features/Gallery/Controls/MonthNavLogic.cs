@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Features.Gallery.Controls;
 
@@ -38,7 +39,7 @@ internal static class MonthNavLogic
     /// <summary>月グループと active 状態から、月ボタンのラベルとテーマキーを返す。</summary>
     public static MonthNavButtonDisplay MonthButton(GalleryMonthGroup group, bool isActive)
         => new MonthNavButtonDisplay(
-            Label: $"{group.Month}月",
+            Label: getMsg("MonthNav.monthLabel", ("month", group.Month)),
             FontWeight: isActive ? MonthNavFontWeight.ExtraBold : MonthNavFontWeight.SemiBold,
             ForegroundKey: isActive ? ActiveMonthForegroundKey : RestMonthForegroundKey,
             BackgroundKey: isActive ? ActiveMonthBackgroundKey : null);

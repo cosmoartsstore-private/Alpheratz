@@ -18,6 +18,8 @@ public static class EventNames
     public const string ScanProgress = "scan:progress";
     /// <summary>スキャン完了 (写真メタデータの取込/更新が一段落)。payload = null。</summary>
     public const string ScanCompleted = "scan:completed";
+    /// <summary>スキャンを継続できる警告。payload = string (利用者向けメッセージ)。</summary>
+    public const string ScanWarning = "scan:warning";
     /// <summary>
     /// スキャン後のエンリッチメント (PDQ / orientation / archive 解決) が全部終わったとき。
     /// 現状は publisher 側に未実装で subscriber のみ存在する。将来の拡張用。

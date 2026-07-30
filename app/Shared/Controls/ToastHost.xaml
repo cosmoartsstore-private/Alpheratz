@@ -42,6 +42,7 @@
                                            Foreground="{ThemeResource AText}"
                                            FontSize="{StaticResource AFontSizeMd}"
                                            TextWrapping="Wrap"
+                                           AutomationProperties.LiveSetting="Polite"
                                            VerticalAlignment="Center"/>
                             </StackPanel>
                         </Grid>

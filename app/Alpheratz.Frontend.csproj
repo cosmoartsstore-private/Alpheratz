@@ -11,6 +11,8 @@
 
     <!-- NSIS/unpackaged distribution. Do not switch this project back to WPF/MSIX-only packaging. -->
     <WindowsPackageType>None</WindowsPackageType>
+    <!-- Debug は Program.Main で明示初期化し、Release は reg-free WinRT を使う。 -->
+    <WindowsAppSdkBootstrapInitialize>false</WindowsAppSdkBootstrapInitialize>
     <EnableMsixTooling>false</EnableMsixTooling>
     <EnablePriGenTooling>false</EnablePriGenTooling>
     <EnableCoreMrtTooling>false</EnableCoreMrtTooling>
@@ -51,8 +53,6 @@
       - SelfContained=true: .NET 本体を publish 出力に同梱 (apphost ダイアログ排除)
       - WindowsAppSDKSelfContained=true: WinAppSDK Framework 中身を AppLocal にコピー
       - WindowsAppSdkUndockedRegFreeWinRTInitialize=true: reg-free WinRT で活性化
-      - WindowsAppSdkBootstrapInitialize=false: 自動 Bootstrap を抑制 (システム MSIX
-        の二重ロードを防止。手動 Bootstrap.Initialize 呼び出しも #if で外す)
       - InvariantGlobalization=true: ICU データ削減 (~30 MB)
       Debug ビルドではこれらは無効。dotnet build しかしないとバンドル DLL が
       AppLocal に置かれず XAML parse でクラッシュするため、開発時は従来通り
@@ -62,14 +62,11 @@
     <SelfContained>true</SelfContained>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <WindowsAppSdkUndockedRegFreeWinRTInitialize>true</WindowsAppSdkUndockedRegFreeWinRTInitialize>
-    <WindowsAppSdkBootstrapInitialize>false</WindowsAppSdkBootstrapInitialize>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="Assets\Logo.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
+    <Content Remove="Assets\Logo.png" />
     <Content Include="Assets\LogoText.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -85,10 +82,16 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Messages\messages.ja.properties"
+                      LogicalName="Alpheratz.Messages.messages.ja.properties">
+      <WithCulture>false</WithCulture>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.250205002" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.11" />
   </ItemGroup>
 

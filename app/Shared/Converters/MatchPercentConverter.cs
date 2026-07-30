@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using Microsoft.UI.Xaml.Data;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Shared.Converters;
 
@@ -23,9 +24,9 @@ public sealed class MatchPercentConverter : IValueConverter
             var percent = (int)Math.Round((1.0 - distance / PdqMaxDistance) * 100.0);
             if (percent < 0) percent = 0;
             if (percent > 100) percent = 100;
-            return $"一致率: {percent.ToString(CultureInfo.InvariantCulture)}%";
+            return getMsg("MatchPercentConverter.value", ("percent", percent.ToString(CultureInfo.InvariantCulture)));
         }
-        return "一致率: —";
+        return getMsg("MatchPercentConverter.empty");
     }
 
     /// <summary>表示専用の変換なので逆変換は提供しない。</summary>

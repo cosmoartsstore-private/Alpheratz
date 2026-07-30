@@ -4,6 +4,7 @@ using System.Linq;
 using Alpheratz.Shared.Models;
 using Alpheratz.Models;
 using Windows.System;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Features.Shell.Controls;
 
@@ -71,7 +72,9 @@ internal static class ShellHeaderBarLogic
             .Where(world => !string.IsNullOrWhiteSpace(world.world_name))
             .Where(world => world.world_name!.Contains(trimmed, StringComparison.OrdinalIgnoreCase))
             .Take(maxCount)
-            .Select(world => new HeaderWorldSuggestion(world.world_name!, $"{world.count}枚"))
+            .Select(world => new HeaderWorldSuggestion(
+                world.world_name!,
+                getMsg("ShellHeaderBar.worldPhotoCount", ("count", world.count))))
             .ToList();
     }
 }

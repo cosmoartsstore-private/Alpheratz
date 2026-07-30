@@ -11,6 +11,7 @@ using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 using Windows.Storage.Streams;
 using Windows.System;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Services;
 
@@ -61,7 +62,9 @@ public sealed class WorldService
         AppLogger.Trace($"WorldService.OpenWorldUrlAsync: enter worldId={worldId}");
         try
         {
-            await Launcher.LaunchUriAsync(BuildWorldUri(worldId)).AsTask(ct).ConfigureAwait(false);
+            var launched = await Launcher.LaunchUriAsync(BuildWorldUri(worldId)).AsTask(ct).ConfigureAwait(false);
+            if (!launched)
+                throw new InvalidOperationException(getMsg("WorldService.browserLaunchFailed"));
         }
         catch (Exception ex)
         {
@@ -73,19 +76,25 @@ public sealed class WorldService
     }
 
     /// <summary>Twitter/X の Web Intent URL を既定ブラウザで開く。</summary>
-    public async Task OpenTweetIntentAsync(string intentUrl, CancellationToken ct = default)
+    public async Task<bool> OpenTweetIntentAsync(string intentUrl, CancellationToken ct = default)
     {
         AppLogger.Trace("WorldService.OpenTweetIntentAsync: enter");
         try
         {
-            await Launcher.LaunchUriAsync(BuildTweetIntentUri(intentUrl)).AsTask(ct).ConfigureAwait(false);
+            var launched = await Launcher.LaunchUriAsync(BuildTweetIntentUri(intentUrl)).AsTask(ct).ConfigureAwait(false);
+            if (!launched)
+                AppLogger.Warn("WorldService.OpenTweetIntentAsync: 既定ブラウザを起動できませんでした");
+            return launched;
         }
         catch (Exception ex)
         {
             AppLogger.Error($"WorldService.OpenTweetIntentAsync: threw: {ex}");
             throw;
         }
-        AppLogger.Trace("WorldService.OpenTweetIntentAsync: exit");
+        finally
+        {
+            AppLogger.Trace("WorldService.OpenTweetIntentAsync: exit");
+        }
     }
 
     /// <summary>指定写真を Explorer 上で選択表示する。</summary>
@@ -94,7 +103,8 @@ public sealed class WorldService
         AppLogger.Trace($"WorldService.ShowInExplorerAsync: enter path={path}");
         try
         {
-            Process.Start(BuildExplorerSelectionStartInfo(path));
+            ct.ThrowIfCancellationRequested();
+            using var process = Process.Start(BuildExplorerSelectionStartInfo(path));
         }
         catch (Exception ex)
         {
@@ -240,19 +250,20 @@ public sealed class WorldService
 
         // Group known photos by source_slot (each slot keeps its own DB ordering).
         var resolved = 0;
-        var knownBySlot = new Dictionary<long, IReadOnlyList<AlpheratzDb.KnownWorldRow>>();
+        var knownBySlot = new Dictionary<long, IReadOnlyList<PreparedKnownWorldRow>>();
 
         foreach (var unknown in unknowns)
         {
             ct.ThrowIfCancellationRequested();
             if (!knownBySlot.TryGetValue(unknown.SourceSlot, out var knownPhotos))
             {
-                knownPhotos = await _db.GetKnownWorldPhotosAsync(unknown.SourceSlot, null, ct).ConfigureAwait(false);
+                var rows = await _db.GetKnownWorldPhotosAsync(unknown.SourceSlot, null, ct).ConfigureAwait(false);
+                knownPhotos = PrepareKnownWorldRows(rows, ct);
                 knownBySlot[unknown.SourceSlot] = knownPhotos;
             }
             if (knownPhotos.Count == 0) continue;
 
-            var match = FindBestMatch(unknown.Phash, knownPhotos);
+            var match = FindBestMatch(unknown.Phash, knownPhotos, ct);
             if (match is null) continue;
 
             await _db.UpdatePhotoWorldAsync(unknown.PhotoPath, match.Value.WorldName, match.Value.WorldId, "phash", ct).ConfigureAwait(false);
@@ -263,27 +274,38 @@ public sealed class WorldService
         return resolved;
     }
 
-    private static (string WorldName, string? WorldId)? FindBestMatch(string targetPhash, IReadOnlyList<AlpheratzDb.KnownWorldRow> candidates)
+    private static (string WorldName, string? WorldId)? FindBestMatch(
+        string targetPhash,
+        IReadOnlyList<PreparedKnownWorldRow> candidates,
+        CancellationToken ct)
     {
-        var result = FindBestMatchWithDetails(targetPhash, candidates);
+        var result = FindBestMatchWithDetails(targetPhash, candidates, ct);
         if (result is null) return null;
         return (result.Value.Row.WorldName, result.Value.Row.WorldId);
     }
 
     internal static (AlpheratzDb.KnownWorldRow Row, int Distance)? FindBestMatchWithDetails(
-        string targetPhash, IReadOnlyList<AlpheratzDb.KnownWorldRow> candidates)
-        => FindBestMatchWithDetails(targetPhash, PrepareKnownWorldRows(candidates));
+        string targetPhash,
+        IReadOnlyList<AlpheratzDb.KnownWorldRow> candidates,
+        CancellationToken ct = default)
+        => FindBestMatchWithDetails(targetPhash, PrepareKnownWorldRows(candidates, ct), ct);
 
     internal static (AlpheratzDb.KnownWorldRow Row, int Distance)? FindBestMatchWithDetails(
-        string targetPhash, IReadOnlyList<PreparedKnownWorldRow> candidates)
+        string targetPhash,
+        IReadOnlyList<PreparedKnownWorldRow> candidates,
+        CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         var targetVariants = PdqHasher.ParseHashVariants(targetPhash);
         if (targetVariants.Count == 0) return null;
 
         var bestDistance = int.MaxValue;
         AlpheratzDb.KnownWorldRow? best = null;
-        foreach (var candidate in candidates)
+        for (var index = 0; index < candidates.Count; index++)
         {
+            if ((index & 0x7F) == 0)
+                ct.ThrowIfCancellationRequested();
+            var candidate = candidates[index];
             var d = PdqHasher.ClosestHashDistance(targetVariants, candidate.HashVariants);
             if (d is null || d.Value > WorldMatchDistanceThreshold) continue;
             if (d.Value >= bestDistance) continue;
@@ -296,18 +318,26 @@ public sealed class WorldService
     }
 
     internal static List<(AlpheratzDb.KnownWorldRow Row, int Distance)> RankCandidatesByDistance(
-        string targetPhash, IReadOnlyList<AlpheratzDb.KnownWorldRow> candidates)
-        => RankCandidatesByDistance(targetPhash, PrepareKnownWorldRows(candidates));
+        string targetPhash,
+        IReadOnlyList<AlpheratzDb.KnownWorldRow> candidates,
+        CancellationToken ct = default)
+        => RankCandidatesByDistance(targetPhash, PrepareKnownWorldRows(candidates, ct), ct);
 
     internal static List<(AlpheratzDb.KnownWorldRow Row, int Distance)> RankCandidatesByDistance(
-        string targetPhash, IReadOnlyList<PreparedKnownWorldRow> candidates)
+        string targetPhash,
+        IReadOnlyList<PreparedKnownWorldRow> candidates,
+        CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         var targetVariants = PdqHasher.ParseHashVariants(targetPhash);
         if (targetVariants.Count == 0) return [];
 
         var ranked = new List<(AlpheratzDb.KnownWorldRow Row, int Distance)>();
-        foreach (var candidate in candidates)
+        for (var index = 0; index < candidates.Count; index++)
         {
+            if ((index & 0x7F) == 0)
+                ct.ThrowIfCancellationRequested();
+            var candidate = candidates[index];
             var d = PdqHasher.ClosestHashDistance(targetVariants, candidate.HashVariants);
             if (d is null) continue;
             ranked.Add((candidate.Row, d.Value));
@@ -317,11 +347,16 @@ public sealed class WorldService
     }
 
     internal static IReadOnlyList<PreparedKnownWorldRow> PrepareKnownWorldRows(
-        IReadOnlyList<AlpheratzDb.KnownWorldRow> candidates)
+        IReadOnlyList<AlpheratzDb.KnownWorldRow> candidates,
+        CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         var prepared = new List<PreparedKnownWorldRow>(candidates.Count);
-        foreach (var candidate in candidates)
+        for (var index = 0; index < candidates.Count; index++)
         {
+            if ((index & 0x7F) == 0)
+                ct.ThrowIfCancellationRequested();
+            var candidate = candidates[index];
             var variants = PdqHasher.ParseHashVariants(candidate.Phash);
             if (variants.Count > 0)
                 prepared.Add(new PreparedKnownWorldRow(candidate, variants));

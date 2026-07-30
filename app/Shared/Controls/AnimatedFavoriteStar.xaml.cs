@@ -61,7 +61,7 @@ public sealed partial class AnimatedFavoriteStar : UserControl
     private void UpdateAutomationName()
     {
         var name = AnimatedFavoriteStarLogic.AutomationName(Liked);
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(this, name);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(InteractiveButton, name);
     }
 
     // Liked 変更時に見た目とアクセシブル名を更新し、必要ならアニメーションする。
@@ -85,7 +85,7 @@ public sealed partial class AnimatedFavoriteStar : UserControl
         {
             if (d is AnimatedFavoriteStar control)
             {
-                control.InteractiveButton.IsHitTestVisible = AnimatedFavoriteStarLogic.HitTestVisible(control.Interactive);
+                control.ApplyInteractiveState();
             }
         }
         catch (Exception ex) { AppLogger.Error($"AnimatedFavoriteStar.OnInteractiveChanged: {ex}"); }
@@ -116,12 +116,20 @@ public sealed partial class AnimatedFavoriteStar : UserControl
             }
 
             previousLiked = liked;
-            InteractiveButton.IsHitTestVisible = AnimatedFavoriteStarLogic.HitTestVisible(Interactive);
+            ApplyInteractiveState();
         }
         catch (Exception ex)
         {
             AppLogger.Error($"AnimatedFavoriteStar.ApplyLiked: {ex}");
         }
+    }
+
+    private void ApplyInteractiveState()
+    {
+        var interactive = AnimatedFavoriteStarLogic.HitTestVisible(Interactive);
+        InteractiveButton.IsHitTestVisible = interactive;
+        InteractiveButton.IsEnabled = interactive;
+        InteractiveButton.IsTabStop = interactive;
     }
 
     // テーマリソースキーとフォールバック種別から実際の Brush を解決する。

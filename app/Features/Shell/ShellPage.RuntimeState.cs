@@ -106,6 +106,8 @@ public sealed partial class ShellPage
         try
         {
             viewModel.galleryViewModel.drillDownPhotosProvider = null;
+            if (galleryPage is not null)
+                galleryPage.OnBulkTagConfirmationOpenChanged = null;
             viewModel.galleryViewModel.selectionState.PropertyChanged -= OnSelectionStateChanged;
             viewModel.galleryViewModel.filtersState.PropertyChanged -= OnShellFiltersStateChanged;
             viewModel.galleryViewModel.photosState.PropertyChanged -= OnShellPhotosStateChanged;

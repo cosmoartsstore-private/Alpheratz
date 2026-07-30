@@ -2,7 +2,7 @@
 
 写真ギャラリー＆管理アプリケーション。画像のワールド別タグ付け、メタデータ管理、知覚ハッシュ (PDQ) による重複検出を備えた Windows ネイティブデスクトップアプリケーション。
 
-完全ローカル運用。外部 API・認証・ネットワーク通信は使用しない。
+アプリ本体はローカルで動作し、外部 API・認証・テレメトリ送信を使用しない。投稿やワールド表示など、ユーザーが選択した操作では既定のブラウザーを開く。
 
 ---
 
@@ -34,13 +34,13 @@ Alpheratz は VRChat などの写真をローカルで閲覧・分類する Wind
 
 ## Features
 
-- **Gallery** — 標準グリッド / メイソンリーレイアウトで写真を表示し、日付・ワールド・タグ・お気に入り・欠損状態で絞り込む。
-- **Photo Modal** — 写真詳細、タグ、お気に入り、ワールド名、類似写真を表示・編集する。
+- **Gallery** — 標準グリッド / メイソンリーレイアウトで写真を表示し、日付・ワールド・タグ・お気に入りで絞り込む。
+- **Photo Modal** — 写真、タグ、お気に入り、ワールド名を表示・編集し、投稿やファイル表示を行う。
 - **Tag Master** — 写真に付与するタグを管理する。
 - **Template** — 投稿用テンプレートを保存し、選択中テンプレートを切り替える。
 - **Duplicate Detection** — PDQ 知覚ハッシュで類似写真を検出する。
-- **World Resolve** — Polaris archive と PDQ 類似度から世界不明写真の候補を提示する。
-- **Settings** — 写真フォルダ、テーマ、表示モード、起動設定、投稿テンプレート、StellaRecord 登録を管理する。
+- **World Resolve** — Polaris archive と PDQ 類似度からワールド名不明写真の候補を提示する。
+- **Settings** — 写真フォルダ、テーマ、起動設定、投稿時の動作、タグ、投稿テンプレート、クレジットを管理する。
 - **Bootstrap** — 起動時の初期化状態をスプラッシュ画面に表示する。
 
 ---
@@ -51,9 +51,10 @@ Alpheratz は VRChat などの写真をローカルで閲覧・分類する Wind
 | --- | --- |
 | UI | .NET 8.0 + WinUI 3 / Windows App SDK 1.6 |
 | Architecture | MVVM (`CommunityToolkit.Mvvm`) |
-| DI / Host | `Microsoft.Extensions.DependencyInjection`, `Microsoft.Extensions.Hosting` |
+| DI | `Microsoft.Extensions.DependencyInjection` |
 | Database | SQLite (`Microsoft.Data.Sqlite`) |
 | Imaging | Windows imaging APIs, custom PDQ implementation |
+| UI Messages | `getMsg` + UTF-8 properties |
 | Testing | xUnit + coverlet |
 | Distribution | NSIS installer, unpackaged Windows app |
 
@@ -115,6 +116,8 @@ Tauri / Rust IPC は使用しない。UI、スキャン、画像解析、DB 更�
 
 管理者権限は不要。Program Files 配下へのインストールは installer 側で拒否する。
 
+更新または再インストールでは launcher と `app` を入れ替え、既存の `Data` を保持する。
+
 ### Uninstallation
 
 Windows の「アプリと機能」または `uninstall.exe` からアンインストールする。
@@ -137,6 +140,8 @@ dotnet test tests/Alpheratz.Tests/Alpheratz.Tests.csproj
 .\BuildWorks\scripts\build-release.ps1
 ```
 
+本番ビルドの完了後、`BuildWorks\Alpheratz-Installer.exe` が生成される。
+
 ---
 
 ## Project Structure
@@ -154,6 +159,7 @@ dotnet test tests/Alpheratz.Tests/Alpheratz.Tests.csproj
 │   ├── Core/                     DB、スキャン、画像処理、パス解決
 │   ├── Services/                 ビジネスロジック
 │   ├── Models/                   DTO / UI モデル
+│   ├── Messages/                 UI 文言カタログ
 │   ├── Shared/                   共通コントロール、コンバーター、サービス
 │   └── Themes/                   WinUI 3 スタイル
 ├── tests/Alpheratz.Tests/        xUnit テスト
@@ -169,12 +175,14 @@ dotnet test tests/Alpheratz.Tests/Alpheratz.Tests.csproj
 | Data | Location | Purpose |
 | --- | --- | --- |
 | SQLite データベース | `<install>\Data\db\Alpheratz.db` | 写真メタデータ、タグ、ワールド解決履歴 |
-| 設定 JSON | `<install>\Data\db\setting.json` | フォルダ、テーマ、表示モード、テンプレート |
+| 設定 JSON | `<install>\Data\db\setting.json` | フォルダ、テーマ、表示モード、起動設定、投稿設定、テンプレート |
 | サムネイルキャッシュ | `<install>\Data\cache\1st-cache\imgCache`, `<install>\Data\cache\2nd-cache\imgCache` | 一覧表示用画像 |
 | ログ | `<install>\Data\logs` | アプリ実行ログ |
 | インストール先 | Windows Registry `HKCU\Software\CosmoArtsStore\Alpheratz` | installer とアプリのパス解決 |
 
-外部通信・テレメトリ送信は行わない。Polaris / StellaRecord 連携は同一 Windows ユーザーのローカルレジストリとローカルファイルだけを参照する。
+アプリ本体から外部 API・認証・テレメトリ送信は行わない。Polaris archive の補完は、同一 Windows ユーザーのローカルレジストリとローカルファイルだけを参照する。投稿、VRChat ワールド表示、クレジットのリンクはユーザー操作に応じて既定のブラウザーで開く。
+
+写真フォルダを変更すると、進行中のスキャンとサムネイル生成を停止してから対象スロットの DB 情報とキャッシュを初期化する。途中で失敗した処理は設定に記録し、次回起動時に再開する。
 
 ---
 
@@ -184,7 +192,7 @@ dotnet test tests/Alpheratz.Tests/Alpheratz.Tests.csproj
 
 - ネットワーク API、認証、外部サーバ送信を持たない。
 - SQLite 書き込みはパラメータバインドを使う。
-- Polaris archive と StellaRecord DB はレジストリから解決できる場合のみ参照する。
+- Polaris archive はレジストリから解決できる場合のみ参照する。
 
 ### Installation
 
@@ -195,7 +203,7 @@ dotnet test tests/Alpheratz.Tests/Alpheratz.Tests.csproj
 ### Known Risks
 
 - コード署名なしのため SmartScreen 警告が出る場合がある。
-- 写真ファイル、Polaris archive、StellaRecord DB のアクセス権は OS ユーザー権限に依存する。
+- 写真ファイルと Polaris archive のアクセス権は OS ユーザー権限に依存する。
 
 ---
 

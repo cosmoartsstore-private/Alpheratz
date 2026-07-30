@@ -10,6 +10,7 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSdkBootstrapInitialize>false</WindowsAppSdkBootstrapInitialize>
     <EnableMsixTooling>false</EnableMsixTooling>
     <EnablePriGenTooling>false</EnablePriGenTooling>
     <EnableCoreMrtTooling>false</EnableCoreMrtTooling>

@@ -6,6 +6,7 @@ using Alpheratz.Core;
 using Alpheratz.Core.Database;
 using Alpheratz.Core.Imaging.Pdq;
 using Alpheratz.Models.Events;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Services;
 
@@ -25,6 +26,8 @@ public sealed class PhashService
     private readonly LocalEventBus eventBus;
     private int isRunning;
     private PhashProgressEvent currentProgress = PhashProgressEvent.Empty;
+    private readonly object progressLock = new();
+    private Task progressPublishTail = Task.CompletedTask;
 
     /// <summary>補完対象 DB と進捗通知先を受け取ってワーカーを作成する。</summary>
     public PhashService(AlpheratzDb db, LocalEventBus eventBus)
@@ -37,7 +40,11 @@ public sealed class PhashService
 
     /// <summary>現在の PDQ 解析進捗を返す。</summary>
     public Task<PhashProgressEvent> GetPhashProgressAsync(CancellationToken ct = default)
-        => Task.FromResult(currentProgress);
+    {
+        ct.ThrowIfCancellationRequested();
+        lock (progressLock)
+            return Task.FromResult(currentProgress);
+    }
 
     /// <summary>現在 DB に残っている未計算 phash 件数を返す。</summary>
     public Task<int> GetPendingPhashCountAsync(CancellationToken ct = default)
@@ -61,7 +68,7 @@ public sealed class PhashService
         try
         {
             var total = await db.GetPendingPhashCountAsync(ct).ConfigureAwait(false);
-            UpdateProgress(0, total, null);
+            UpdateProgress(0, total, null, reset: true);
             if (total == 0)
             {
                 AppLogger.Trace("PhashService.StartPdqAnalysisAsync: nothing pending");
@@ -87,7 +94,7 @@ public sealed class PhashService
                     foreach (var item in chunk)
                     {
                         token.ThrowIfCancellationRequested();
-                        updates.Add(await BuildPhashUpdateAsync(item).ConfigureAwait(false));
+                        updates.Add(await BuildPhashUpdateAsync(item, token).ConfigureAwait(false));
                     }
 
                     await writeGate.WaitAsync(token).ConfigureAwait(false);
@@ -114,33 +121,45 @@ public sealed class PhashService
         catch (OperationCanceledException)
         {
             AppLogger.Trace("PhashService.StartPdqAnalysisAsync: cancelled");
-            errorMessage = "中断されました";
+            errorMessage = getMsg("PhashService.cancelled");
         }
         catch (Exception ex)
         {
             AppLogger.Error($"PhashService.StartPdqAnalysisAsync: threw: {ex}");
-            errorMessage = ex.Message;
+            errorMessage = getMsg("PhashService.failed");
         }
         finally
         {
-            Interlocked.Exchange(ref isRunning, 0);
-            var snapshot = currentProgress;
-            UpdateProgress(snapshot.done, snapshot.total, null);
-            if (succeeded)
-                await eventBus.PublishAsync(EventNames.PhashComplete, new object()).ConfigureAwait(false);
-            else
-                await eventBus.PublishAsync(EventNames.PhashError, errorMessage ?? "phash analysis failed").ConfigureAwait(false);
+            try
+            {
+                PhashProgressEvent snapshot;
+                lock (progressLock)
+                    snapshot = currentProgress;
+                UpdateProgress(snapshot.done, snapshot.total, null);
+                await WaitForProgressPublicationsAsync().ConfigureAwait(false);
+                if (succeeded)
+                    await eventBus.PublishAsync(EventNames.PhashComplete, new object()).ConfigureAwait(false);
+                else
+                    await eventBus.PublishAsync(EventNames.PhashError, errorMessage ?? getMsg("PhashService.failed")).ConfigureAwait(false);
+            }
+            finally
+            {
+                // 最終進捗と完了／エラー通知までを 1 回の実行として扱い、次回起動との通知混在を防ぐ。
+                Interlocked.Exchange(ref isRunning, 0);
+            }
         }
 
         AppLogger.Trace("PhashService.StartPdqAnalysisAsync: exit");
     }
 
     /// <summary>1枚の画像を読み込み、DBへ保存する phash 更新行へ変換する。</summary>
-    private static async Task<AlpheratzDb.PhotoPhashUpdate> BuildPhashUpdateAsync(PendingPhashItem item)
+    private static async Task<AlpheratzDb.PhotoPhashUpdate> BuildPhashUpdateAsync(
+        PendingPhashItem item,
+        CancellationToken ct)
     {
         try
         {
-            var image = await PdqImageReader.ReadLumaAsync(item.PhotoPath).ConfigureAwait(false);
+            var image = await PdqImageReader.ReadLumaAsync(item.PhotoPath, ct).ConfigureAwait(false);
             if (image is null)
             {
                 AppLogger.Warn($"PhashService: skip (unreadable) [{item.PhotoFilename}]");
@@ -166,12 +185,29 @@ public sealed class PhashService
     }
 
     /// <summary>進捗スナップショットを更新し、イベントバスへ通知する。</summary>
-    private void UpdateProgress(int done, int total, string? current)
+    private void UpdateProgress(int done, int total, string? current, bool reset = false)
     {
-        // フィールドをそのまま publish せず、呼び出し時点の値をスナップショットとして渡す。
-        // 連続更新で別の値に差し替わっても、発行済みイベントの内容は変わらない。
-        var snapshot = new PhashProgressEvent { done = done, total = total, current = current };
-        currentProgress = snapshot;
-        _ = eventBus.PublishAsync(EventNames.PhashProgress, snapshot);
+        lock (progressLock)
+        {
+            // 複数チャンクが同時に完了すると、小さい done のスレッドが後からここへ来ることがある。
+            // その通知を採用すると画面の進捗が巻き戻るため、同じ解析中は単調増加だけを許可する。
+            if (!reset && total == currentProgress.total && done < currentProgress.done)
+                return;
+
+            var snapshot = new PhashProgressEvent { done = done, total = total, current = current };
+            currentProgress = snapshot;
+            progressPublishTail = progressPublishTail.ContinueWith(
+                _ => eventBus.PublishAsync(EventNames.PhashProgress, snapshot),
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default).Unwrap();
+        }
+    }
+
+    /// <summary>完了・エラー通知の前に、それまでの進捗通知がすべて配信されるのを待つ。</summary>
+    private Task WaitForProgressPublicationsAsync()
+    {
+        lock (progressLock)
+            return progressPublishTail;
     }
 }

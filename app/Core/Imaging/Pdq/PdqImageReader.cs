@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Windows.Graphics.Imaging;
 using Windows.Storage;
@@ -14,13 +15,19 @@ namespace Alpheratz.Core.Imaging.Pdq;
 public static class PdqImageReader
 {
     /// <summary>指定パスの画像を読み込み、PDQ 用 luma 配列と縮小後サイズを返す。読めない場合は null。</summary>
-    public static async Task<(float[] luma, int width, int height)?> ReadLumaAsync(string path)
+    public static async Task<(float[] luma, int width, int height)?> ReadLumaAsync(
+        string path,
+        CancellationToken ct = default)
     {
         try
         {
-            var file = await StorageFile.GetFileFromPathAsync(path.Replace('/', '\\'));
-            using var stream = await file.OpenAsync(FileAccessMode.Read);
-            return await ReadLumaCoreAsync(stream).ConfigureAwait(false);
+            var file = await StorageFile.GetFileFromPathAsync(path.Replace('/', '\\')).AsTask(ct).ConfigureAwait(false);
+            using var stream = await file.OpenAsync(FileAccessMode.Read).AsTask(ct).ConfigureAwait(false);
+            return await ReadLumaCoreAsync(stream, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -30,9 +37,11 @@ public static class PdqImageReader
     }
 
     /// <summary>IRandomAccessStream から画像をデコードし、必要に応じて縮小して luma 配列へ変換する。</summary>
-    private static async Task<(float[] luma, int width, int height)?> ReadLumaCoreAsync(IRandomAccessStream stream)
+    private static async Task<(float[] luma, int width, int height)?> ReadLumaCoreAsync(
+        IRandomAccessStream stream,
+        CancellationToken ct)
     {
-        var decoder = await BitmapDecoder.CreateAsync(stream);
+        var decoder = await BitmapDecoder.CreateAsync(stream).AsTask(ct).ConfigureAwait(false);
         var origW = (int)decoder.PixelWidth;
         var origH = (int)decoder.PixelHeight;
         if (origW < PdqHasher.MinHashableDim || origH < PdqHasher.MinHashableDim) return null;
@@ -69,7 +78,7 @@ public static class PdqImageReader
             BitmapAlphaMode.Ignore,
             transform,
             ExifOrientationMode.IgnoreExifOrientation,
-            ColorManagementMode.DoNotColorManage);
+            ColorManagementMode.DoNotColorManage).AsTask(ct).ConfigureAwait(false);
         var bgra = pixelData.DetachPixelData();
 
         var pixelCount = targetW * targetH;

@@ -1,6 +1,7 @@
 using Alpheratz.Core.Database;
 using Alpheratz.Models;
 using Alpheratz.Shared.Models;
+using Microsoft.Data.Sqlite;
 
 namespace Alpheratz.Tests;
 
@@ -148,6 +149,53 @@ public sealed class DatabaseBehaviorTests : IDisposable
     }
 
     /// <summary>
+    /// 複数タグの途中で追加に失敗した場合、その写真に対する今回のタグ追加をすべて戻すことを確認する。
+    /// </summary>
+    [Fact]
+    public async Task AddPhotoTagsAsync_RollsBackAllTagsWhenOneTagFails()
+    {
+        await db.UpsertPhotoAsync(Photo("/photo/a.jpg", "a.jpg", "2026-06-05 10:00:00"));
+        var dbPath = Path.Combine(tempDir, "Alpheratz.db");
+        using (var connection = new SqliteConnection($"Data Source={dbPath}"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+CREATE TRIGGER reject_blocked_photo_tag
+BEFORE INSERT ON photo_tags
+WHEN NEW.photo_path = '/photo/a.jpg'
+ AND NEW.tag_id = (SELECT id FROM tags WHERE name = 'blocked')
+BEGIN
+    SELECT RAISE(ABORT, 'blocked tag');
+END;
+""";
+            command.ExecuteNonQuery();
+        }
+
+        await Assert.ThrowsAsync<SqliteException>(() =>
+            db.AddPhotoTagsAsync("/photo/a.jpg", ["first", "blocked"]));
+
+        Assert.Empty(await db.GetPhotoTagsAsync("/photo/a.jpg"));
+        Assert.Empty(await db.GetAllTagsAsync());
+    }
+
+    /// <summary>
+    /// 既存の写真タグ関連を含む複数タグ追加が成功し、新しいタグだけを追加することを確認する。
+    /// </summary>
+    [Fact]
+    public async Task AddPhotoTagsAsync_ExistingLinksRemainSuccessful()
+    {
+        await db.UpsertPhotoAsync(Photo("/photo/a.jpg", "a.jpg", "2026-06-05 10:00:00"));
+        await db.AddPhotoTagsAsync("/photo/a.jpg", ["existing"]);
+
+        await db.AddPhotoTagsAsync("/photo/a.jpg", ["existing", "new"]);
+
+        Assert.Equal(
+            ["existing", "new"],
+            (await db.GetPhotoTagsAsync("/photo/a.jpg")).Order().ToArray());
+    }
+
+    /// <summary>
     /// 写真一覧クエリがワールド不明、複数ワールド、orientation、favorite、source_slot を正しく絞ることを確認する。
     ///
     /// worldExacts では UI 側の「ワールド不明」を unknown という内部値で渡す。
@@ -202,6 +250,25 @@ public sealed class DatabaseBehaviorTests : IDisposable
 
         Assert.Equal(
             ["/photo/alpha.jpg", "/photo/beta-new.jpg", "/photo/beta-old.jpg"],
+            page.Items.Select(item => item.photo_path).ToArray());
+    }
+
+    /// <summary>
+    /// limit を指定せず offset だけを指定した場合も SQLite の構文エラーにならず、
+    /// 総件数を保ったまま先頭行を読み飛ばすことを確認する。
+    /// </summary>
+    [Fact]
+    public async Task GetPhotosPageAsync_OffsetWithoutLimitSkipsRowsAndKeepsTotal()
+    {
+        await db.UpsertPhotoAsync(Photo("/photo/old.jpg", "old.jpg", "2026-06-05 09:00:00"));
+        await db.UpsertPhotoAsync(Photo("/photo/middle.jpg", "middle.jpg", "2026-06-05 10:00:00"));
+        await db.UpsertPhotoAsync(Photo("/photo/new.jpg", "new.jpg", "2026-06-05 11:00:00"));
+
+        var page = await db.GetPhotosPageAsync(new PhotoQueryParams { Offset = 1 });
+
+        Assert.Equal(3, page.Total);
+        Assert.Equal(
+            ["/photo/middle.jpg", "/photo/old.jpg"],
             page.Items.Select(item => item.photo_path).ToArray());
     }
 

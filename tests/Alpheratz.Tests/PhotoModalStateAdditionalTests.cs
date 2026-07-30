@@ -1,6 +1,7 @@
 using Alpheratz.Core.Database;
 using Alpheratz.Features.Gallery;
 using Alpheratz.Features.PhotoModal;
+using Alpheratz.Messages;
 using Alpheratz.Services;
 using Alpheratz.Shared.Services;
 
@@ -73,7 +74,7 @@ public sealed class PhotoModalStateAdditionalTests : IDisposable
     ///
     /// setSelectedPhoto は補助データ読込を fire-and-forget で開始する。
     /// 未初期化 DB を使うことで tags テーブル参照が失敗し、PhotoModalState が catch して
-    /// ユーザー向けの「タグの読み込みに失敗しました」通知へ変換する現在仕様を検証する。
+    /// ユーザー向けの「写真のタグを読み込めませんでした」通知へ変換する現在仕様を検証する。
     /// </summary>
     [Fact]
     public async Task SetSelectedPhoto_ReportsAuxiliaryTagLoadFailureAsToast()
@@ -89,7 +90,9 @@ public sealed class PhotoModalStateAdditionalTests : IDisposable
         }
 
         Assert.NotNull(state.SelectedPhoto);
-        Assert.Contains(toastService.toasts, toast => toast.Msg.Contains("タグの読み込みに失敗しました"));
+        Assert.Contains(
+            toastService.toasts,
+            toast => toast.Msg == MessageCatalog.getMsg("PhotoModalState.tagLoadFailed"));
     }
 
     /// <summary>

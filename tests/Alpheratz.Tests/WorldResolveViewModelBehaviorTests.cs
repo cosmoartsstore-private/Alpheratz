@@ -2,6 +2,7 @@ using Alpheratz.Core.Database;
 using Alpheratz.Core.Imaging;
 using Alpheratz.Core.Imaging.Pdq;
 using Alpheratz.Features.WorldResolve;
+using Alpheratz.Messages;
 using Alpheratz.Services;
 using Alpheratz.Shared.Services;
 
@@ -15,6 +16,7 @@ namespace Alpheratz.Tests;
 /// ここでは実 SQLite DB と実 WorldService の距離関数を使い、UI を起動せずに
 /// 初期解析、候補ピッカー、候補選択、確定反映の動作を固定する。
 /// </summary>
+[Collection(AppPathsCacheTestCollection.Name)]
 public sealed class WorldResolveViewModelBehaviorTests : IDisposable
 {
     private readonly string tempDir;
@@ -44,6 +46,8 @@ public sealed class WorldResolveViewModelBehaviorTests : IDisposable
     /// </summary>
     public void Dispose()
     {
+        try { viewModel.StopGenerationAsync().GetAwaiter().GetResult(); }
+        catch { }
         try { Directory.Delete(tempDir, recursive: true); }
         catch { }
     }
@@ -93,7 +97,9 @@ public sealed class WorldResolveViewModelBehaviorTests : IDisposable
         Assert.Equal(2, viewModel.Items.Count);
         Assert.Equal(2, viewModel.SearchProgressProcessed);
         Assert.Equal(2, viewModel.SearchProgressTotal);
-        Assert.Equal("2 / 2 件", viewModel.SearchProgressText);
+        Assert.Equal(
+            MessageCatalog.getMsg("WorldResolveViewModel.searchProgress", ("processed", 2), ("total", 2)),
+            viewModel.SearchProgressText);
     }
 
     /// <summary>
@@ -178,6 +184,71 @@ public sealed class WorldResolveViewModelBehaviorTests : IDisposable
         Assert.False(viewModel.IsCandidatePickerOpen);
         Assert.False(viewModel.IsCandidateLoading);
         Assert.Null(viewModel.ActivePickerItem);
+    }
+
+    /// <summary>
+    /// 停止処理が候補サムネイル生成の終了まで待ち、遅延結果と停止後の新規生成を反映しないことを確認する。
+    /// </summary>
+    [Fact]
+    public async Task StopGenerationAsync_IsIdempotentAndPreventsLateThumbnailUpdates()
+    {
+        var sourcePath = Path.Combine(tempDir, "candidate-source.png").Replace('\\', '/');
+        await File.WriteAllBytesAsync(sourcePath.Replace('/', Path.DirectorySeparatorChar), [0x00]);
+        var generationStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancellationObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finishCancellation = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var generationCount = 0;
+        var thumbnailService = new ThumbnailService(async (_, _, _, ct) =>
+        {
+            Interlocked.Increment(ref generationCount);
+            generationStarted.TrySetResult();
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                cancellationObserved.TrySetResult();
+                await finishCancellation.Task;
+                throw;
+            }
+        });
+        var localViewModel = new WorldResolveViewModel(
+            db,
+            new ThumbnailWorker(thumbnailService),
+            new ToastService());
+        var item = new WorldResolveItem("/unknown/a.jpg", "a.jpg", Hash(0x00), 1);
+        var entry = new CandidateEntry(sourcePath, "candidate-source.png", "Candidate", "wrld_candidate", 1, 1);
+        try
+        {
+            localViewModel.ActivePickerItem = item;
+            localViewModel.IsCandidatePickerOpen = true;
+            localViewModel.SelectCandidate(entry);
+            await generationStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            var firstStop = localViewModel.StopGenerationAsync();
+            var secondStop = localViewModel.StopGenerationAsync();
+            await cancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.Same(firstStop, secondStop);
+            Assert.False(firstStop.IsCompleted);
+            Assert.Null(item.MatchThumbPath);
+
+            finishCancellation.TrySetResult();
+            await Task.WhenAll(firstStop, secondStop).WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.Null(item.MatchThumbPath);
+            localViewModel.ActivePickerItem = item;
+            localViewModel.SelectCandidate(entry);
+            await localViewModel.InitializeAsync();
+            Assert.Equal(1, generationCount);
+            Assert.False(localViewModel.IsLoading);
+        }
+        finally
+        {
+            finishCancellation.TrySetResult();
+            await localViewModel.StopGenerationAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        }
     }
 
     /// <summary>

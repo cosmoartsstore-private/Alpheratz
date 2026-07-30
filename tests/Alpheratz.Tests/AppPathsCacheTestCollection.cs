@@ -1,3 +1,5 @@
+using Alpheratz.Core;
+
 namespace Alpheratz.Tests;
 
 /// <summary>
@@ -8,7 +10,29 @@ namespace Alpheratz.Tests;
 /// この collection に入ったテスト同士は直列化する。
 /// </summary>
 [CollectionDefinition("AppPaths imgCache")]
-public sealed class AppPathsCacheTestCollection
+public sealed class AppPathsCacheTestCollection : ICollectionFixture<AppPathsDataDirFixture>
 {
     public const string Name = "AppPaths imgCache";
+}
+
+/// <summary>AppPaths をテスト専用ディレクトリへ向け、利用者の実データと分離する。</summary>
+public sealed class AppPathsDataDirFixture : IDisposable
+{
+    private readonly string dataDir = Path.Combine(
+        Path.GetTempPath(),
+        "Alpheratz.AppPaths.Tests",
+        Guid.NewGuid().ToString("N"));
+
+    public AppPathsDataDirFixture()
+    {
+        Directory.CreateDirectory(dataDir);
+        AppPaths.DataDirOverrideForTests = dataDir;
+    }
+
+    public void Dispose()
+    {
+        AppPaths.DataDirOverrideForTests = null;
+        try { Directory.Delete(dataDir, recursive: true); }
+        catch { }
+    }
 }

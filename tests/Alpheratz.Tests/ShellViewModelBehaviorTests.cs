@@ -8,6 +8,7 @@ using Alpheratz.Features.Settings;
 using Alpheratz.Features.Shell;
 using Alpheratz.Features.TagMaster;
 using Alpheratz.Features.Template;
+using Alpheratz.Messages;
 using Alpheratz.Models;
 using Alpheratz.Models.Events;
 using Alpheratz.Services;
@@ -23,6 +24,7 @@ namespace Alpheratz.Tests;
 /// 画面や WinUI Dispatcher を使わず、一時 DB と一時設定ディレクトリだけを使って、
 /// 起動時初期化、設定保存、イベント購読、フォルダ状態、写真モーダル生成の現在仕様を固定する。
 /// </summary>
+[Collection(AppPathsCacheTestCollection.Name)]
 public sealed class ShellViewModelBehaviorTests
 {
     /// <summary>
@@ -81,9 +83,13 @@ public sealed class ShellViewModelBehaviorTests
         Assert.False(harness.ViewModel.IsPdqRunning);
         Assert.True(harness.ViewModel.CanStartWorldResolve);
         Assert.Equal(5, harness.ViewModel.PdqProgress.done);
-        Assert.Contains(harness.ToastService.toasts, toast => toast.Msg.Contains("写真フォルダが未設定です"));
+        Assert.Contains(
+            harness.ToastService.toasts,
+            toast => toast.Msg == MessageCatalog.getMsg("PhotoScanner.folderUnconfigured"));
         Assert.Contains(harness.ToastService.toasts, toast => toast.Msg.Contains("類似画像の解析が完了しました"));
-        Assert.Contains(harness.ToastService.toasts, toast => toast.Msg.Contains("broken"));
+        Assert.Contains(
+            harness.ToastService.toasts,
+            toast => toast.Msg == MessageCatalog.getMsg("PhashService.failed"));
     }
 
     /// <summary>
@@ -135,6 +141,7 @@ public sealed class ShellViewModelBehaviorTests
         {
             themeMode = ThemeMode.dark,
         });
+        await harness.ViewModel.handleOpenWorldOnPostPreference(true);
         harness.ViewModel.galleryViewModel.filtersState.GroupingMode = GroupingMode.world;
         await harness.ViewModel.handleSetViewMode(ViewMode.gallery);
         await harness.ViewModel.handleToggleViewMode();
@@ -160,7 +167,8 @@ public sealed class ShellViewModelBehaviorTests
     /// フォルダ変更・リセット関連の保留状態と、executeResetFolder の永続化を確認する。
     ///
     /// フォルダ変更はユーザー確認を挟むため、promptFolderChange は「どのスロットをどのパスに変えるか」だけを保持する。
-    /// 一方 executeResetFolder は DB キャッシュを削除し、設定ファイル側のパスも空にする。
+    /// 一方 executeResetFolder は設定ファイル側のパスを空にして整理要求を保存してから、
+    /// DB キャッシュを削除して整理要求を解除する。
     /// ここでは secondary が残っていても primary リセットだけで後続スキャンを起動しないことを検証する。
     /// </summary>
     [Fact]
@@ -200,6 +208,7 @@ public sealed class ShellViewModelBehaviorTests
         Assert.Null(harness.ViewModel.PendingResetRequest);
         Assert.Equal("", saved.PhotoFolderPath);
         Assert.Equal(secondaryFolder, saved.SecondaryPhotoFolderPath);
+        Assert.Null(saved.PendingFolderCleanup);
         Assert.Equal("", harness.ViewModel.PhotoFolderPath);
         Assert.Equal("idle", harness.ViewModel.ScanStatus);
         Assert.Null(deletedPhoto);
@@ -266,7 +275,9 @@ public sealed class ShellViewModelBehaviorTests
         Assert.Empty(photoTags);
         Assert.Empty(harness.ViewModel.galleryViewModel.filtersState.tagFilters);
         Assert.DoesNotContain("night", harness.ViewModel.galleryViewModel.filtersState.TagFilterCounts.Keys);
-        Assert.Contains(harness.ToastService.toasts, toast => toast.Msg.Contains("タグを削除しました"));
+        Assert.Contains(
+            harness.ToastService.toasts,
+            toast => toast.Msg == MessageCatalog.getMsg("TagMasterViewModel.tagDeleted"));
     }
 
     /// <summary>
@@ -299,9 +310,9 @@ public sealed class ShellViewModelBehaviorTests
     }
 
     /// <summary>
-    /// applyFolderChange が保留中スロットの DB キャッシュを削除し、設定保存・再読込・ギャラリー再取得を行うことを確認する。
+    /// applyFolderChange が保留中スロットの設定を先に保存し、DB キャッシュ整理・再読込・ギャラリー再取得を行うことを確認する。
     ///
-    /// フォルダ変更の確定時は、古いスロットの写真キャッシュを消してから新しいパスを設定へ保存する。
+    /// フォルダ変更の確定時は、新しいパスと再実行可能な整理要求を保存してから古いスロットを消す。
     /// 空の一時フォルダを新しい写真フォルダとして使い、既存DB行が削除され、Shell の PhotoFolderPath が
     /// 新パスへ更新されることを検証する。
     /// </summary>
@@ -311,7 +322,8 @@ public sealed class ShellViewModelBehaviorTests
         await using var harness = ShellTestHarness.Create();
         var newFolder = Path.Combine(harness.TempDir, "new-photos");
         Directory.CreateDirectory(newFolder);
-        harness.ViewModel.PhotoFolderPath = "F:/old-primary";
+        harness.Config.SaveSetting(new AlpheratzSetting { PhotoFolderPath = "F:/old-primary" });
+        await harness.ViewModel.refreshSettings();
         harness.ViewModel.PendingFolderSlot = 1;
         harness.ViewModel.PendingFolderPath = newFolder;
         await harness.Db.UpsertPhotoAsync(new PhotoUpsertData
@@ -322,16 +334,106 @@ public sealed class ShellViewModelBehaviorTests
             SourceSlot = 1,
         });
 
-        await harness.ViewModel.applyFolderChange(newFolder);
+        await harness.ViewModel.applyFolderChange(1, newFolder);
         var saved = harness.Config.LoadSetting();
         var deletedPhoto = await harness.Db.GetPhotoRecordAsync("/slot1/a.jpg");
 
         Assert.False(harness.ViewModel.IsApplyingFolderChange);
         Assert.Null(harness.ViewModel.PendingFolderPath);
         Assert.Equal(newFolder, saved.PhotoFolderPath);
+        Assert.Null(saved.PendingFolderCleanup);
         Assert.Equal(newFolder, harness.ViewModel.PhotoFolderPath);
         Assert.Null(deletedPhoto);
-        Assert.Contains(harness.ToastService.toasts, toast => toast.Msg.Contains("写真フォルダを更新しました"));
+        Assert.Contains(
+            harness.ToastService.toasts,
+            toast => toast.Msg == MessageCatalog.getMsg("ShellViewModel.folderUpdated"));
+    }
+
+    /// <summary>同じ実フォルダを別表記で再選択しても、写真メタデータをリセットしないことを確認する。</summary>
+    [Fact]
+    public async Task ApplyFolderChange_SameFolderIsNoOp()
+    {
+        await using var harness = ShellTestHarness.Create();
+        var photoFolder = Path.Combine(harness.TempDir, "same-photos");
+        Directory.CreateDirectory(photoFolder);
+        harness.Config.SaveSetting(new AlpheratzSetting { PhotoFolderPath = photoFolder });
+        await harness.ViewModel.refreshSettings();
+        harness.ViewModel.PendingFolderSlot = 1;
+        harness.ViewModel.PendingFolderPath = Path.Combine(photoFolder, ".");
+        await harness.Db.UpsertPhotoAsync(new PhotoUpsertData
+        {
+            PhotoPath = "/slot1/keep.jpg",
+            PhotoFilename = "keep.jpg",
+            Timestamp = "2026-06-05 10:00:00",
+            SourceSlot = 1,
+        });
+
+        await harness.ViewModel.applyFolderChange(1, Path.Combine(photoFolder, "."));
+
+        Assert.NotNull(await harness.Db.GetPhotoRecordAsync("/slot1/keep.jpg"));
+        Assert.Equal(photoFolder, harness.Config.LoadSetting().PhotoFolderPath);
+        Assert.Null(harness.Config.LoadSetting().PendingFolderCleanup);
+        Assert.Null(harness.ViewModel.PendingFolderPath);
+    }
+
+    /// <summary>前回終了時に残ったフォルダ整理要求を、ギャラリー初期化前に再実行することを確認する。</summary>
+    [Fact]
+    public async Task Initialize_ResumesPendingFolderCleanupBeforeLoadingGallery()
+    {
+        await using var harness = ShellTestHarness.Create();
+        harness.Config.SaveSetting(new AlpheratzSetting
+        {
+            PhotoFolderPath = "",
+            PendingFolderCleanup = new PendingFolderCleanupSetting
+            {
+                OperationId = "pending-operation",
+                SourceSlot = 1,
+                CommittedPath = "",
+            },
+        });
+        await harness.Db.UpsertPhotoAsync(new PhotoUpsertData
+        {
+            PhotoPath = "/slot1/stale.jpg",
+            PhotoFilename = "stale.jpg",
+            Timestamp = "2026-06-05 10:00:00",
+            SourceSlot = 1,
+        });
+
+        await harness.ViewModel.initialize();
+
+        Assert.Null(await harness.Db.GetPhotoRecordAsync("/slot1/stale.jpg"));
+        Assert.Null(harness.Config.LoadSetting().PendingFolderCleanup);
+        Assert.Empty(harness.ViewModel.galleryViewModel.photosState.photos);
+    }
+
+    /// <summary>整理マーカー保存後に設定パスが変わっていても、承認済み slot の旧DB行を残さないことを確認する。</summary>
+    [Fact]
+    public async Task Initialize_StaleFolderCleanupMarkerStillResetsApprovedSlot()
+    {
+        await using var harness = ShellTestHarness.Create();
+        harness.Config.SaveSetting(new AlpheratzSetting
+        {
+            PhotoFolderPath = string.Empty,
+            PendingFolderCleanup = new PendingFolderCleanupSetting
+            {
+                OperationId = "stale-operation",
+                SourceSlot = 1,
+                CommittedPath = "F:/path-saved-before-manual-edit",
+            },
+        });
+        await harness.Db.UpsertPhotoAsync(new PhotoUpsertData
+        {
+            PhotoPath = "/slot1/stale.jpg",
+            PhotoFilename = "stale.jpg",
+            Timestamp = "2026-06-05 10:00:00",
+            SourceSlot = 1,
+        });
+
+        await harness.ViewModel.initialize();
+
+        Assert.Null(await harness.Db.GetPhotoRecordAsync("/slot1/stale.jpg"));
+        Assert.Null(harness.Config.LoadSetting().PendingFolderCleanup);
+        Assert.Empty(harness.ViewModel.galleryViewModel.photosState.photos);
     }
 
     /// <summary>

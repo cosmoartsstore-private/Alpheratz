@@ -75,8 +75,13 @@ public sealed partial class GalleryMasonryView : UserControl
         public int LoadFailureCount;
         public bool IsLoaded;
         public bool IsLoading;
+        public BitmapImage? CallbackBitmap;
+        public RoutedEventHandler? BitmapOpenedHandler;
+        public ExceptionRoutedEventHandler? BitmapFailedHandler;
         public DispatcherQueueTimer? PendingReleaseTimer;
+        public Windows.Foundation.TypedEventHandler<DispatcherQueueTimer, object>? PendingReleaseTickHandler;
         public DispatcherQueueTimer? PendingRetryTimer;
+        public Windows.Foundation.TypedEventHandler<DispatcherQueueTimer, object>? PendingRetryTickHandler;
         public System.ComponentModel.PropertyChangedEventHandler? PhotoSubscription;
         // 画像ロードの状態変化を、カード生成時に作ったローカル UI 要素へ反映する。
         public Action? PrepareImageLoad;
@@ -97,6 +102,10 @@ public sealed partial class GalleryMasonryView : UserControl
     private readonly HashSet<int> visibleSet = [];
     private readonly List<PhotoThumbnailItem> thumbsNeededBuf = [];
     private readonly List<int> toRemoveBuf = [];
+    private bool isControlLoaded;
+    private bool isPhotosSubscribed;
+    private bool isThemeSubscribed;
+    private int lifecycleVersion;
 
     /// <summary>カードタップ時のコールバック。GalleryPage が PhotoModal への遷移を設定する。</summary>
     public Action<PhotoThumbnailItem>? OnPhotoTapped { get; set; }
@@ -122,12 +131,57 @@ public sealed partial class GalleryMasonryView : UserControl
             AppLogger.Error($"GalleryMasonryView.ctor: InitializeComponent failed: {ex}");
             throw;
         }
-        this.SizeChanged += (_, _) => Rebuild();
-        // テーマ切替時に既存カードの Border (code-behind で ThemeHelper.Brush から代入済み)
-        // を現在テーマで再着色する。カード自体は仮想化されていて、表示中のものはレイアウトを
-        // 維持したまま色だけ更新される。
-        ActualThemeChanged += OnActualThemeChanged;
-        Unloaded += (_, _) => ActualThemeChanged -= OnActualThemeChanged;
+        SizeChanged += Control_SizeChanged;
+        Loaded += Control_Loaded;
+        Unloaded += Control_Unloaded;
+    }
+
+    // 表示ツリーに接続されている間だけ、外部コレクションとテーマ変更を購読する。
+    private void Control_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (isControlLoaded) return;
+        isControlLoaded = true;
+        lifecycleVersion++;
+        SubscribeToPhotos();
+        if (!isThemeSubscribed)
+        {
+            ActualThemeChanged += OnActualThemeChanged;
+            isThemeSubscribed = true;
+        }
+        Rebuild();
+    }
+
+    // アンロード後に画像イベントやタイマーがカードを保持し続けないよう、全資源を解放する。
+    private void Control_Unloaded(object sender, RoutedEventArgs e)
+    {
+        if (!isControlLoaded) return;
+        isControlLoaded = false;
+        lifecycleVersion++;
+        updateVisibilityPending = false;
+        UnsubscribeFromPhotos();
+        if (isThemeSubscribed)
+        {
+            ActualThemeChanged -= OnActualThemeChanged;
+            isThemeSubscribed = false;
+        }
+        requestedThumbs.Clear();
+        ClearActiveCards();
+    }
+
+    private void Control_SizeChanged(object sender, SizeChangedEventArgs e) => Rebuild();
+
+    private void SubscribeToPhotos()
+    {
+        if (photos is null || isPhotosSubscribed) return;
+        photos.CollectionChanged += OnPhotosChanged;
+        isPhotosSubscribed = true;
+    }
+
+    private void UnsubscribeFromPhotos()
+    {
+        if (photos is null || !isPhotosSubscribed) return;
+        photos.CollectionChanged -= OnPhotosChanged;
+        isPhotosSubscribed = false;
     }
 
     // テーマ切替時に、既に実体化済みのカード色を現在テーマへ塗り直す。
@@ -157,10 +211,10 @@ public sealed partial class GalleryMasonryView : UserControl
     /// <summary>写真コレクションをバインドし、CollectionChanged を購読する。</summary>
     public void SetPhotos(UiObservableCollection<PhotoThumbnailItem> next)
     {
-        if (photos is not null)
-            photos.CollectionChanged -= OnPhotosChanged;
+        UnsubscribeFromPhotos();
         photos = next;
-        photos.CollectionChanged += OnPhotosChanged;
+        if (isControlLoaded)
+            SubscribeToPhotos();
         requestedThumbs.Clear();
         Rebuild();
     }
@@ -220,38 +274,95 @@ public sealed partial class GalleryMasonryView : UserControl
     // 連続スクロール中の可視更新を DispatcherQueue 上で 1 回にまとめる。
     private void RequestUpdateVisibility()
     {
-        if (updateVisibilityPending) return;
+        if (!isControlLoaded || updateVisibilityPending) return;
         updateVisibilityPending = true;
-        dispatcherQueue.TryEnqueue(() =>
+        var requestedLifecycleVersion = lifecycleVersion;
+        if (!dispatcherQueue.TryEnqueue(() =>
         {
             updateVisibilityPending = false;
+            if (!isControlLoaded || requestedLifecycleVersion != lifecycleVersion)
+                return;
             UpdateVisibility();
-        });
+        }))
+        {
+            updateVisibilityPending = false;
+        }
     }
 
     /// <summary>利用可能な幅から内部幅と実効カラム数を算出する。</summary>
     private (double inner, int effectiveCols) ComputeColumns()
         => GalleryMasonryViewportLogic.ComputeColumns(this.ActualWidth, ScrollHost.ActualWidth, requestedColumnCount);
 
+    private static void StopReleaseTimer(CardEntry entry)
+    {
+        var timer = entry.PendingReleaseTimer;
+        if (timer is not null)
+        {
+            if (entry.PendingReleaseTickHandler is not null)
+                timer.Tick -= entry.PendingReleaseTickHandler;
+            timer.Stop();
+        }
+        entry.PendingReleaseTimer = null;
+        entry.PendingReleaseTickHandler = null;
+    }
+
+    private static void StopRetryTimer(CardEntry entry)
+    {
+        var timer = entry.PendingRetryTimer;
+        if (timer is not null)
+        {
+            if (entry.PendingRetryTickHandler is not null)
+                timer.Tick -= entry.PendingRetryTickHandler;
+            timer.Stop();
+        }
+        entry.PendingRetryTimer = null;
+        entry.PendingRetryTickHandler = null;
+    }
+
+    // 画像ソースと、その完了通知を待つイベント購読を同じ世代として破棄する。
+    private static void ReleaseImage(CardEntry entry)
+    {
+        StopRetryTimer(entry);
+        DetachBitmapHandlers(entry);
+        entry.LoadVersion++;
+        entry.Image.Source = null;
+        entry.CurrentBitmap = null;
+        entry.LoadedPath = string.Empty;
+        entry.LoadingPath = string.Empty;
+        entry.IsLoaded = false;
+        entry.IsLoading = false;
+        entry.StopShimmer?.Invoke();
+    }
+
+    private static void ReleaseCard(CardEntry entry)
+    {
+        StopReleaseTimer(entry);
+        ReleaseImage(entry);
+        if (entry.PhotoSubscription is not null)
+        {
+            entry.Photo.PropertyChanged -= entry.PhotoSubscription;
+            entry.PhotoSubscription = null;
+        }
+    }
+
+    private void ClearActiveCards()
+    {
+        foreach (var entry in activeCards.Values)
+            ReleaseCard(entry);
+        activeCards.Clear();
+        MasonryCanvas.Children.Clear();
+        visibleSet.Clear();
+        thumbsNeededBuf.Clear();
+        toRemoveBuf.Clear();
+    }
+
     /// <summary>全カードを破棄してレイアウトをゼロから再構築する。</summary>
     private void Rebuild()
     {
         try
         {
-            foreach (var (_, entry) in activeCards)
-            {
-                entry.PendingReleaseTimer?.Stop();
-                entry.PendingReleaseTimer = null;
-                entry.PendingRetryTimer?.Stop();
-                entry.PendingRetryTimer = null;
-                if (entry.PhotoSubscription is not null)
-                {
-                    entry.Photo.PropertyChanged -= entry.PhotoSubscription;
-                    entry.PhotoSubscription = null;
-                }
-            }
-            activeCards.Clear();
-            MasonryCanvas.Children.Clear();
+            if (!isControlLoaded) return;
+            ClearActiveCards();
 
             var (inner, effectiveCols) = ComputeColumns();
 
@@ -273,7 +384,12 @@ public sealed partial class GalleryMasonryView : UserControl
             MasonryCanvas.Height = canvas.Height;
 
             BuildSortedIndex();
-            dispatcherQueue.TryEnqueue(UpdateVisibility);
+            var requestedLifecycleVersion = lifecycleVersion;
+            dispatcherQueue.TryEnqueue(() =>
+            {
+                if (isControlLoaded && requestedLifecycleVersion == lifecycleVersion)
+                    UpdateVisibility();
+            });
         }
         catch (Exception ex)
         {
@@ -290,7 +406,7 @@ public sealed partial class GalleryMasonryView : UserControl
     {
         try
         {
-            if (photos is null) return;
+            if (!isControlLoaded || photos is null) return;
             var (inner, effectiveCols) = ComputeColumns();
             if (inner <= 0) return;
 
@@ -302,7 +418,12 @@ public sealed partial class GalleryMasonryView : UserControl
             MasonryCanvas.Height = canvas.Height;
 
             BuildSortedIndex();
-            dispatcherQueue.TryEnqueue(UpdateVisibility);
+            var requestedLifecycleVersion = lifecycleVersion;
+            dispatcherQueue.TryEnqueue(() =>
+            {
+                if (isControlLoaded && requestedLifecycleVersion == lifecycleVersion)
+                    UpdateVisibility();
+            });
         }
         catch (Exception ex)
         {
@@ -329,7 +450,11 @@ public sealed partial class GalleryMasonryView : UserControl
     {
         try
         {
-            if (currentLayout is null || layoutPhotos is null || sortedByTopIndices is null || currentLayout.Items.Count == 0)
+            if (!isControlLoaded
+                || currentLayout is null
+                || layoutPhotos is null
+                || sortedByTopIndices is null
+                || currentLayout.Items.Count == 0)
                 return;
 
             var top = ScrollHost.VerticalOffset;
@@ -359,8 +484,7 @@ public sealed partial class GalleryMasonryView : UserControl
                     MasonryCanvas.Children.Add(card.Container);
                 }
 
-                card.PendingReleaseTimer?.Stop();
-                card.PendingReleaseTimer = null;
+                StopReleaseTimer(card);
                 if (!card.IsLoaded && ShouldAttemptImageLoad(card, card.Photo.EffectiveSourcePath ?? string.Empty))
                     LoadImage(card);
 
@@ -382,17 +506,7 @@ public sealed partial class GalleryMasonryView : UserControl
                 var item = items[index];
                 if (GalleryMasonryViewportLogic.IsOutsideReleaseRange(item, top, ScrollHost.ViewportHeight, ReleaseMarginPx))
                 {
-                    entry.PendingReleaseTimer?.Stop();
-                    entry.PendingReleaseTimer = null;
-                    entry.PendingRetryTimer?.Stop();
-                    entry.PendingRetryTimer = null;
-                    if (entry.PhotoSubscription is not null)
-                    {
-                        entry.Photo.PropertyChanged -= entry.PhotoSubscription;
-                        entry.PhotoSubscription = null;
-                    }
-                    entry.Image.Source = null;
-                    entry.CurrentBitmap = null;
+                    ReleaseCard(entry);
                     MasonryCanvas.Children.Remove(entry.Container);
                     toRemoveBuf.Add(index);
                 }
@@ -439,8 +553,8 @@ public sealed partial class GalleryMasonryView : UserControl
         if (entry.IsLoading && SamePath(entry.LoadingPath, request.SourcePath))
             return;
 
-        entry.PendingRetryTimer?.Stop();
-        entry.PendingRetryTimer = null;
+        StopRetryTimer(entry);
+        DetachBitmapHandlers(entry);
 
         if (!SamePath(entry.FailedPath, request.SourcePath))
         {
@@ -470,19 +584,22 @@ public sealed partial class GalleryMasonryView : UserControl
             ExceptionRoutedEventHandler? failedHandler = null;
             openedHandler = (_, _) =>
             {
-                DetachBitmapHandlers(bmp, openedHandler, failedHandler);
+                DetachBitmapHandlers(entry, bmp, openedHandler, failedHandler);
                 if (!IsCurrentImageLoad(entry, bmp, request.SourcePath, loadVersion))
                     return;
                 HandleImageLoadOpened(entry, request.SourcePath);
             };
             failedHandler = (_, args) =>
             {
-                DetachBitmapHandlers(bmp, openedHandler, failedHandler);
+                DetachBitmapHandlers(entry, bmp, openedHandler, failedHandler);
                 if (!IsCurrentImageLoad(entry, bmp, request.SourcePath, loadVersion))
                     return;
                 AppLogger.Warn($"GalleryMasonryView.ImageFailed: {args.ErrorMessage}");
                 HandleImageLoadFailure(entry, request.SourcePath);
             };
+            entry.CallbackBitmap = bmp;
+            entry.BitmapOpenedHandler = openedHandler;
+            entry.BitmapFailedHandler = failedHandler;
             bmp.ImageOpened += openedHandler;
             bmp.ImageFailed += failedHandler;
             entry.Image.Source = bmp;
@@ -516,7 +633,15 @@ public sealed partial class GalleryMasonryView : UserControl
                 path,
                 entry.LoadingPath);
 
+    private static void DetachBitmapHandlers(CardEntry entry)
+    {
+        if (entry.CallbackBitmap is not { } bitmap)
+            return;
+        DetachBitmapHandlers(entry, bitmap, entry.BitmapOpenedHandler, entry.BitmapFailedHandler);
+    }
+
     private static void DetachBitmapHandlers(
+        CardEntry entry,
         BitmapImage bitmap,
         RoutedEventHandler? openedHandler,
         ExceptionRoutedEventHandler? failedHandler)
@@ -525,12 +650,17 @@ public sealed partial class GalleryMasonryView : UserControl
             bitmap.ImageOpened -= openedHandler;
         if (failedHandler is not null)
             bitmap.ImageFailed -= failedHandler;
+        if (ReferenceEquals(entry.CallbackBitmap, bitmap))
+        {
+            entry.CallbackBitmap = null;
+            entry.BitmapOpenedHandler = null;
+            entry.BitmapFailedHandler = null;
+        }
     }
 
     private void HandleImageLoadOpened(CardEntry entry, string openedPath)
     {
-        entry.PendingRetryTimer?.Stop();
-        entry.PendingRetryTimer = null;
+        StopRetryTimer(entry);
         entry.LoadedPath = openedPath;
         entry.FailedPath = string.Empty;
         entry.LoadFailureCount = 0;
@@ -544,12 +674,7 @@ public sealed partial class GalleryMasonryView : UserControl
     /// <summary>ImageFailed / BitmapImage 生成失敗を同じカード状態へ反映する。</summary>
     private void HandleImageLoadFailure(CardEntry entry, string failedPath)
     {
-        entry.PendingRetryTimer?.Stop();
-        entry.PendingRetryTimer = null;
-        entry.Image.Source = null;
-        entry.LoadedPath = string.Empty;
-        entry.IsLoaded = false;
-        entry.IsLoading = false;
+        ReleaseImage(entry);
         if (string.IsNullOrEmpty(failedPath))
         {
             entry.ShowImageError?.Invoke();
@@ -569,6 +694,8 @@ public sealed partial class GalleryMasonryView : UserControl
     /// <summary>一時的なデコード失敗に備えて、表示範囲内のカードだけ短い遅延後に再読込する。</summary>
     private void ScheduleImageRetry(CardEntry entry, string failedPath)
     {
+        if (!isControlLoaded)
+            return;
         var insideOverscan = GalleryMasonryViewportLogic.IsInsideOverscan(
             Canvas.GetTop(entry.Container),
             entry.Container.Height,
@@ -581,46 +708,84 @@ public sealed partial class GalleryMasonryView : UserControl
         var timer = dispatcherQueue.CreateTimer();
         timer.Interval = TimeSpan.FromMilliseconds(GalleryMasonryViewportLogic.ImageLoadRetryDelayMilliseconds);
         timer.IsRepeating = false;
-        timer.Tick += (_, _) =>
+        Windows.Foundation.TypedEventHandler<DispatcherQueueTimer, object>? tickHandler = null;
+        tickHandler = (_, _) =>
         {
-            timer.Stop();
-            if (ReferenceEquals(entry.PendingRetryTimer, timer))
-                entry.PendingRetryTimer = null;
-            if (!activeCards.TryGetValue(entry.Index, out var current) || !ReferenceEquals(current, entry))
+            if (!ReferenceEquals(entry.PendingRetryTimer, timer))
+            {
+                if (tickHandler is not null)
+                    timer.Tick -= tickHandler;
+                timer.Stop();
+                return;
+            }
+            StopRetryTimer(entry);
+            if (!isControlLoaded
+                || !activeCards.TryGetValue(entry.Index, out var current)
+                || !ReferenceEquals(current, entry))
                 return;
             var currentPath = entry.Photo.EffectiveSourcePath ?? string.Empty;
             if (!SamePath(entry.FailedPath, failedPath) || !SamePath(currentPath, failedPath))
                 return;
+            var stillInsideOverscan = GalleryMasonryViewportLogic.IsInsideOverscan(
+                Canvas.GetTop(entry.Container),
+                entry.Container.Height,
+                ScrollHost.VerticalOffset,
+                ScrollHost.ViewportHeight,
+                OverscanPx);
+            if (!stillInsideOverscan)
+                return;
             LoadImage(entry);
         };
+        timer.Tick += tickHandler;
         entry.PendingRetryTimer = timer;
+        entry.PendingRetryTickHandler = tickHandler;
         timer.Start();
     }
 
     /// <summary>一定時間後に画像の Source を null にしてメモリを解放するタイマーを設定する。</summary>
     private void ScheduleRelease(CardEntry entry)
     {
+        StopReleaseTimer(entry);
         var timer = dispatcherQueue.CreateTimer();
         timer.Interval = TimeSpan.FromMilliseconds(ReleaseDelayMs);
         timer.IsRepeating = false;
-        timer.Tick += (_, _) =>
+        Windows.Foundation.TypedEventHandler<DispatcherQueueTimer, object>? tickHandler = null;
+        tickHandler = (_, _) =>
         {
+            if (!ReferenceEquals(entry.PendingReleaseTimer, timer))
+            {
+                if (tickHandler is not null)
+                    timer.Tick -= tickHandler;
+                timer.Stop();
+                return;
+            }
+            StopReleaseTimer(entry);
+            if (!isControlLoaded
+                || !activeCards.TryGetValue(entry.Index, out var current)
+                || !ReferenceEquals(current, entry))
+                return;
+
+            var returnedToOverscan = GalleryMasonryViewportLogic.IsInsideOverscan(
+                Canvas.GetTop(entry.Container),
+                entry.Container.Height,
+                ScrollHost.VerticalOffset,
+                ScrollHost.ViewportHeight,
+                OverscanPx);
+            if (returnedToOverscan)
+                return;
             try
             {
-                entry.Image.Source = null;
-                entry.CurrentBitmap = null;
-                entry.LoadedPath = string.Empty;
-                entry.IsLoaded = false;
-                entry.IsLoading = false;
+                ReleaseImage(entry);
             }
             catch (Exception ex)
             {
                 AppLogger.Error($"GalleryMasonryView.ReleaseTick: threw: {ex}");
             }
-            entry.PendingReleaseTimer = null;
         };
-        timer.Start();
+        timer.Tick += tickHandler;
         entry.PendingReleaseTimer = timer;
+        entry.PendingReleaseTickHandler = tickHandler;
+        timer.Start();
     }
 
     /// <summary>
@@ -712,8 +877,6 @@ public sealed partial class GalleryMasonryView : UserControl
         };
         cardGrid.Children.Add(errorIcon);
 
-        CardEntry? entryRef = null;
-
         // 画像ロードの開始・終了・失敗を、同じカードのプレースホルダへ反映する。
         void StartShimmer()
         {
@@ -754,8 +917,7 @@ public sealed partial class GalleryMasonryView : UserControl
         {
             try
             {
-                if (entryRef?.CurrentBitmap is not null)
-                    StopShimmer();
+                StopShimmer();
                 imageVisual.StopAnimation("Opacity");
                 imageVisual.Opacity = 0f;
                 shimmerBase.Background = ThemeHelper.Brush(this, "ASurfaceSoft");
@@ -778,34 +940,6 @@ public sealed partial class GalleryMasonryView : UserControl
             }
             catch (Exception ex) { AppLogger.Error($"GalleryMasonryView.ShowImageOpened: threw: {ex}"); }
         }
-
-        // 画像読み込み完了時にフェードインし、プレースホルダを止める。
-        image.ImageOpened += (_, _) =>
-        {
-            if (entryRef is { } openedEntry && openedEntry.CurrentBitmap is null)
-            {
-                openedEntry.PendingRetryTimer?.Stop();
-                openedEntry.PendingRetryTimer = null;
-                openedEntry.LoadedPath = openedEntry.LoadingPath;
-                openedEntry.FailedPath = string.Empty;
-                openedEntry.LoadFailureCount = 0;
-                openedEntry.IsLoaded = true;
-                if (openedEntry.ErrorIcon is not null)
-                    openedEntry.ErrorIcon.Visibility = Visibility.Collapsed;
-            }
-
-            // 画像を短時間で表示状態へ移す。
-            var fadeIn = compositor.CreateScalarKeyFrameAnimation();
-            var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.25f, 0.1f), new Vector2(0.25f, 1f));
-            fadeIn.InsertKeyFrame(1f, 1f, easing);
-            fadeIn.Duration = TimeSpan.FromMilliseconds(200);
-            if (entryRef?.CurrentBitmap is null)
-                imageVisual.StartAnimation("Opacity", fadeIn);
-
-            // プレースホルダを隠す。
-            if (entryRef?.CurrentBitmap is null)
-                StopShimmer();
-        };
 
         // ワールド名と撮影時刻の情報表示を画像下部に重ねる。
         var overlayPanel = new StackPanel
@@ -961,8 +1095,6 @@ public sealed partial class GalleryMasonryView : UserControl
             ShowImageError = ShowImageError,
             StopShimmer = StopShimmer,
         };
-        entryRef = entry;
-
         // サムネイル生成完了時に GridThumbPath が更新されるので、自動で画像を差し替える。
         // また IsSelected / IsFavorite の変化に応じて各バッジ表示を切り替える。
         entry.PhotoSubscription = (s, e) =>

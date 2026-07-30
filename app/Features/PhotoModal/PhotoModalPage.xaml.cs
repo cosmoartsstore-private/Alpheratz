@@ -11,22 +11,23 @@ using Alpheratz.Shared.Animations;
 using Alpheratz.Shared.Services;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Features.PhotoModal;
 
 /// <summary>
 /// 写真詳細を全画面モーダルで表示する Page。
-/// ShellPage によってインスタンスがキャッシュ・再利用されるため、UpdateViewModel で
-/// 中身を差し替えて生成コストを抑える。
+/// テーマリソースを確実に更新するため、ShellPage が表示ごとに新しいインスタンスを生成する。
 /// </summary>
 [ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public sealed partial class PhotoModalPage : Page
 {
-    private PhotoModalViewModel viewModel;
+    private readonly PhotoModalViewModel viewModel;
     private UiObservableCollection<string>? masterTags;
     private PhotoThumbnailItem? subscribedPhoto;
     private Button? activePhotoEdgeButton;
@@ -42,10 +43,10 @@ public sealed partial class PhotoModalPage : Page
     public Action? OnGoNext { get; set; }
     /// <summary>ワールドリンクを既定ブラウザで開く。</summary>
     public Func<Task>? OnOpenWorld { get; set; }
-    /// <summary>エクスプローラで写真フォルダを開く。</summary>
+    /// <summary>エクスプローラーで写真ファイルの場所を開く。</summary>
     public Func<Task>? OnOpenExplorer { get; set; }
-    /// <summary>ツイート投稿テンプレートのクリップボードコピー＋ X 起動。</summary>
-    public Func<Task>? OnTweet { get; set; }
+    /// <summary>投稿テンプレートに基づく画像コピーと X 投稿画面の起動。</summary>
+    public Func<Task<bool>>? OnTweet { get; set; }
     /// <summary>お気に入りフラグの即時トグル。</summary>
     public Func<Task>? OnToggleFavorite { get; set; }
     /// <summary>タグ追加 (photoPath, tag)。</summary>
@@ -93,23 +94,6 @@ public sealed partial class PhotoModalPage : Page
         viewModel.state.PropertyChanged += OnStatePropertyChanged;
 
         AppLogger.Trace("PhotoModalPage.ctor: exit");
-    }
-
-    /// <summary>モーダル表示中に ViewModel を差し替え、状態変更の購読も付け替える。</summary>
-    public void UpdateViewModel(PhotoModalViewModel next)
-    {
-        viewModel.state.PropertyChanged -= OnStatePropertyChanged;
-        detachSelectedPhotoSubscription();
-        viewModel = next;
-        DataContext = next;
-        next.state.PropertyChanged += OnStatePropertyChanged;
-        syncSelectedPhotoSubscription();
-        syncWorldName();
-        syncWorldAction();
-        syncMatchSource();
-        syncEmptyTagNote();
-        syncModalImage();
-        syncPhotoEdgeButtons();
     }
 
     /// <summary>選択写真やタグの変更に合わせてモーダル表示を同期する。</summary>
@@ -376,7 +360,7 @@ public sealed partial class PhotoModalPage : Page
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.OpenWorld_Click: {ex}"); }
     }
 
-    /// <summary>選択写真を Explorer 上で表示する。</summary>
+    /// <summary>選択写真をエクスプローラーで表示する。</summary>
     private async void OpenExplorer_Click(object sender, RoutedEventArgs e)
     {
         try
@@ -394,8 +378,9 @@ public sealed partial class PhotoModalPage : Page
         {
             if (OnTweet is not null)
             {
-                await OnTweet().ConfigureAwait(false);
-                DispatcherQueue?.TryEnqueue(ShowClipboardOverlay);
+                var succeeded = await OnTweet().ConfigureAwait(false);
+                if (succeeded)
+                    DispatcherQueue?.TryEnqueue(ShowClipboardOverlay);
             }
         }
         catch (Exception ex) { AppLogger.Error($"PhotoModalPage.Tweet_Click: {ex}"); }
@@ -507,7 +492,7 @@ public sealed partial class PhotoModalPage : Page
         {
             ExistingTagList.Children.Add(new TextBlock
             {
-                Text = "追加できるタグがありません。",
+                Text = getMsg("PhotoModalPage.noAvailableTags"),
                 Foreground = themeBrush("ATextFaint"),
                 FontSize = 12,
                 FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
@@ -587,6 +572,14 @@ public sealed partial class PhotoModalPage : Page
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
         };
+        AutomationProperties.SetName(
+            button,
+            getMsg(
+                selected
+                    ? "PhotoModalPage.tagChoiceDeselectAutomation"
+                    : "PhotoModalPage.tagChoiceSelectAutomation",
+                ("tag", tag)));
+        AutomationProperties.SetHelpText(button, getMsg("PhotoModalPage.tagChoiceHelp"));
         button.Click += (_, _) =>
         {
             if (!pendingTagSelections.Add(tag))

@@ -6,6 +6,7 @@ using Alpheratz.Services;
 using Alpheratz.Shared.Models;
 using Alpheratz.Shared.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Features.PhotoModal;
 
@@ -57,7 +58,7 @@ public partial class PhotoModalViewModel : UiThreadSafeObservableObject
         catch (Exception err)
         {
             AppLogger.Error($"PhotoModalViewModel.handleOpenWorld: threw: {err}");
-            toastService.addToast($"ワールドページを開けませんでした: {err}", ToastType.error);
+            toastService.addToast(getMsg("PhotoModalViewModel.worldPageOpenFailed"), ToastType.error);
         }
         AppLogger.Trace("PhotoModalViewModel.handleOpenWorld: exit");
     }
@@ -79,7 +80,7 @@ public partial class PhotoModalViewModel : UiThreadSafeObservableObject
         catch (Exception err)
         {
             AppLogger.Error($"PhotoModalViewModel.handleOpenExplorer: threw: {err}");
-            toastService.addToast($"Explorer で表示できませんでした: {err}", ToastType.error);
+            toastService.addToast(getMsg("PhotoModalViewModel.explorerOpenFailed"), ToastType.error);
         }
         AppLogger.Trace("PhotoModalViewModel.handleOpenExplorer: exit");
     }

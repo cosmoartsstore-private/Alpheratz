@@ -51,13 +51,25 @@ public sealed partial class PhotoGridItemsView : UserControl
         // Page アンマウント時に各 Image.Tag に積んだ PropertyChanged 購読を一括解除する。
         // DataContextChanged は recycle 時には必ず呼ばれるが、Page を捨てるパスでは
         // 個別の DataContextChanged(null) が走らずに済むこともあるため、保険として剥がす。
+        Loaded += PhotoGridItemsView_Loaded;
         Unloaded += PhotoGridItemsView_Unloaded;
         // PhotoCardBorderStyle は {ThemeResource} でテーマ追従設計だが、hover/recycle で
         // code-behind が border.Background/BorderBrush に直接代入するため、その瞬間に
         // {ThemeResource} バインディングが local value で上書きされ、以降テーマ切替に
         // 追従しなくなる。テーマ切替時に rest 色を再適用してこれを補正する。
-        ActualThemeChanged += OnActualThemeChanged;
         AppLogger.Trace("PhotoGridItemsView.ctor: exit");
+    }
+
+    // 再ロード時もテーマ変更購読を張り直す。重複を避けるため、追加前に同じハンドラを解除する。
+    private void PhotoGridItemsView_Loaded(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            ActualThemeChanged -= OnActualThemeChanged;
+            ActualThemeChanged += OnActualThemeChanged;
+            ResubscribeVisibleCards(PhotoItems);
+        }
+        catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.PhotoGridItemsView_Loaded: {ex}"); }
     }
 
     // テーマ切替で残ったカードの local value を現在テーマの色に戻す。
@@ -95,8 +107,9 @@ public sealed partial class PhotoGridItemsView : UserControl
     {
         try
         {
-            UnsubscribeAllCards(PhotoItems);
             ActualThemeChanged -= OnActualThemeChanged;
+            DetachInternalScrollViewer();
+            UnsubscribeAllCards(PhotoItems);
         }
         catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.PhotoGridItemsView_Unloaded: {ex}"); }
     }
@@ -106,7 +119,7 @@ public sealed partial class PhotoGridItemsView : UserControl
     /// PhotoThumbnailItem.PropertyChanged に残ったハンドラを切ることで、Page 破棄後も
     /// Photo オブジェクトが View 側からの参照で GC されずに残るのを防ぐ。
     /// </summary>
-    private static void UnsubscribeAllCards(DependencyObject root)
+    private void UnsubscribeAllCards(DependencyObject root)
     {
         var stack = new Stack<DependencyObject>();
         stack.Push(root);
@@ -117,7 +130,26 @@ public sealed partial class PhotoGridItemsView : UserControl
             {
                 sub.Photo.PropertyChanged -= sub.Handler;
                 img.Tag = null;
+                StopShimmer(img);
                 img.Source = null;
+            }
+            var count = VisualTreeHelper.GetChildrenCount(node);
+            for (int i = 0; i < count; i++) stack.Push(VisualTreeHelper.GetChild(node, i));
+        }
+    }
+
+    /// <summary>再ロード後も表示済みカードの画像更新通知を受け取れるよう購読を復元する。</summary>
+    private void ResubscribeVisibleCards(DependencyObject root)
+    {
+        var stack = new Stack<DependencyObject>();
+        stack.Push(root);
+        while (stack.Count > 0)
+        {
+            var node = stack.Pop();
+            if (node is Image { Name: "ThumbImage", Tag: null, DataContext: PhotoGridItem item } img)
+            {
+                try { WireThumbImage(img, item); }
+                catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.ResubscribeVisibleCards: {ex}"); }
             }
             var count = VisualTreeHelper.GetChildrenCount(node);
             for (int i = 0; i < count; i++) stack.Push(VisualTreeHelper.GetChild(node, i));
@@ -129,13 +161,30 @@ public sealed partial class PhotoGridItemsView : UserControl
     {
         try
         {
+            DetachInternalScrollViewer();
             var sv = FindChildScrollViewer(PhotoItems);
             if (sv is null) return;
-            internalScrollViewer = sv;
-            sv.ViewChanged += InternalScrollViewer_ViewChanged;
-            sv.PointerWheelChanged += InternalScrollViewer_PointerWheelChanged;
+            AttachInternalScrollViewer(sv);
         }
         catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.PhotoItems_Loaded: {ex}"); }
+    }
+
+    /// <summary>内部 ScrollViewer の通知を解除し、VisualTree への参照を解放する。</summary>
+    private void DetachInternalScrollViewer()
+    {
+        if (internalScrollViewer is null) return;
+        internalScrollViewer.ViewChanged -= InternalScrollViewer_ViewChanged;
+        internalScrollViewer.PointerWheelChanged -= InternalScrollViewer_PointerWheelChanged;
+        internalScrollViewer = null;
+    }
+
+    /// <summary>内部 ScrollViewer の通知を重複なく接続する。</summary>
+    private void AttachInternalScrollViewer(ScrollViewer scrollViewer)
+    {
+        DetachInternalScrollViewer();
+        internalScrollViewer = scrollViewer;
+        scrollViewer.ViewChanged += InternalScrollViewer_ViewChanged;
+        scrollViewer.PointerWheelChanged += InternalScrollViewer_PointerWheelChanged;
     }
 
     // 指定ノード配下から最初に見つかる ScrollViewer を返す。
@@ -161,7 +210,9 @@ public sealed partial class PhotoGridItemsView : UserControl
         get
         {
             if (internalScrollViewer is not null) return internalScrollViewer;
-            internalScrollViewer = FindChildScrollViewer(PhotoItems);
+            var scrollViewer = FindChildScrollViewer(PhotoItems);
+            if (scrollViewer is not null)
+                AttachInternalScrollViewer(scrollViewer);
             return internalScrollViewer;
         }
     }
@@ -408,28 +459,39 @@ public sealed partial class PhotoGridItemsView : UserControl
                 return;
             }
 
-            // recycle で別の写真が入るたびにロード演出を初期状態へ戻す。
-            // (画像 Opacity を 0 に、shimmer を再開、エラーアイコンを隠す)
-            ResetCardLoadVisuals(img);
-            SetImageSource(img, item.Photo);
-
-            System.ComponentModel.PropertyChangedEventHandler handler = (s, e) =>
-            {
-                if (PhotoGridItemsLayoutLogic.IsImageSourceProperty(e.PropertyName))
-                {
-                    DispatcherQueue?.TryEnqueue(() =>
-                    {
-                        // サムネイル生成完了でパスが差し替わった場合も再ロード扱いにし、
-                        // shimmer→フェードインの演出を改めて適用する。
-                        ResetCardLoadVisuals(img);
-                        SetImageSource(img, item.Photo);
-                    });
-                }
-            };
-            item.Photo.PropertyChanged += handler;
-            img.Tag = new GridImageSubscription(item.Photo, handler);
+            WireThumbImage(img, item);
         }
         catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.ThumbImage_DataContextChanged: {ex}"); }
+    }
+
+    /// <summary>画像を現在の写真へ接続し、サムネイルパス変更時の再読込を購読する。</summary>
+    private void WireThumbImage(Image img, PhotoGridItem item)
+    {
+        ResetCardLoadVisuals(img);
+        SetImageSource(img, item.Photo);
+
+        System.ComponentModel.PropertyChangedEventHandler handler = (s, e) =>
+        {
+            if (!PhotoGridItemsLayoutLogic.IsImageSourceProperty(e.PropertyName)) return;
+            DispatcherQueue?.TryEnqueue(() =>
+            {
+                // 仮想化で Image が別カードへ再利用された後に、旧写真の通知が
+                // UI キューへ残る場合がある。現在の DataContext と購読元が同じ時だけ反映する。
+                if (!ReferenceEquals(img.DataContext, item)
+                    || img.Tag is not GridImageSubscription current
+                    || !ReferenceEquals(current.Photo, item.Photo))
+                {
+                    return;
+                }
+
+                // サムネイル生成完了でパスが差し替わった場合も再ロード扱いにし、
+                // shimmer→フェードインの演出を改めて適用する。
+                ResetCardLoadVisuals(img);
+                SetImageSource(img, item.Photo);
+            });
+        };
+        item.Photo.PropertyChanged += handler;
+        img.Tag = new GridImageSubscription(item.Photo, handler);
     }
 
     // 写真の有効な表示パスから BitmapImage を作り、Image.Source に反映する。

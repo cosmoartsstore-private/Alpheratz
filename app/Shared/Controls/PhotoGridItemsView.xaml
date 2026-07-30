@@ -3,7 +3,8 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:Alpheratz.Shared.Controls"
-    xmlns:converters="using:Alpheratz.Shared.Converters">
+    xmlns:converters="using:Alpheratz.Shared.Converters"
+    xmlns:messages="using:Alpheratz.Messages">
     <UserControl.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
     </UserControl.Resources>
@@ -92,6 +93,7 @@
                                            Foreground="{ThemeResource ATextDisabled}"
                                            HorizontalAlignment="Center"
                                            VerticalAlignment="Center"
+                                           AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('PhotoGridItemsView.imageLoadFailed')}"
                                            Visibility="Collapsed"/>
 
                                 <!--

@@ -4,8 +4,10 @@ using System.Collections.Generic;
 using Alpheratz.Core;
 using Alpheratz.Shared.Services;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Features.Gallery.Controls;
 
@@ -92,7 +94,7 @@ public sealed partial class MonthNav : UserControl
             Padding = new Thickness(8, 10, 8, 2),
             Child = new TextBlock
             {
-                Text = year.ToString(),
+                Text = getMsg("MonthNav.yearLabel", ("year", year)),
                 FontSize = 11,
                 FontWeight = Microsoft.UI.Text.FontWeights.ExtraBold,
                 Foreground = ThemeHelper.Brush(this, MonthNavLogic.YearHeaderForegroundKey),
@@ -131,6 +133,9 @@ public sealed partial class MonthNav : UserControl
             Content = label,
             Tag = g,
         };
+        AutomationProperties.SetName(
+            btn,
+            getMsg("MonthNav.jumpToMonth", ("year", g.Year), ("month", g.Month)));
         btn.Click += MonthButton_Click;
         return btn;
     }

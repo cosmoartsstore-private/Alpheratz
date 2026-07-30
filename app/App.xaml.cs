@@ -24,6 +24,8 @@ public partial class App : Application
 {
     private Window? mainWindow;
     private ServiceProvider? serviceProvider;
+    private AppLifecycleService? splashLifecycle;
+    private EventHandler<AppLifecyclePhase>? splashPhaseHandler;
     private bool winUiResourcesInitialized;
 
     public static Window? MainWindowInstance => (Current as App)?.mainWindow;
@@ -207,7 +209,8 @@ public partial class App : Application
         // ライフサイクルフェーズをスプラッシュの表示へ反映する。
         // PhaseAdvanced は initialize() 継続などバックグラウンドから発火し得るため、
         // UI 更新は DispatcherQueue へ戻す。
-        lifecycle.PhaseAdvanced += (_, phase) =>
+        splashLifecycle = lifecycle;
+        splashPhaseHandler = (_, phase) =>
         {
             try
             {
@@ -239,6 +242,7 @@ public partial class App : Application
                 AppLogger.Fatal($"App.bootstrap.PhaseAdvanced: threw: {ex}");
             }
         };
+        lifecycle.PhaseAdvanced += splashPhaseHandler;
 
         _ = BeginSplashSequenceAsync(bootstrapPage, shellViewModel, lifecycle);
         AppLogger.Trace("App.OnLaunchedCore: splash sequence dispatched");
@@ -301,6 +305,7 @@ public partial class App : Application
     {
         if (shellSwapped) return;
         shellSwapped = true;
+        DetachSplashPhaseHandler();
         AppLogger.Trace("App.SwapToShell: enter");
         try
         {
@@ -314,5 +319,14 @@ public partial class App : Application
             AppLogger.Fatal($"App.SwapToShell: failed: {ex}");
         }
         AppLogger.Trace("App.SwapToShell: exit");
+    }
+
+    /// <summary>シェル切替後にスプラッシュ画面と進捗タイマーが保持されないよう購読を解除する。</summary>
+    private void DetachSplashPhaseHandler()
+    {
+        if (splashLifecycle is not null && splashPhaseHandler is not null)
+            splashLifecycle.PhaseAdvanced -= splashPhaseHandler;
+        splashLifecycle = null;
+        splashPhaseHandler = null;
     }
 }

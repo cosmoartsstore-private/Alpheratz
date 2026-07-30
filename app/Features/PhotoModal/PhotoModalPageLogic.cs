@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Alpheratz.Features.Gallery;
 using Windows.System;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Features.PhotoModal;
 
@@ -16,12 +17,12 @@ internal static class PhotoModalPageLogic
     public const long NavigationLongHoldThresholdMs = 900;
     public const long NavigationLongHoldIntervalMs = 180;
     public const long NavigationBurstResetMs = 450;
-    public const string UnknownWorldName = "ワールド不明";
+    public static string UnknownWorldName => getMsg("common.unknownWorld");
     public const string BottomActionHoverBrushKey = "ASurfaceHover";
-    public const string WorldActionEnabledLabel = "ワールド";
-    public const string WorldActionDisabledLabel = "未取得";
-    public const string WorldActionEnabledTooltip = "ワールドリンクを開く";
-    public const string WorldActionDisabledTooltip = "ワールドID未取得のため開けません";
+    public static string WorldActionEnabledLabel => getMsg("PhotoModalPage.worldLabel");
+    public static string WorldActionDisabledLabel => getMsg("PhotoModalPage.worldLinkUnavailableLabel");
+    public static string WorldActionEnabledTooltip => getMsg("PhotoModalPage.openWorldHelp");
+    public static string WorldActionDisabledTooltip => getMsg("PhotoModalPage.worldLinkUnavailableHelp");
 
     /// <summary>SelectedPhoto の変更だけを、モーダル表示全体の再同期対象として扱う。</summary>
     public static bool ShouldSyncForPropertyChanged(string? propertyName)
@@ -68,9 +69,9 @@ internal static class PhotoModalPageLogic
     public static MatchSourceDisplay MatchSource(string? source)
         => source switch
         {
-            "polaris_archive" => new MatchSourceDisplay(true, "archive ログから補完"),
-            "phash" => new MatchSourceDisplay(true, "類似写真から推測"),
-            "phash_confirmed" => new MatchSourceDisplay(true, "類似写真から確認済み"),
+            "polaris_archive" => new MatchSourceDisplay(true, getMsg("PhotoModalPage.archiveMatchSource")),
+            "phash" => new MatchSourceDisplay(true, getMsg("PhotoModalPage.similarPhotoMatchSource")),
+            "phash_confirmed" => new MatchSourceDisplay(true, getMsg("PhotoModalPage.confirmedSimilarPhotoMatchSource")),
             _ => new MatchSourceDisplay(false, null),
         };
 

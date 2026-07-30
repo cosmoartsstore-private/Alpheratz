@@ -5,21 +5,20 @@ namespace Alpheratz.Tests;
 /// <summary>
 /// プロジェクトファイルに記載された配布資材の扱いを検証するテスト。
 ///
-/// 画像の参照は XAML、ウィンドウ初期化、StellaRecord 登録のように別々の層へ散っている。
-/// ビルド自体は成功しても publish 出力に画像が含まれないと、インストール後の画面表示や外部登録だけが壊れる。
-/// ここではアプリを起動せずに csproj を読み、実行時に必要な資材が出力コピー対象として宣言されていることを固定する。
+/// ビルド自体は成功しても publish 出力に必要な画像や埋め込み文言が含まれないと、
+/// インストール後の画面表示や文言解決だけが壊れる。
+/// ここではアプリを起動せずに csproj を読み、配布資材の宣言を固定する。
 /// </summary>
 public sealed class ProjectPackagingTests
 {
     /// <summary>
-    /// 画面表示、ウィンドウアイコン、StellaRecord 登録で使う画像が出力コピー対象に含まれることを確認する。
+    /// 画面表示とウィンドウアイコンで使う画像だけが出力コピー対象に含まれることを確認する。
     ///
-    /// Logo 系と avatar は XAML の ms-appx 参照から使われ、icon.ico はウィンドウとインストーラのアイコンとして使われる。
-    /// icon.png は SettingsPage から AppContext.BaseDirectory 配下の実ファイルとして StellaRecord へ渡すため、
-    /// publish 出力に存在しないと登録先でアイコン解決に失敗する。このテストはその配布漏れを検出する。
+    /// LogoText と avatar は XAML の ms-appx 参照から使われ、icon.ico はウィンドウとインストーラのアイコンとして使われる。
+    /// Logo.png は現在の画面と非表示中の外部連携登録から参照されないため、配布対象から明示的に除外する。
     /// </summary>
     [Fact]
-    public void FrontendProject_CopiesRuntimeAssetsRequiredByViewsAndRegistrations()
+    public void FrontendProject_CopiesRuntimeAssetsRequiredByViewsAndWindow()
     {
         var projectPath = Path.Combine(FindRepositoryRoot(), "app", "Alpheratz.Frontend.csproj");
         var document = XDocument.Load(projectPath);
@@ -33,7 +32,13 @@ public sealed class ProjectPackagingTests
             .Select(element => NormalizeProjectPath(element.Attribute("Include")?.Value ?? string.Empty))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        Assert.Contains("Assets/Logo.png", copiedAssets);
+        Assert.DoesNotContain("Assets/Logo.png", copiedAssets);
+        Assert.Contains(
+            document.Descendants("Content"),
+            element => string.Equals(
+                NormalizeProjectPath(element.Attribute("Remove")?.Value ?? string.Empty),
+                "Assets/Logo.png",
+                StringComparison.OrdinalIgnoreCase));
         Assert.Contains("Assets/LogoText.png", copiedAssets);
         Assert.Contains("Assets/avatar.jpg", copiedAssets);
         Assert.Contains("Assets/icon.ico", copiedAssets);
@@ -41,6 +46,77 @@ public sealed class ProjectPackagingTests
         Assert.Equal(
             "Assets/icon.ico",
             NormalizeProjectPath(document.Descendants("ApplicationIcon").Single().Value));
+    }
+
+    [Fact]
+    public void FrontendProject_EmbedsJapaneseMessagePropertiesWithCatalogResourceName()
+    {
+        var projectPath = Path.Combine(FindRepositoryRoot(), "app", "Alpheratz.Frontend.csproj");
+        var document = XDocument.Load(projectPath);
+        var messageResource = document.Descendants("EmbeddedResource").Single(element =>
+            string.Equals(
+                NormalizeProjectPath(element.Attribute("Include")?.Value ?? string.Empty),
+                "Messages/messages.ja.properties",
+                StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(
+            "Alpheratz.Messages.messages.ja.properties",
+            messageResource.Attribute("LogicalName")?.Value);
+        Assert.Equal("false", messageResource.Element("WithCulture")?.Value);
+    }
+
+    /// <summary>Windows App SDK の自動 Bootstrap がアプリ DLL 読込時に testhost を停止させないことを確認する。</summary>
+    [Fact]
+    public void FrontendAndTestProjects_DisableWindowsAppSdkAutoBootstrap()
+    {
+        var root = FindRepositoryRoot();
+        var projectPaths = new[]
+        {
+            Path.Combine(root, "app", "Alpheratz.Frontend.csproj"),
+            Path.Combine(root, "tests", "Alpheratz.Tests", "Alpheratz.Tests.csproj"),
+        };
+
+        foreach (var projectPath in projectPaths)
+        {
+            var values = XDocument.Load(projectPath)
+                .Descendants("WindowsAppSdkBootstrapInitialize")
+                .Select(element => element.Value.Trim())
+                .ToArray();
+
+            Assert.NotEmpty(values);
+            Assert.All(values, value => Assert.Equal("false", value));
+        }
+    }
+
+    /// <summary>プロセス全体で共有するテスト用パスが並列テストから変更されないことを確認する。</summary>
+    [Fact]
+    public void TestAssembly_DisablesParallelExecutionForSharedAppPathsOverride()
+    {
+        var behavior = typeof(ProjectPackagingTests).Assembly
+            .GetCustomAttributes(typeof(CollectionBehaviorAttribute), inherit: false)
+            .Cast<CollectionBehaviorAttribute>()
+            .Single();
+
+        Assert.True(behavior.DisableTestParallelization);
+    }
+
+    [Fact]
+    public void SettingsPage_KeepsStellaRecordIntegrationHiddenWithReenableTodo()
+    {
+        var pagePath = Path.Combine(FindRepositoryRoot(), "app", "Features", "Settings", "SettingsPage.xaml");
+        var document = XDocument.Load(pagePath);
+        var integrationLabel = document.Descendants().Single(element =>
+            element.Attributes().Any(attribute => attribute.Value.Contains(
+                "SettingsPage.stellaRecordIntegrationLabel",
+                StringComparison.Ordinal)));
+        var hiddenContainer = integrationLabel.Ancestors().First(element =>
+            element.Name.LocalName == "Grid");
+
+        Assert.Equal("Collapsed", hiddenContainer.Attribute("Visibility")?.Value);
+        Assert.Contains(
+            document.DescendantNodes().OfType<XComment>(),
+            comment => comment.Value.Contains("TODO", StringComparison.Ordinal)
+                && comment.Value.Contains("StellaRecord", StringComparison.Ordinal));
     }
 
     [Fact]

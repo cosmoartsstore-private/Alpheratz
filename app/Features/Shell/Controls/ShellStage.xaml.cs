@@ -58,6 +58,8 @@ public sealed partial class ShellStage : UserControl
     //   遅延発火した旧 Close の onCompleted が新コンテンツを誤って消すのを防ぐ。
     private int modalVersion;
     private int topModalVersion;
+    private int scanningOverlayVersion;
+    private bool isScanningOverlayClosing;
 
     /// <summary>中位モーダルレイヤの表示。FadeIn/Out + ScaleIn/Out アニメを伴う。</summary>
     public Visibility ModalVisibility
@@ -164,25 +166,39 @@ public sealed partial class ShellStage : UserControl
         get => ScanningOverlayControl.Visibility;
         set
         {
+            var transitionVersion = unchecked(++scanningOverlayVersion);
             var transition = ShellStageLayerLogic.OverlayTransition(value, ScanningOverlayControl.Visibility);
             if (transition == ShellStageLayerTransition.Open)
             {
+                isScanningOverlayClosing = false;
                 ScanningOverlayControl.Visibility = Visibility.Visible;
                 AnimationHelper.FadeIn(ScanningOverlayControl, ShellStageLayerLogic.OverlayFadeInDurationMilliseconds);
             }
             else if (transition == ShellStageLayerTransition.Close)
             {
+                isScanningOverlayClosing = true;
                 AnimationHelper.FadeOut(ScanningOverlayControl, ShellStageLayerLogic.OverlayFadeOutDurationMilliseconds, onCompleted: () =>
                 {
                     DispatcherQueue?.TryEnqueue(() =>
                     {
+                        if (scanningOverlayVersion != transitionVersion)
+                            return;
+                        isScanningOverlayClosing = false;
                         ScanningOverlayControl.Visibility = Visibility.Collapsed;
                         AnimationHelper.ResetVisual(ScanningOverlayControl);
                     });
                 });
             }
+            else if (value == Visibility.Visible && isScanningOverlayClosing)
+            {
+                // FadeOut 中は Visibility がまだ Visible のため通常の遷移判定では Open にならない。
+                // 新しい scan 状態を受けた場合は旧 FadeOut を FadeIn で置き換える。
+                isScanningOverlayClosing = false;
+                AnimationHelper.FadeIn(ScanningOverlayControl, ShellStageLayerLogic.OverlayFadeInDurationMilliseconds);
+            }
             else
             {
+                isScanningOverlayClosing = false;
                 ScanningOverlayControl.Visibility = value;
             }
         }

@@ -46,9 +46,12 @@ public sealed class LocalEventBus
         JsonElement json;
         try
         {
-            json = payload is null
-                ? JsonDocument.Parse("null").RootElement
-                : JsonSerializer.SerializeToElement(payload, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            // JsonDocument.Parse(...).RootElement を返すと、所有する JsonDocument を解放できない。
+            // SerializeToElement は独立した JsonElement を返すため、配信中に保持するリソースが残らない。
+            json = JsonSerializer.SerializeToElement(
+                payload,
+                payload?.GetType() ?? typeof(object),
+                _opts);
         }
         catch (Exception ex)
         {

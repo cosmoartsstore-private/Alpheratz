@@ -3,6 +3,7 @@ using Alpheratz.Core.Database;
 using Alpheratz.Core.Imaging;
 using Alpheratz.Core.Scanner;
 using Alpheratz.Features.Gallery;
+using Alpheratz.Models.Events;
 using Alpheratz.Services;
 using Alpheratz.Shared.Models;
 using Alpheratz.Shared.Services;
@@ -17,6 +18,7 @@ namespace Alpheratz.Tests;
 /// 画面コントロールを起動せず、実 SQLite DB と即時実行 DispatcherService を使って、
 /// ユーザーに見える写真一覧の並びとグルーピングの現在仕様を固定する。
 /// </summary>
+[Collection(AppPathsCacheTestCollection.Name)]
 public sealed class GalleryPhotosStateBehaviorTests : IDisposable
 {
     private readonly string tempDir;
@@ -51,6 +53,8 @@ public sealed class GalleryPhotosStateBehaviorTests : IDisposable
     /// </summary>
     public void Dispose()
     {
+        try { state.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
+        catch { }
         try { Directory.Delete(tempDir, recursive: true); }
         catch { }
     }
@@ -81,6 +85,202 @@ public sealed class GalleryPhotosStateBehaviorTests : IDisposable
         Assert.Contains(state.monthGroups, group => group.Year == 2026 && group.Month == 6 && group.Count == 2);
         Assert.Contains(state.monthGroups, group => group.Year == 2026 && group.Month == 7 && group.Count == 1);
         Assert.All(state.displayItems, item => Assert.Null(item.GroupCount));
+    }
+
+    /// <summary>
+    /// 旧サムネイル停止を待つ間に新しい読込が始まった場合、最新世代だけが一覧へ反映されることを確認する。
+    /// </summary>
+    [Fact]
+    public async Task LoadPhotos_WhenSupersededWhileStoppingThumbnails_AppliesLatestGenerationOnly()
+    {
+        await db.UpsertPhotoAsync(Photo("/photo/alpha.jpg", "alpha.jpg", "2026-06-05 10:00:00", "Alpha"));
+        await db.UpsertPhotoAsync(Photo("/photo/beta.jpg", "beta.jpg", "2026-06-05 11:00:00", "Beta"));
+        var blockingSource = Path.Combine(tempDir, "blocking-source.png");
+        await File.WriteAllBytesAsync(blockingSource, [0x00]);
+        var generationStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancellationObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finishCancellation = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thumbnailService = new ThumbnailService(async (_, _, _, ct) =>
+        {
+            generationStarted.TrySetResult();
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                cancellationObserved.TrySetResult();
+                await finishCancellation.Task;
+                throw;
+            }
+        });
+        var localState = CreateState(new ThumbnailWorker(thumbnailService));
+        var replacedCount = 0;
+        localState.OnPhotosReplaced = () => replacedCount++;
+
+        try
+        {
+            localState.setPhotos(
+                [Thumb(AppPaths.NormalizePathForDb(blockingSource), "blocking-source.png", null, "2026-06-05 09:00:00")]);
+            await generationStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            localState.SetFilters(FiltersForWorld("Alpha"));
+            var firstLoad = localState.loadPhotos();
+            await cancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            localState.SetFilters(FiltersForWorld("Beta"));
+            var secondLoad = localState.loadPhotos();
+
+            finishCancellation.TrySetResult();
+            await Task.WhenAll(firstLoad, secondLoad).WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.Equal(1, replacedCount);
+            var photo = Assert.Single(localState.photos);
+            Assert.Equal("Beta", photo.WorldName);
+            Assert.Equal("/photo/beta.jpg", photo.PhotoPath);
+        }
+        finally
+        {
+            finishCancellation.TrySetResult();
+            await localState.DisposeAsync();
+        }
+    }
+
+    /// <summary>
+    /// フォルダ整理の停止処理が進行中生成の終了を待ち、許可解除後も新しい一覧読込までは生成を再開しないことを確認する。
+    /// </summary>
+    [Fact]
+    public async Task FolderCleanupSuspension_BlocksRequestsUntilNewPhotoLoadResumesGeneration()
+    {
+        var oldSource = Path.Combine(tempDir, "old-source.png");
+        var newSource = Path.Combine(tempDir, "new-source.png");
+        await File.WriteAllBytesAsync(oldSource, [0x00]);
+        await File.WriteAllBytesAsync(newSource, [0x00]);
+        var firstGenerationStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancellationObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finishCancellation = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var resumedGenerationStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var generationCount = 0;
+        var thumbnailService = new ThumbnailService(async (_, destinationPath, _, ct) =>
+        {
+            var generation = Interlocked.Increment(ref generationCount);
+            if (generation == 1)
+            {
+                firstGenerationStarted.TrySetResult();
+                try
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    cancellationObserved.TrySetResult();
+                    await finishCancellation.Task;
+                    throw;
+                }
+            }
+
+            resumedGenerationStarted.TrySetResult();
+            await File.WriteAllBytesAsync(destinationPath, [0xFF, 0xD8, 0x00, 0xFF, 0xD9], ct);
+        });
+        var localState = CreateState(new ThumbnailWorker(thumbnailService));
+        var pending = Thumb(
+            AppPaths.NormalizePathForDb(newSource),
+            "new-source.png",
+            "New",
+            "2026-06-05 11:00:00");
+
+        try
+        {
+            localState.setPhotos([
+                Thumb(
+                    AppPaths.NormalizePathForDb(oldSource),
+                    "old-source.png",
+                    "Old",
+                    "2026-06-05 10:00:00")]);
+            await firstGenerationStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            var suspension = localState.suspendThumbnailGenerationAndWait();
+            await cancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(suspension.IsCompleted);
+            finishCancellation.TrySetResult();
+            await suspension.WaitAsync(TimeSpan.FromSeconds(5));
+
+            localState.requestVisibleThumbnails([pending]);
+            Assert.Equal(1, generationCount);
+            localState.allowThumbnailReloadAfterFolderCleanup();
+            localState.requestVisibleThumbnails([pending]);
+            Assert.Equal(1, generationCount);
+
+            await db.UpsertPhotoAsync(Photo(
+                AppPaths.NormalizePathForDb(newSource),
+                "new-source.png",
+                "2026-06-05 11:00:00",
+                "New"));
+            await localState.loadPhotos();
+            await resumedGenerationStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.True(generationCount >= 2);
+            Assert.Equal(AppPaths.NormalizePathForDb(newSource), Assert.Single(localState.photos).PhotoPath);
+        }
+        finally
+        {
+            finishCancellation.TrySetResult();
+            await localState.DisposeAsync();
+            foreach (var photo in localState.photos)
+            {
+                if (!string.IsNullOrWhiteSpace(photo.GridThumbPath))
+                {
+                    try { File.Delete(photo.GridThumbPath); }
+                    catch { }
+                }
+            }
+        }
+    }
+
+    /// <summary>初期化を複数回呼んでも購読を重複させず、破棄後はスキャン通知へ反応しないことを確認する。</summary>
+    [Fact]
+    public async Task InitializeAsync_SubscribesOnceAndDisposeUnsubscribes()
+    {
+        await db.UpsertPhotoAsync(Photo("/photo/a.jpg", "a.jpg", "2026-06-05 10:00:00", "Alpha"));
+        var eventBus = new LocalEventBus();
+        var thumbnailService = new ThumbnailService((_, destinationPath, _, ct) =>
+            File.WriteAllBytesAsync(destinationPath, [0xFF, 0xD8, 0x00, 0xFF, 0xD9], ct));
+        var localState = new GalleryPhotosState(
+            new PhotoService(db),
+            eventBus,
+            new ToastService(),
+            new DispatcherService(),
+            new ThumbnailWorker(thumbnailService));
+        var replacedCount = 0;
+        var disposed = false;
+        localState.OnPhotosReplaced = () => replacedCount++;
+
+        try
+        {
+            await localState.InitializeAsync(loadInitialData: false);
+            await localState.InitializeAsync(loadInitialData: false);
+            await eventBus.PublishAsync(EventNames.ScanCompleted, new object());
+
+            Assert.Equal(1, replacedCount);
+
+            await localState.DisposeAsync();
+            disposed = true;
+            await eventBus.PublishAsync(EventNames.ScanCompleted, new object());
+
+            Assert.Equal(1, replacedCount);
+        }
+        finally
+        {
+            if (!disposed)
+                await localState.DisposeAsync();
+            foreach (var photo in localState.photos)
+            {
+                if (!string.IsNullOrWhiteSpace(photo.GridThumbPath))
+                {
+                    try { File.Delete(photo.GridThumbPath); }
+                    catch { }
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -116,6 +316,21 @@ public sealed class GalleryPhotosStateBehaviorTests : IDisposable
         Assert.Equal(["/photo/a.jpg", "/photo/b.jpg"], alpha.GroupPhotos!.Select(photo => photo.PhotoPath));
         Assert.Equal(["/photo/c.jpg", "/photo/d.jpg"], unknown.GroupPhotos!.Select(photo => photo.PhotoPath));
         Assert.Equal(["/photo/e.jpg"], literalUnknown.GroupPhotos!.Select(photo => photo.PhotoPath));
+    }
+
+    /// <summary>グループ化変更後に写真を再読込しても、保存した表示方式が元へ戻らないことを確認する。</summary>
+    [Fact]
+    public async Task SetGroupingMode_PersistsAcrossReload()
+    {
+        await db.UpsertPhotoAsync(Photo("/photo/a.jpg", "a.jpg", "2026-06-05 10:00:00", "Alpha"));
+        await db.UpsertPhotoAsync(Photo("/photo/b.jpg", "b.jpg", "2026-06-05 11:00:00", "Alpha"));
+        state.SetGroupingMode(GroupingMode.world);
+
+        await state.loadPhotos();
+
+        var group = Assert.Single(state.displayItems);
+        Assert.Equal("Alpha", group.GroupKey);
+        Assert.Equal(2, group.GroupCount);
     }
 
     /// <summary>
@@ -297,6 +512,29 @@ public sealed class GalleryPhotosStateBehaviorTests : IDisposable
             WorldName = worldName,
             SourceSlot = 1,
         };
+
+    private GalleryPhotosState CreateState(ThumbnailWorker thumbnailWorker)
+        => new(
+            new PhotoService(db),
+            new LocalEventBus(),
+            new ToastService(),
+            new DispatcherService(),
+            thumbnailWorker);
+
+    private static PhotoQueryFilters FiltersForWorld(string worldName)
+        => new(
+            searchQuery: "",
+            worldFilters: [worldName],
+            dateFrom: "",
+            dateTo: "",
+            orientationFilter: "all",
+            favoritesOnly: false,
+            tagFilters: [],
+            includePhash: false,
+            pagingEnabled: false,
+            viewMode: ViewMode.standard,
+            sourceSlot: null,
+            groupingMode: GroupingMode.none);
 
     /// <summary>
     /// 表示コレクション構築用の写真モデルを作る。

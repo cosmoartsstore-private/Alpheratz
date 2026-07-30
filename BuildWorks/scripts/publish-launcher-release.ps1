@@ -6,10 +6,13 @@ $LauncherProjectPath = Join-Path $BuildWorksRoot "launcher\Alpheratz.Launcher.cs
 $LauncherPublishRoot = Join-Path $RepoRoot "artifacts\publish\Launcher"
 
 if (Test-Path $LauncherPublishRoot) {
-    Remove-Item $LauncherPublishRoot -Recurse -Force
+    Remove-Item -LiteralPath $LauncherPublishRoot -Recurse -Force
 }
 
 & dotnet publish $LauncherProjectPath -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o $LauncherPublishRoot
+if ($LASTEXITCODE -ne 0) {
+    throw "Launcher の publish に失敗しました。終了コード: $LASTEXITCODE"
+}
 
 $LauncherExe = Join-Path $LauncherPublishRoot "Alpheratz.exe"
 if (!(Test-Path $LauncherExe)) {

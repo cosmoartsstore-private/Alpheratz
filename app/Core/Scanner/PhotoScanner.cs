@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Alpheratz.Core.Database;
 using Alpheratz.Models;
 using Alpheratz.Models.Events;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Core.Scanner;
 
@@ -69,12 +70,12 @@ public sealed partial class PhotoScanner
         catch (OperationCanceledException)
         {
             AppLogger.Trace("PhotoScanner.ScanAsync: cancelled");
-            await _bus.PublishAsync(EventNames.ScanError, "スキャンを中断しました").ConfigureAwait(false);
+            await _bus.PublishAsync(EventNames.ScanError, getMsg("PhotoScanner.cancelled")).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             AppLogger.Error($"スキャン中に予期しないエラーが発生しました: {ex}");
-            await _bus.PublishAsync(EventNames.ScanError, ex.Message).ConfigureAwait(false);
+            await _bus.PublishAsync(EventNames.ScanError, getMsg("PhotoScanner.failed")).ConfigureAwait(false);
         }
         finally
         {
@@ -95,36 +96,35 @@ public sealed partial class PhotoScanner
             photoDirs.Add((1, setting.PhotoFolderPath));
         else if (!string.IsNullOrWhiteSpace(setting.PhotoFolderPath))
         {
-            await _bus.PublishAsync(EventNames.ScanError, $"写真フォルダが見つかりません: {setting.PhotoFolderPath}").ConfigureAwait(false);
+            await _bus.PublishAsync(EventNames.ScanError, getMsg("PhotoScanner.primaryFolderMissing")).ConfigureAwait(false);
             return;
         }
 
         if (!string.IsNullOrWhiteSpace(setting.SecondaryPhotoFolderPath) && Directory.Exists(setting.SecondaryPhotoFolderPath))
         {
-            if (!photoDirs.Exists(d => d.path == setting.SecondaryPhotoFolderPath))
-                photoDirs.Add((2, setting.SecondaryPhotoFolderPath));
+            photoDirs.Add((2, setting.SecondaryPhotoFolderPath));
         }
         else if (!string.IsNullOrWhiteSpace(setting.SecondaryPhotoFolderPath))
         {
-            await _bus.PublishAsync(EventNames.ScanError, $"2nd 写真フォルダが見つかりません: {setting.SecondaryPhotoFolderPath}").ConfigureAwait(false);
+            await _bus.PublishAsync(EventNames.ScanError, getMsg("PhotoScanner.secondaryFolderMissing")).ConfigureAwait(false);
             return;
         }
 
         if (photoDirs.Count == 0)
         {
-            // Try default VRChat photos folder
-            var myPics = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
-            var defaultDir = Path.Combine(myPics, "VRChat");
-            if (Directory.Exists(defaultDir))
-                photoDirs.Add((1, defaultDir));
-            else
-            {
-                await _bus.PublishAsync(EventNames.ScanError, "写真フォルダが未設定です。設定から参照フォルダを選択してください。").ConfigureAwait(false);
-                return;
-            }
+            await _bus.PublishAsync(EventNames.ScanError, getMsg("PhotoScanner.folderUnconfigured")).ConfigureAwait(false);
+            return;
+        }
+        if (photoDirs.Count == 2
+            && AppPaths.AreOverlappingDirectories(photoDirs[0].path, photoDirs[1].path))
+        {
+            await _bus.PublishAsync(
+                EventNames.ScanError,
+                getMsg("PhotoScanner.foldersOverlap")).ConfigureAwait(false);
+            return;
         }
 
-        await _bus.PublishAsync(EventNames.ScanProgress, new ScanProgressDto { processed = 0, total = 0, current_world = "ファイルを収集中...", phase = "scan" }).ConfigureAwait(false);
+        await _bus.PublishAsync(EventNames.ScanProgress, new ScanProgressDto { processed = 0, total = 0, current_world = getMsg("PhotoScanner.collecting"), phase = "scan" }).ConfigureAwait(false);
 
         // 既存 DB 情報を読み、再スキャン時に保持できるメタデータを判断する。
         var existing = await _db.GetExistingPhotosAsync(ct).ConfigureAwait(false);
@@ -133,21 +133,31 @@ public sealed partial class PhotoScanner
         // 訪問済みの正規化フルパスを持って無限再帰を防ぐ。
         var foundFiles = new List<(long slot, string filename, string path)>();
         var visitedDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var completedSlots = new HashSet<long>();
+        var incompleteSlots = new HashSet<long>();
         foreach (var (slot, dir) in photoDirs)
         {
             ct.ThrowIfCancellationRequested();
-            CollectPhotosRecursive(slot, dir, foundFiles, visitedDirs, ct);
+            if (CollectPhotosRecursive(slot, dir, foundFiles, visitedDirs, ct))
+                completedSlots.Add(slot);
+            else
+                incompleteSlots.Add(slot);
         }
 
         ct.ThrowIfCancellationRequested();
 
         var foundPathSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (_, _, path) in foundFiles)
-            foundPathSet.Add(AppPaths.NormalizePathForDb(path));
+        foreach (var (slot, _, path) in foundFiles)
+        {
+            if (completedSlots.Contains(slot))
+                foundPathSet.Add(AppPaths.NormalizePathForDb(path));
+        }
 
-        // 今回スキャンしたスロット内で、ディスク上に存在しなくなった写真を DB から消す。
-        var scannedSlots = photoDirs.Select(d => d.slot).Distinct().ToArray();
-        await _db.DeleteMissingPhotosAsync(foundPathSet, scannedSlots, ct).ConfigureAwait(false);
+        // root 全体を例外なく走査できたスロットだけ、ディスク上に存在しなくなった写真を消す。
+        // 一部のディレクトリを読めなかったスロットは、読み取れなかった写真を欠落と誤認しないよう
+        // 今回の削除対象から外し、次回の完全な走査まで削除を延期する。
+        if (completedSlots.Count > 0)
+            await _db.DeleteMissingPhotosAsync(foundPathSet, completedSlots.ToArray(), ct).ConfigureAwait(false);
 
         // 既存値と比較し、DB 更新が必要な写真だけを候補にする。
         var candidates = new List<(long slot, string filename, string path, ScanRefreshKind kind)>();
@@ -176,7 +186,7 @@ public sealed partial class PhotoScanner
         }
 
         var total = candidates.Count;
-        await _bus.PublishAsync(EventNames.ScanProgress, new ScanProgressDto { processed = 0, total = total, current_world = $"{total} 件の更新対象を確認しました", phase = "scan" }).ConfigureAwait(false);
+        await _bus.PublishAsync(EventNames.ScanProgress, new ScanProgressDto { processed = 0, total = total, current_world = getMsg("PhotoScanner.updatesFound", ("count", total)), phase = "scan" }).ConfigureAwait(false);
 
         var pendingUpserts = new List<PhotoUpsertData>(ScanDbBatchSize);
         for (var i = 0; i < candidates.Count; i++)
@@ -200,7 +210,7 @@ public sealed partial class PhotoScanner
                 {
                     processed = i + 1,
                     total = total,
-                    current_world = photo.WorldName ?? "ワールド不明",
+                    current_world = photo.WorldName ?? getMsg("common.unknownWorld"),
                     phase = "scan"
                 }).ConfigureAwait(false);
             }
@@ -208,8 +218,19 @@ public sealed partial class PhotoScanner
         if (pendingUpserts.Count > 0)
             await _db.UpsertPhotosAsync(pendingUpserts, ct).ConfigureAwait(false);
 
+        if (incompleteSlots.Count > 0)
+        {
+            var slotLabels = string.Join("、", incompleteSlots.OrderBy(slot => slot).Select(FormatSourceSlot));
+            var message = getMsg("PhotoScanner.incompleteFolders", ("folders", slotLabels));
+            AppLogger.Warn($"PhotoScanner.DoScanAsync: {message}");
+            await _bus.PublishAsync(EventNames.ScanWarning, message).ConfigureAwait(false);
+        }
+
         await _bus.PublishAsync(EventNames.ScanCompleted, null).ConfigureAwait(false);
     }
+
+    private static string FormatSourceSlot(long slot)
+        => getMsg("PhotoScanner.sourceSlot", ("slot", slot));
 
     private static bool ShouldPublishScanProgress(int itemIndex, int total)
     {
@@ -224,7 +245,17 @@ public sealed partial class PhotoScanner
     internal static PhotoUpsertData AnalyzePhoto(string path, string filename, long slot, ExistingPhotoInfo? existing, ScanRefreshKind kind)
     {
         var timestamp = ResolveTimestamp(path, filename);
-        var normalizedPath = AppPaths.NormalizePathForDb(path);
+        var discoveredPath = AppPaths.NormalizePathForDb(path);
+        // Windows では大小文字だけが異なるパスも同じファイルを指す。既存行をその比較で
+        // 見つけた場合は DB の主キー表記を維持し、BINARY 主キーへ重複行を作らない。
+        var normalizedPath = existing is not null
+            && string.Equals(existing.PhotoPath, discoveredPath, StringComparison.OrdinalIgnoreCase)
+            ? existing.PhotoPath
+            : discoveredPath;
+        var contentChanged = kind == ScanRefreshKind.Full
+            && existing is not null
+            && IsFileModifiedSinceStoredMtime(path, existing);
+        var resetPhash = contentChanged;
 
         string? worldId, worldName, matchSource;
         if (kind == ScanRefreshKind.PathOnly)
@@ -235,7 +266,10 @@ public sealed partial class PhotoScanner
         }
         else
         {
-            (worldName, worldId, matchSource) = ResolveWorldInfo(normalizedPath, filename, path, existing);
+            // 同じパスの内容が変わった場合、既存のワールド情報は旧画像に属する可能性がある。
+            // 新しい画像からメタデータを取得できた場合だけ採用し、それ以外は未解決へ戻す。
+            var existingWorld = contentChanged ? null : existing;
+            (worldName, worldId, matchSource) = ResolveWorldInfo(normalizedPath, filename, path, existingWorld);
         }
 
         string? orientation;
@@ -275,6 +309,7 @@ public sealed partial class PhotoScanner
             ImageHeight = imageHeight,
             SourceSlot = slot,
             MatchSource = matchSource,
+            ResetPhash = resetPhash,
         };
     }
 
@@ -483,7 +518,7 @@ public sealed partial class PhotoScanner
         catch { return false; }
     }
 
-    internal static void CollectPhotosRecursive(
+    internal static bool CollectPhotosRecursive(
         long slot,
         string dir,
         List<(long, string, string)> files,
@@ -501,54 +536,63 @@ public sealed partial class PhotoScanner
             var attrs = File.GetAttributes(canonical);
             if ((attrs & FileAttributes.ReparsePoint) != 0)
             {
-                AppLogger.Trace($"PhotoScanner.CollectPhotosRecursive: skip reparse point [{canonical}]");
-                return;
+                AppLogger.Warn($"PhotoScanner.CollectPhotosRecursive: reparse point のため完全走査できません [{canonical}]");
+                return false;
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (IsKnownDirectoryReadException(ex))
         {
             AppLogger.Warn($"ディレクトリ属性を取得できません [{dir}]: {ex.Message}");
-            return;
+            return false;
         }
         if (!visitedDirs.Add(canonical))
         {
-            AppLogger.Trace($"PhotoScanner.CollectPhotosRecursive: skip already-visited [{canonical}]");
-            return;
+            AppLogger.Warn($"PhotoScanner.CollectPhotosRecursive: 重複経路のため完全走査できません [{canonical}]");
+            return false;
         }
 
-        IEnumerable<string> directories;
-        try { directories = Directory.EnumerateDirectories(dir); }
-        catch (Exception ex)
+        var isComplete = true;
+        try
         {
-            AppLogger.Warn($"サブディレクトリを読み取れません [{dir}]: {ex.Message}");
-            return;
+            foreach (var entry in Directory.EnumerateDirectories(canonical))
+            {
+                ct.ThrowIfCancellationRequested();
+                var name = Path.GetFileName(entry);
+                if (name.StartsWith('.')) continue;
+                if (Array.Exists(SkipDirs, s => s.Equals(name, StringComparison.OrdinalIgnoreCase))) continue;
+                if (!CollectPhotosRecursive(slot, entry, files, visitedDirs, ct))
+                    isComplete = false;
+            }
+        }
+        catch (Exception ex) when (IsKnownDirectoryReadException(ex))
+        {
+            AppLogger.Warn($"サブディレクトリを完全に読み取れません [{canonical}]: {ex.Message}");
+            isComplete = false;
         }
 
-        foreach (var entry in directories)
+        try
         {
-            ct.ThrowIfCancellationRequested();
-            var name = Path.GetFileName(entry);
-            if (name.StartsWith('.')) continue;
-            if (Array.Exists(SkipDirs, s => s.Equals(name, StringComparison.OrdinalIgnoreCase))) continue;
-            CollectPhotosRecursive(slot, entry, files, visitedDirs, ct);
+            foreach (var entry in Directory.EnumerateFiles(canonical))
+            {
+                ct.ThrowIfCancellationRequested();
+                var ext = Path.GetExtension(entry).TrimStart('.').ToLowerInvariant();
+                if (Array.Exists(SupportedExtensions, s => s == ext))
+                    files.Add((slot, Path.GetFileName(entry), entry));
+            }
+        }
+        catch (Exception ex) when (IsKnownDirectoryReadException(ex))
+        {
+            AppLogger.Warn($"ファイルを完全に読み取れません [{canonical}]: {ex.Message}");
+            isComplete = false;
         }
 
-        IEnumerable<string> fileEntries;
-        try { fileEntries = Directory.EnumerateFiles(dir); }
-        catch (Exception ex)
-        {
-            AppLogger.Warn($"ファイルを読み取れません [{dir}]: {ex.Message}");
-            return;
-        }
-
-        foreach (var entry in fileEntries)
-        {
-            ct.ThrowIfCancellationRequested();
-            var ext = Path.GetExtension(entry).TrimStart('.').ToLowerInvariant();
-            if (Array.Exists(SupportedExtensions, s => s == ext))
-                files.Add((slot, Path.GetFileName(entry), entry));
-        }
+        return isComplete;
     }
+
+    private static bool IsKnownDirectoryReadException(Exception ex)
+        => ex is IOException
+            or UnauthorizedAccessException
+            or System.Security.SecurityException;
 
     // === World resolution from Polaris archive ===
 
@@ -562,7 +606,7 @@ public sealed partial class PhotoScanner
             return 0;
         }
 
-        var visits = LoadPolarisWorldVisits(archiveDir);
+        var visits = LoadPolarisWorldVisits(archiveDir, ct);
         await _db.UpsertArchiveWorldVisitsAsync(visits, ct).ConfigureAwait(false);
 
         var unknownPhotos = await _db.GetUnknownWorldPhotosAsync("all", ct).ConfigureAwait(false);
@@ -584,7 +628,9 @@ public sealed partial class PhotoScanner
     private static readonly Regex ReLogLeftRoom = new(@"\[Behaviour\] OnLeftRoom", RegexOptions.Compiled);
 
     /// <summary>Polaris archive 内の VRChat ログからワールド訪問履歴を読み込む。</summary>
-    internal static List<ArchiveWorldVisitData> LoadPolarisWorldVisits(string archiveDir)
+    internal static List<ArchiveWorldVisitData> LoadPolarisWorldVisits(
+        string archiveDir,
+        CancellationToken ct = default)
     {
         var visits = new List<ArchiveWorldVisitData>();
         IEnumerable<string> logFiles;
@@ -593,7 +639,10 @@ public sealed partial class PhotoScanner
 
         Array.Sort(logFiles as string[] ?? [.. logFiles]);
         foreach (var logFile in logFiles)
-            LoadVisitsFromLog(logFile, visits);
+        {
+            ct.ThrowIfCancellationRequested();
+            LoadVisitsFromLog(logFile, visits, ct);
+        }
         return visits;
     }
 
@@ -602,13 +651,18 @@ public sealed partial class PhotoScanner
     /// File.ReadLines だと巨大行が 1 つでもあると LOH に乗って OOM することがあるため、
     /// 手動でストリームを舐めて長さ制限を効かせる。
     /// </summary>
-    internal static IEnumerable<string> ReadCappedLines(string path)
+    internal static IEnumerable<string> ReadCappedLines(
+        string path,
+        CancellationToken ct = default)
     {
         using var sr = new StreamReader(path);
         var sb = new StringBuilder();
         var truncating = false;
+        var readCount = 0;
         while (true)
         {
+            if ((readCount++ & 0xFFF) == 0)
+                ct.ThrowIfCancellationRequested();
             var ch = sr.Read();
             if (ch == -1)
             {
@@ -643,13 +697,16 @@ public sealed partial class PhotoScanner
     }
 
     /// <summary>1つの VRChat ログファイルから入退室イベントを読み取り、訪問区間へ変換する。</summary>
-    internal static void LoadVisitsFromLog(string logPath, List<ArchiveWorldVisitData> visits)
+    internal static void LoadVisitsFromLog(
+        string logPath,
+        List<ArchiveWorldVisitData> visits,
+        CancellationToken ct = default)
     {
         string? currentWorld = null;
         string? currentJoinTime = null;
         try
         {
-            foreach (var line in ReadCappedLines(logPath))
+            foreach (var line in ReadCappedLines(logPath, ct))
             {
                 var timeMatch = ReLogTime.Match(line);
                 var lineTime = timeMatch.Success
@@ -665,6 +722,8 @@ public sealed partial class PhotoScanner
                     // 次の Entering 時刻で閉じず、LeaveTime=null として未確定の区間にする。
                     if (currentWorld is not null && currentJoinTime is not null)
                         visits.Add(new ArchiveWorldVisitData { SourceLogName = Path.GetFileName(logPath), WorldName = currentWorld, JoinTime = currentJoinTime, LeaveTime = null });
+                    currentWorld = null;
+                    currentJoinTime = null;
                     if (lineTime is not null) { currentWorld = enterMatch.Groups[1].Value; currentJoinTime = lineTime; }
                     continue;
                 }
@@ -677,6 +736,7 @@ public sealed partial class PhotoScanner
             if (currentWorld is not null && currentJoinTime is not null)
                 visits.Add(new ArchiveWorldVisitData { SourceLogName = Path.GetFileName(logPath), WorldName = currentWorld, JoinTime = currentJoinTime });
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex) { AppLogger.Warn($"ログ読み取りに失敗しました [{logPath}]: {ex.Message}"); }
     }
 }

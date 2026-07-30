@@ -19,16 +19,16 @@ public sealed class GalleryFilterPanelLogicTests
     /// 日付範囲ラベルが未指定、片側指定、両側指定を同じ規則で表示することを確認する。
     ///
     /// フィルタ適用済みラベルとカレンダードラフト内ラベルは同じ表示規則を使う。
-    /// 片側だけ指定された場合は欠けている側を省略せず "..." と表示し、
-    /// ユーザーが「開始日だけ」「終了日だけ」を選んだ状態を区別できるようにする。
+    /// 片側だけ指定された場合は「以降」「以前」を付け、
+    /// ユーザーが開始日だけ、または終了日だけを選んだ状態を明示する。
     /// </summary>
     [Fact]
     public void FormatDateRangeLabel_UsesSameTextForEmptyPartialAndFullRanges()
     {
         Assert.Equal("すべての期間", GalleryFilterPanelLogic.FormatDateRangeLabel("", ""));
-        Assert.Equal("2026-06-01 ~ ...", GalleryFilterPanelLogic.FormatDateRangeLabel("2026-06-01", ""));
-        Assert.Equal("... ~ 2026-06-30", GalleryFilterPanelLogic.FormatDateRangeLabel("", "2026-06-30"));
-        Assert.Equal("2026-06-01 ~ 2026-06-30", GalleryFilterPanelLogic.FormatDateRangeLabel("2026-06-01", "2026-06-30"));
+        Assert.Equal("2026-06-01以降", GalleryFilterPanelLogic.FormatDateRangeLabel("2026-06-01", ""));
+        Assert.Equal("2026-06-30以前", GalleryFilterPanelLogic.FormatDateRangeLabel("", "2026-06-30"));
+        Assert.Equal("2026-06-01～2026-06-30", GalleryFilterPanelLogic.FormatDateRangeLabel("2026-06-01", "2026-06-30"));
     }
 
     /// <summary>
@@ -41,8 +41,8 @@ public sealed class GalleryFilterPanelLogicTests
     public void FormatSelectionSummary_UsesEmptyLabelUntilAnyItemIsSelected()
     {
         Assert.Equal("すべてのタグ", GalleryFilterPanelLogic.FormatSelectionSummary(0, "すべてのタグ"));
-        Assert.Equal("1件選択中", GalleryFilterPanelLogic.FormatSelectionSummary(1, "すべてのタグ"));
-        Assert.Equal("3件選択中", GalleryFilterPanelLogic.FormatSelectionSummary(3, "すべてのワールド"));
+        Assert.Equal("1件を選択中", GalleryFilterPanelLogic.FormatSelectionSummary(1, "すべてのタグ"));
+        Assert.Equal("3件を選択中", GalleryFilterPanelLogic.FormatSelectionSummary(3, "すべてのワールド"));
     }
 
     /// <summary>
@@ -89,7 +89,7 @@ public sealed class GalleryFilterPanelLogicTests
         Assert.Equal(new FilterBadgeDisplay(true, "4"), GalleryFilterPanelLogic.Badge(4));
 
         Assert.Equal(new DateTriggerDisplay("すべての期間", false), GalleryFilterPanelLogic.DateTrigger("", ""));
-        Assert.Equal(new DateTriggerDisplay("2026-06-01 ~ ...", true),
+        Assert.Equal(new DateTriggerDisplay("2026-06-01以降", true),
             GalleryFilterPanelLogic.DateTrigger("2026-06-01", ""));
 
         Assert.Equal(new FavoriteToggleDisplay(
@@ -109,9 +109,9 @@ public sealed class GalleryFilterPanelLogicTests
                 "GhostButtonStyle"),
             GalleryFilterPanelLogic.FavoriteToggle(false));
 
-        Assert.Equal(new DateDraftDisplay("---", "---", "すべての期間"),
+        Assert.Equal(new DateDraftDisplay("—", "—", "すべての期間"),
             GalleryFilterPanelLogic.DraftDisplay("", ""));
-        Assert.Equal(new DateDraftDisplay("2026-06-01", "2026-06-30", "2026-06-01 ~ 2026-06-30"),
+        Assert.Equal(new DateDraftDisplay("2026-06-01", "2026-06-30", "2026-06-01～2026-06-30"),
             GalleryFilterPanelLogic.DraftDisplay("2026-06-01", "2026-06-30"));
     }
 
@@ -302,7 +302,7 @@ public sealed class GalleryFilterPanelLogicTests
             ["Night"],
             new Dictionary<string, long> { ["Night"] = 7 });
 
-        Assert.Equal("3 タグ", choices.CountLabel);
+        Assert.Equal("登録タグ：3件", choices.CountLabel);
         Assert.Equal(3, choices.Rows.Count);
         Assert.Equal(new FilterChoiceRow("すべてのタグ", null, false, null), choices.Rows[0]);
         Assert.Equal(new FilterChoiceRow("Night", "7枚", true, "Night"), choices.Rows[1]);
@@ -360,7 +360,7 @@ public sealed class GalleryFilterPanelLogicTests
         var choices = GalleryFilterPanelLogic.BuildWorldChoices(worlds, "不明", [WorldFilterValues.Unknown]);
         var noMatch = GalleryFilterPanelLogic.BuildWorldChoices(worlds, "missing", []);
 
-        Assert.Equal("3 ワールド", choices.CountLabel);
+        Assert.Equal("ワールド：3件", choices.CountLabel);
         Assert.True(choices.HasVisitedWorlds);
         Assert.Equal(new FilterChoiceRow("すべてのワールド", "15枚", false, null), choices.Rows[0]);
         Assert.Equal(new FilterChoiceRow("ワールド不明", "2枚", true, WorldFilterValues.Unknown), choices.Rows[1]);

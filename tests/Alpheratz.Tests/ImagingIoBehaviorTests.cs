@@ -16,6 +16,7 @@ namespace Alpheratz.Tests;
 [Collection(AppPathsCacheTestCollection.Name)]
 public sealed class ImagingIoBehaviorTests : IDisposable
 {
+    private static readonly byte[] CompleteJpegMarkerSequence = [0xFF, 0xD8, 0x00, 0xFF, 0xD9];
     private readonly string tempDir;
 
     /// <summary>
@@ -64,6 +65,19 @@ public sealed class ImagingIoBehaviorTests : IDisposable
         Assert.Null(tiny);
     }
 
+    /// <summary>キャンセルを読取失敗の null へ変換せず、呼出側へ伝播することを確認する。</summary>
+    [Fact]
+    public async Task PdqImageReader_ReadLumaAsync_PropagatesCancellation()
+    {
+        var imagePath = Path.Combine(tempDir, "cancelled-read.png");
+        await WriteGradientPngAsync(imagePath, 96, 96);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            PdqImageReader.ReadLumaAsync(imagePath, cancellation.Token));
+    }
+
     /// <summary>
     /// ThumbnailService が実 PNG からグリッド用・表示用サムネイルを生成し、2回目は同じキャッシュを返すことを確認する。
     ///
@@ -95,6 +109,11 @@ public sealed class ImagingIoBehaviorTests : IDisposable
             Assert.EndsWith(".thumb.display-514.jpg", displayThumb);
             Assert.True(new FileInfo(gridThumb).Length > 0);
             Assert.True(new FileInfo(displayThumb).Length > 0);
+            Assert.False(ThumbnailService.IsPathLockTracked(gridThumb));
+            Assert.False(ThumbnailService.IsPathLockTracked(displayThumb));
+            Assert.Empty(Directory.EnumerateFiles(
+                Assert.IsType<string>(Path.GetDirectoryName(gridThumb)),
+                $"{Path.GetFileName(gridThumb)}.*.tmp"));
         }
         finally
         {
@@ -103,6 +122,148 @@ public sealed class ImagingIoBehaviorTests : IDisposable
                 try { File.Delete(path); }
                 catch { }
             }
+        }
+    }
+
+    /// <summary>初回生成をキャンセルした場合は、途中まで書いた一時ファイルも最終ファイルも残さないことを確認する。</summary>
+    [Fact]
+    public async Task ThumbnailService_EnsureThumbAsync_DeletesPartialFileWhenInitialGenerationIsCanceled()
+    {
+        var sourcePath = Path.Combine(tempDir, $"cancel-{Guid.NewGuid():N}.png");
+        await File.WriteAllBytesAsync(sourcePath, [0x00]);
+        var normalizedSource = AppPaths.NormalizePathForDb(sourcePath);
+        string? temporaryPath = null;
+        using var cancellation = new CancellationTokenSource();
+        var service = new ThumbnailService(async (_, destinationPath, _, ct) =>
+        {
+            temporaryPath = destinationPath;
+            await File.WriteAllBytesAsync(destinationPath, [0xFF, 0xD8, 0x00], CancellationToken.None);
+            cancellation.Cancel();
+            ct.ThrowIfCancellationRequested();
+        });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => service.EnsureGridThumbAsync(normalizedSource, sourceSlot: 1, cancellation.Token));
+
+        var writtenTemporaryPath = Assert.IsType<string>(temporaryPath);
+        var cacheDir = Assert.IsType<string>(Path.GetDirectoryName(writtenTemporaryPath));
+        Assert.False(File.Exists(writtenTemporaryPath));
+        Assert.Empty(Directory.EnumerateFiles(
+            cacheDir,
+            $"{Path.GetFileName(sourcePath)}.*.thumb.grid-512.jpg"));
+    }
+
+    /// <summary>更新生成が I/O 失敗した場合は一時ファイルを削除し、既存の完全なキャッシュを変更しないことを確認する。</summary>
+    [Fact]
+    public async Task ThumbnailService_EnsureThumbAsync_PreservesExistingCacheWhenReplacementFails()
+    {
+        var sourcePath = Path.Combine(tempDir, $"replace-{Guid.NewGuid():N}.png");
+        await File.WriteAllBytesAsync(sourcePath, [0x00]);
+        var normalizedSource = AppPaths.NormalizePathForDb(sourcePath);
+        var seedService = new ThumbnailService(
+            (_, destinationPath, _, ct) => WriteCompleteTestJpegAsync(destinationPath, ct));
+        string? temporaryPath = null;
+        string? thumbPath = null;
+
+        try
+        {
+            thumbPath = await seedService.EnsureGridThumbAsync(normalizedSource, sourceSlot: 1);
+            var originalBytes = await File.ReadAllBytesAsync(thumbPath);
+            File.SetLastWriteTimeUtc(thumbPath, DateTime.UtcNow.AddMinutes(-2));
+            File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow);
+
+            var failingService = new ThumbnailService(async (_, destinationPath, _, _) =>
+            {
+                temporaryPath = destinationPath;
+                await File.WriteAllBytesAsync(destinationPath, [0xFF, 0xD8, 0x00]);
+                throw new IOException("テスト用のサムネイル生成失敗");
+            });
+
+            await Assert.ThrowsAsync<IOException>(
+                () => failingService.EnsureGridThumbAsync(normalizedSource, sourceSlot: 1));
+
+            Assert.Equal(originalBytes, await File.ReadAllBytesAsync(thumbPath));
+            Assert.False(File.Exists(Assert.IsType<string>(temporaryPath)));
+            Assert.False(ThumbnailService.IsPathLockTracked(thumbPath));
+        }
+        finally
+        {
+            if (thumbPath is not null)
+                TryDelete(thumbPath);
+            if (temporaryPath is not null)
+                TryDelete(temporaryPath);
+        }
+    }
+
+    /// <summary>更新日時が新しくても終端を欠く JPEG はキャッシュヒットにせず、再生成することを確認する。</summary>
+    [Fact]
+    public async Task ThumbnailService_EnsureThumbAsync_RegeneratesIncompleteFinalFile()
+    {
+        var sourcePath = Path.Combine(tempDir, $"invalid-{Guid.NewGuid():N}.png");
+        await File.WriteAllBytesAsync(sourcePath, [0x00]);
+        var normalizedSource = AppPaths.NormalizePathForDb(sourcePath);
+        var seedService = new ThumbnailService(
+            (_, destinationPath, _, ct) => WriteCompleteTestJpegAsync(destinationPath, ct));
+        string? thumbPath = null;
+
+        try
+        {
+            thumbPath = await seedService.EnsureGridThumbAsync(normalizedSource, sourceSlot: 1);
+            await File.WriteAllBytesAsync(thumbPath, [0xFF, 0xD8, 0x00]);
+            File.SetLastWriteTimeUtc(thumbPath, DateTime.UtcNow.AddMinutes(2));
+            var generationCount = 0;
+            var repairService = new ThumbnailService((_, destinationPath, _, ct) =>
+            {
+                Interlocked.Increment(ref generationCount);
+                return WriteCompleteTestJpegAsync(destinationPath, ct);
+            });
+
+            var repairedPath = await repairService.EnsureGridThumbAsync(normalizedSource, sourceSlot: 1);
+
+            Assert.Equal(thumbPath, repairedPath);
+            Assert.Equal(1, generationCount);
+            Assert.Equal(CompleteJpegMarkerSequence, await File.ReadAllBytesAsync(repairedPath));
+            Assert.False(ThumbnailService.IsPathLockTracked(repairedPath));
+        }
+        finally
+        {
+            if (thumbPath is not null)
+                TryDelete(thumbPath);
+        }
+    }
+
+    /// <summary>同一出力先への並列要求を一度の生成へ集約し、完了後にパスロックを除去することを確認する。</summary>
+    [Fact]
+    public async Task ThumbnailService_EnsureThumbAsync_SerializesSamePathAndReleasesLock()
+    {
+        var sourcePath = Path.Combine(tempDir, $"parallel-{Guid.NewGuid():N}.png");
+        await File.WriteAllBytesAsync(sourcePath, [0x00]);
+        var normalizedSource = AppPaths.NormalizePathForDb(sourcePath);
+        var generationCount = 0;
+        var service = new ThumbnailService(async (_, destinationPath, _, ct) =>
+        {
+            Interlocked.Increment(ref generationCount);
+            await Task.Delay(50, ct);
+            await WriteCompleteTestJpegAsync(destinationPath, ct);
+        });
+        string? thumbPath = null;
+
+        try
+        {
+            var requests = Enumerable.Range(0, 8)
+                .Select(_ => service.EnsureGridThumbAsync(normalizedSource, sourceSlot: 1))
+                .ToArray();
+            var paths = await Task.WhenAll(requests);
+            thumbPath = paths[0];
+
+            Assert.All(paths, path => Assert.Equal(thumbPath, path));
+            Assert.Equal(1, generationCount);
+            Assert.False(ThumbnailService.IsPathLockTracked(thumbPath));
+        }
+        finally
+        {
+            if (thumbPath is not null)
+                TryDelete(thumbPath);
         }
     }
 
@@ -131,5 +292,14 @@ public sealed class ImagingIoBehaviorTests : IDisposable
         encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore, width, height, 96, 96, pixels);
         await encoder.FlushAsync();
         await fileStream.FlushAsync();
+    }
+
+    private static Task WriteCompleteTestJpegAsync(string path, CancellationToken ct)
+        => File.WriteAllBytesAsync(path, CompleteJpegMarkerSequence, ct);
+
+    private static void TryDelete(string path)
+    {
+        try { File.Delete(path); }
+        catch { }
     }
 }

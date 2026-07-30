@@ -92,6 +92,84 @@ public sealed class ConfigurationBehaviorTests : IDisposable
         Assert.True(reloaded.OpenWorldLinkOnPost);
         Assert.Equal(["one", "two"], reloaded.TweetTemplates);
         Assert.Equal("two", reloaded.ActiveTweetTemplate);
+        Assert.Empty(Directory.GetFiles(tempDir, "setting.*.tmp"));
+    }
+
+    /// <summary>
+    /// フォルダパスと整理要求が同時に保存され、同じ operationId の完了時だけ要求を解除できることを確認する。
+    /// </summary>
+    [Fact]
+    public async Task SettingsService_FolderChangePersistsRecoverableCleanupMarker()
+    {
+        var config = new AppConfig(tempDir);
+        config.SaveSetting(new AlpheratzSetting { PhotoFolderPath = "F:/old" });
+        var service = new SettingsService(config);
+
+        var cleanup = await service.SaveFolderChangeAsync(1, "F:/old", "F:/new");
+        var saved = config.LoadSetting();
+
+        Assert.Equal("F:/new", saved.PhotoFolderPath);
+        Assert.Equal(cleanup.OperationId, saved.PendingFolderCleanup?.OperationId);
+        Assert.True(await service.IsPendingFolderCleanupCurrentAsync(cleanup));
+        await service.ClearPendingFolderCleanupAsync(cleanup.OperationId);
+        Assert.Null(config.LoadSetting().PendingFolderCleanup);
+    }
+
+    /// <summary>確認後に保存済みパスが変わった操作では、古い値を上書きしないことを確認する。</summary>
+    [Fact]
+    public async Task SettingsService_FolderChangeRejectsStaleExpectedPath()
+    {
+        var config = new AppConfig(tempDir);
+        config.SaveSetting(new AlpheratzSetting { SecondaryPhotoFolderPath = "F:/current" });
+        var service = new SettingsService(config);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.SaveFolderChangeAsync(2, "F:/stale", "F:/next"));
+
+        var saved = config.LoadSetting();
+        Assert.Equal("F:/current", saved.SecondaryPhotoFolderPath);
+        Assert.Null(saved.PendingFolderCleanup);
+    }
+
+    /// <summary>2つの source slot が同じ写真または親子フォルダを走査する設定を保存しないことを確認する。</summary>
+    [Fact]
+    public async Task SettingsService_FolderChangeRejectsOverlappingSourceFolders()
+    {
+        var primary = Path.Combine(tempDir, "photos");
+        var child = Path.Combine(primary, "child");
+        var config = new AppConfig(tempDir);
+        config.SaveSetting(new AlpheratzSetting { PhotoFolderPath = primary });
+        var service = new SettingsService(config);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.SaveFolderChangeAsync(2, string.Empty, Path.Combine(primary, ".")));
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.SaveFolderChangeAsync(2, string.Empty, child));
+
+        var saved = config.LoadSetting();
+        Assert.Equal(primary, saved.PhotoFolderPath);
+        Assert.Equal(string.Empty, saved.SecondaryPhotoFolderPath);
+        Assert.Null(saved.PendingFolderCleanup);
+    }
+
+    /// <summary>名前の接頭辞が同じだけの兄弟フォルダを、親子関係として誤判定しないことを確認する。</summary>
+    [Fact]
+    public void AppPaths_AreOverlappingDirectories_DoesNotTreatSiblingPrefixAsOverlap()
+    {
+        var photos = Path.Combine(tempDir, "photos");
+        var photosOld = Path.Combine(tempDir, "photos-old");
+
+        Assert.False(AppPaths.AreOverlappingDirectories(photos, photosOld));
+        Assert.False(AppPaths.AreOverlappingDirectories(photosOld, photos));
+    }
+
+    /// <summary>画像キャッシュを持たない source slot には保存先を返さないことを確認する。</summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(3)]
+    public void AppPaths_GetImgCacheDir_ReturnsNullForUnsupportedSourceSlot(long sourceSlot)
+    {
+        Assert.Null(AppPaths.GetImgCacheDir(sourceSlot));
     }
 
     /// <summary>
@@ -129,16 +207,17 @@ public sealed class ConfigurationBehaviorTests : IDisposable
     }
 
     /// <summary>
-    /// SettingsService.SaveSettingAsync が DTO の非 null 項目だけを既存設定へ反映し、
+    /// SettingsService.SaveSettingAsync が DTO の一般設定の非 null 項目だけを既存設定へ反映し、
     /// テンプレート一覧を保存時点のスナップショットとしてコピーすることを確認する。
     ///
     /// 設定画面では一部の項目だけを保存する経路がある。
-    /// null を「空で上書き」と扱うと既存のフォルダや表示モードが消えるため、非 null の項目だけを反映する。
+    /// フォルダ変更は整理要求を伴う専用 API だけに限定し、一般保存へ渡されたフォルダ値は反映しない。
+    /// その他は null を「空で上書き」と扱わず、非 null の項目だけを反映する。
     /// また tweetTemplates は呼び出し元が後から編集できるコレクションなので、保存時にコピーされないと
     /// Save 後の UI 操作で保存済み設定まで変化してしまう。この2点を同時に固定する。
     /// </summary>
     [Fact]
-    public async Task SettingsService_SaveSettingAsync_MergesProvidedValuesAndCopiesTemplates()
+    public async Task SettingsService_SaveSettingAsync_MergesGeneralValuesWithoutChangingFoldersAndCopiesTemplates()
     {
         var config = new AppConfig(tempDir);
         config.SaveSetting(new AlpheratzSetting
@@ -165,13 +244,34 @@ public sealed class ConfigurationBehaviorTests : IDisposable
         mutableTemplates.Add("mutated-after-save");
         var saved = config.LoadSetting();
 
-        Assert.Equal("F:/new-primary", saved.PhotoFolderPath);
+        Assert.Equal("F:/old-primary", saved.PhotoFolderPath);
         Assert.Equal("F:/old-secondary", saved.SecondaryPhotoFolderPath);
         Assert.Equal("light", saved.ThemeMode);
         Assert.Equal("gallery", saved.ViewMode);
         Assert.False(saved.OpenWorldLinkOnPost);
         Assert.Equal(["after-1", "after-2"], saved.TweetTemplates);
         Assert.Equal("after-2", saved.ActiveTweetTemplate);
+    }
+
+    /// <summary>整理要求がある間の一般設定保存でも、確定済みフォルダと要求マーカーを巻き戻さないことを確認する。</summary>
+    [Fact]
+    public async Task SettingsService_SaveSettingAsync_PreservesFolderCleanupState()
+    {
+        var config = new AppConfig(tempDir);
+        config.SaveSetting(new AlpheratzSetting { PhotoFolderPath = "F:/old" });
+        var service = new SettingsService(config);
+        var cleanup = await service.SaveFolderChangeAsync(1, "F:/old", "F:/new");
+
+        await service.SaveSettingAsync(new AlpheratzSettingDto
+        {
+            photoFolderPath = "F:/old",
+            themeMode = ThemeMode.dark,
+        });
+
+        var saved = config.LoadSetting();
+        Assert.Equal("F:/new", saved.PhotoFolderPath);
+        Assert.Equal(cleanup.OperationId, saved.PendingFolderCleanup?.OperationId);
+        Assert.Equal("dark", saved.ThemeMode);
     }
 
     /// <summary>

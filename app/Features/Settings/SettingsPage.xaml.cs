@@ -46,8 +46,8 @@ public sealed partial class SettingsPage : Page
     public Func<bool, Task>? OnStartupPreferenceChanged { get; set; }
     public Func<bool, Task>? OnOpenWorldOnPostChanged { get; set; }
     /// <summary>テーマ切替 (true=Dark)。</summary>
-    public Func<bool, Task>? OnThemeChanged { get; set; }
-    /// <summary>「ワールド不明写真を解析する」ボタン押下。WorldResolve モーダルを開く。</summary>
+    public Func<bool, Task<bool>>? OnThemeChanged { get; set; }
+    /// <summary>「ワールド名の推測」操作から WorldResolve モーダルを開く。</summary>
     public Func<Task>? OnStartWorldAnalysis { get; set; }
 
     // ===== タグマスタ =====
@@ -93,7 +93,7 @@ public sealed partial class SettingsPage : Page
         AppLogger.Trace("SettingsPage.ctor: exit");
     }
 
-    /// <summary>PDQ 解析が完了するまで、ワールド名解決画面への遷移を無効化する。</summary>
+    /// <summary>PDQ 解析が完了するまで、ワールド名の推測画面への遷移を無効化する。</summary>
     public void SetWorldAnalysisEnabled(bool enabled)
     {
         try
@@ -104,7 +104,7 @@ public sealed partial class SettingsPage : Page
         catch (Exception ex) { AppLogger.Error($"SettingsPage.SetWorldAnalysisEnabled: threw: {ex}"); }
     }
 
-    /// <summary>PDQ 解析の進捗を、ワールド名解決ボタンの待機表示へ反映する。</summary>
+    /// <summary>PDQ 解析の進捗を、ワールド名の推測ボタンの待機表示へ反映する。</summary>
     public void SetWorldAnalysisProgress(PhashProgressEvent progress, bool isRunning, bool enabled)
     {
         try
@@ -373,8 +373,16 @@ public sealed partial class SettingsPage : Page
         try
         {
             var nextDark = SettingsPageLogic.NextThemeIsDark(viewModel.Settings.ThemeMode == ThemeMode.dark);
-            if (OnThemeChanged is not null) await OnThemeChanged(nextDark).ConfigureAwait(false);
-            DispatcherQueue?.TryEnqueue(() => UpdateThemeSwitchVisual(nextDark));
+            var themeChange = OnThemeChanged;
+            if (themeChange is null)
+            {
+                UpdateThemeSwitchVisual(nextDark);
+                return;
+            }
+
+            if (await themeChange(nextDark))
+                viewModel.Settings.ThemeMode = nextDark ? ThemeMode.dark : ThemeMode.light;
+            UpdateThemeSwitchVisual();
         }
         catch (Exception ex) { AppLogger.Error($"SettingsPage.ThemeSwitch_Click: threw: {ex}"); }
         AppLogger.Trace("SettingsPage.ThemeSwitch_Click: exit");
@@ -409,7 +417,7 @@ public sealed partial class SettingsPage : Page
         AppLogger.Trace("SettingsPage.RegisterStellaRecord_Click: exit");
     }
 
-    /// <summary>未知ワールド解析モーダルの表示を要求する。</summary>
+    /// <summary>ワールド名の推測モーダルの表示を要求する。</summary>
     private async void StartWorldAnalysis_Click(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("SettingsPage.StartWorldAnalysis_Click: enter");

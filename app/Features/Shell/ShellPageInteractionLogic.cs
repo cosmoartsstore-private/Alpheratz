@@ -12,7 +12,7 @@ internal static class ShellPageInteractionLogic
     public static ShellHeaderInteractivity ComputeHeaderInteractivity(ShellOverlayState state)
     {
         return new ShellHeaderInteractivity(
-            ControlsInteractive: !state.HeaderDimOverlayOpen,
+            ControlsInteractive: !state.HeaderControlsBlocked,
             Opacity: state.ModalOpen ? 0.4 : (state.FilterOpen ? 0.6 : 1.0));
     }
 
@@ -91,7 +91,7 @@ internal static class ShellPageInteractionLogic
 
 /// <summary>
 /// ShellPage が扱うオーバーレイ状態を 1 つにまとめた純粋状態。
-/// Confirm と MultiSelect はヘッダー dim には使わず、Confirm は新規 overlay 起動の抑止にも使う。
+/// Confirm はヘッダーを dim せず操作だけを抑止し、新規 overlay 起動も防ぐ。
 /// MultiSelect は Esc 優先順位だけに使う。
 /// </summary>
 internal sealed record ShellOverlayState(
@@ -99,13 +99,17 @@ internal sealed record ShellOverlayState(
     bool MiddleModalOpen,
     bool FilterOpen,
     bool ConfirmOpen = false,
-    bool MultiSelectMode = false)
+    bool MultiSelectMode = false,
+    bool GalleryModalOpen = false)
 {
-    /// <summary>写真モーダルまたは中位モーダルが開いているかを返す。</summary>
-    public bool ModalOpen => PhotoModalOpen || MiddleModalOpen;
+    /// <summary>写真モーダル、中位モーダル、ギャラリー内確認モーダルのいずれかが開いているかを返す。</summary>
+    public bool ModalOpen => PhotoModalOpen || MiddleModalOpen || GalleryModalOpen;
 
     /// <summary>HeaderBar の dim と不活性化に使うオーバーレイが開いているかを返す。</summary>
     public bool HeaderDimOverlayOpen => ModalOpen || FilterOpen;
+
+    /// <summary>HeaderBar の操作を抑止するオーバーレイが開いているかを返す。</summary>
+    public bool HeaderControlsBlocked => HeaderDimOverlayOpen || ConfirmOpen;
 }
 
 /// <summary>ヘッダーの操作可否と見た目の弱め方。</summary>

@@ -1,3 +1,5 @@
+using static Alpheratz.Messages.MessageCatalog;
+
 namespace Alpheratz.Features.Gallery;
 
 /// <summary>
@@ -18,7 +20,10 @@ internal static class GalleryPageLogic
             (false, true) => BulkOperationBarTransition.Hide,
             _ => BulkOperationBarTransition.None,
         };
-        return new BulkOperationBarState(transition, isMultiSelectMode, $"{selectedCount} 枚選択");
+        return new BulkOperationBarState(
+            transition,
+            isMultiSelectMode,
+            getMsg("GalleryPage.selectionLabel", ("count", selectedCount)));
     }
 
     /// <summary>表示中の先頭写真インデックスに対応する月グループのインデックスを返す。</summary>

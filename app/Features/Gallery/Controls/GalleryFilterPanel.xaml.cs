@@ -11,8 +11,10 @@ using Alpheratz.Shared.Models;
 using Alpheratz.Shared.Services;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Features.Gallery.Controls;
 
@@ -80,6 +82,7 @@ public sealed partial class GalleryFilterPanel : UserControl
         try
         {
             InitializeComponent();
+            setFilteredCount(0);
             buildWeekdayHeaders();
         }
         catch (Exception ex)
@@ -310,7 +313,7 @@ public sealed partial class GalleryFilterPanel : UserControl
     /// <summary>現在のフィルタ後件数をパネル上の件数表示へ反映する。</summary>
     public void setFilteredCount(int count)
     {
-        FilteredCountRun.Text = count.ToString();
+        FilteredCountLabel.Text = getMsg("GalleryFilterPanel.filteredCount", ("count", count));
     }
 
     /// <summary>GalleryFiltersState のプロパティ変更に応じて関連 UI を同期する。</summary>
@@ -616,12 +619,13 @@ public sealed partial class GalleryFilterPanel : UserControl
     {
         WeekdayHeaderGrid.ColumnDefinitions.Clear();
         WeekdayHeaderGrid.Children.Clear();
+        var weekLabels = GalleryFilterPanelLogic.WeekLabels;
         for (int i = 0; i < 7; i++)
         {
             WeekdayHeaderGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             var tb = new TextBlock
             {
-                Text = GalleryFilterPanelLogic.WeekLabels[i],
+                Text = weekLabels[i],
                 FontSize = 10,
                 FontWeight = Microsoft.UI.Text.FontWeights.ExtraBold,
                 Foreground = ResolveThemeBrush(WeekdayHeaderGrid, "ATextFaint"),
@@ -635,7 +639,10 @@ public sealed partial class GalleryFilterPanel : UserControl
     /// <summary>表示月と選択範囲に基づいてカレンダーの日付セルを再構築する。</summary>
     private void buildCalendar()
     {
-        MonthLabel.Text = $"{visibleMonth.Year}年 {visibleMonth.Month}月";
+        MonthLabel.Text = getMsg(
+            "GalleryFilterPanel.calendarMonth",
+            ("year", visibleMonth.Year),
+            ("month", visibleMonth.Month));
 
         CalendarDayGrid.ColumnDefinitions.Clear();
         CalendarDayGrid.RowDefinitions.Clear();
@@ -656,7 +663,7 @@ public sealed partial class GalleryFilterPanel : UserControl
 
             var btn = new Button
             {
-                Content = cell.Date.Day.ToString(),
+                Content = getMsg("GalleryFilterPanel.calendarDay", ("day", cell.Date.Day)),
                 Tag = cell.Date,
                 MinWidth = 0,
                 MinHeight = 32,
@@ -678,6 +685,13 @@ public sealed partial class GalleryFilterPanel : UserControl
                     ? Microsoft.UI.Text.FontWeights.ExtraBold
                     : Microsoft.UI.Text.FontWeights.SemiBold,
             };
+            AutomationProperties.SetName(
+                btn,
+                getMsg(
+                    "GalleryFilterPanel.calendarDayAutomationName",
+                    ("year", cell.Date.Year),
+                    ("month", cell.Date.Month),
+                    ("day", cell.Date.Day)));
 
             btn.Click += DayCell_Click;
 

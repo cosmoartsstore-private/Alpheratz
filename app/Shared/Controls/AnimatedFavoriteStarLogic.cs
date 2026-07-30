@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Numerics;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Shared.Controls;
 
@@ -16,7 +17,7 @@ internal static class AnimatedFavoriteStarLogic
 
     /// <summary>Liked 状態から UI Automation に公開する名前を返す。</summary>
     public static string AutomationName(bool liked)
-        => liked ? "お気に入り解除" : "お気に入りに追加";
+        => getMsg(liked ? "common.favoriteRemove" : "common.favoriteAdd");
 
     /// <summary>Liked 状態から星の塗りと線に使うテーマキーとフォールバックを返す。</summary>
     public static FavoriteStarBrushPlan BrushPlan(bool liked)

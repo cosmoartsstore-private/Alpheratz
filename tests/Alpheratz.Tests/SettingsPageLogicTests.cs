@@ -48,9 +48,9 @@ public sealed class SettingsPageLogicTests
     [Fact]
     public void TemplateEditor_ReturnsLabelsForCreateAndEditModes()
     {
-        Assert.Equal(new TemplateEditorDisplay(false, "登録", "新規テンプレート"),
+        Assert.Equal(new TemplateEditorDisplay(false, "登録", "テンプレートを追加"),
             SettingsPageLogic.TemplateEditor(null));
-        Assert.Equal(new TemplateEditorDisplay(true, "更新", "テンプレート編集"),
+        Assert.Equal(new TemplateEditorDisplay(true, "更新", "テンプレートを編集"),
             SettingsPageLogic.TemplateEditor("hello world"));
     }
 
@@ -130,8 +130,8 @@ public sealed class SettingsPageLogicTests
         Assert.False(display.IsIndeterminate);
         Assert.Equal(30, display.Maximum);
         Assert.Equal(12, display.Value);
-        Assert.Equal("類似画像解析 12/30 枚 (40%)", display.SummaryText);
-        Assert.Equal("処理中: avatar.png", display.DetailText);
+        Assert.Equal("写真の比較準備：12/30枚（40%）", display.SummaryText);
+        Assert.Equal("処理中：avatar.png", display.DetailText);
     }
 
     /// <summary>外部遷移やサイドバーで扱う設定セクション ID を固定する。</summary>

@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.Win32;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Services;
 
@@ -11,7 +12,7 @@ internal static class StellaRecordRegistration
 {
     private const string AppName = "Alpheratz";
     private const string LegacyAppName = "Alpheratz " + "v" + "2";
-    private const string AppDescription = "VRChat写真ギャラリー化・ワールドリンク展開サポートアプリ";
+    private static string AppDescription => getMsg("StellaRecordRegistration.appDescription");
     private const string RegKeyPath = @"Software\CosmoArtsStore\StellaRecord";
 
     private const string CreateTableSql = """
@@ -159,14 +160,23 @@ internal static class StellaRecordRegistration
     /// </summary>
     private static SqliteConnection OpenConnection(string dbPath)
     {
-        var conn = new SqliteConnection($"Data Source={dbPath}");
-        conn.Open();
+        var connectionString = new SqliteConnectionStringBuilder { DataSource = dbPath }.ToString();
+        var conn = new SqliteConnection(connectionString);
+        try
+        {
+            conn.Open();
 
-        using var pragma = conn.CreateCommand();
-        pragma.CommandText = "PRAGMA busy_timeout=5000;";
-        pragma.ExecuteNonQuery();
+            using var pragma = conn.CreateCommand();
+            pragma.CommandText = "PRAGMA busy_timeout=5000;";
+            pragma.ExecuteNonQuery();
 
-        return conn;
+            return conn;
+        }
+        catch
+        {
+            conn.Dispose();
+            throw;
+        }
     }
 
     /// <summary>

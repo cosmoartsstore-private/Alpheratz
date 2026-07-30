@@ -21,16 +21,16 @@ public sealed class GalleryPageLogicTests
     public void ComputeBulkOperationBarState_EmitsTransitionsOnlyWhenVisibilityChanges()
     {
         Assert.Equal(
-            new BulkOperationBarState(BulkOperationBarTransition.Show, true, "3 枚選択"),
+            new BulkOperationBarState(BulkOperationBarTransition.Show, true, "3枚を選択中"),
             GalleryPageLogic.ComputeBulkOperationBarState(true, false, 3));
         Assert.Equal(
-            new BulkOperationBarState(BulkOperationBarTransition.None, true, "5 枚選択"),
+            new BulkOperationBarState(BulkOperationBarTransition.None, true, "5枚を選択中"),
             GalleryPageLogic.ComputeBulkOperationBarState(true, true, 5));
         Assert.Equal(
-            new BulkOperationBarState(BulkOperationBarTransition.Hide, false, "0 枚選択"),
+            new BulkOperationBarState(BulkOperationBarTransition.Hide, false, "0枚を選択中"),
             GalleryPageLogic.ComputeBulkOperationBarState(false, true, 0));
         Assert.Equal(
-            new BulkOperationBarState(BulkOperationBarTransition.None, false, "0 枚選択"),
+            new BulkOperationBarState(BulkOperationBarTransition.None, false, "0枚を選択中"),
             GalleryPageLogic.ComputeBulkOperationBarState(false, false, 0));
     }
 

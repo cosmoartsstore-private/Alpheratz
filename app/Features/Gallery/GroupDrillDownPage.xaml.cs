@@ -6,6 +6,7 @@ using Alpheratz.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Features.Gallery;
 
@@ -68,7 +69,10 @@ public sealed partial class GroupDrillDownPage : UserControl
         AppLogger.Trace($"GroupDrillDownPage.SetGroupInfo: enter name={groupName} count={items.Count}");
         try
         {
-            GroupTitle.Text = $"{groupName}  ({items.Count}枚)";
+            GroupTitle.Text = getMsg(
+                "GroupDrillDownPage.title",
+                ("groupName", groupName),
+                ("count", items.Count));
             photos = items;
             var wrapped = items.Select(p => new PhotoGridItem { Photo = p }).ToArray();
             displayItems.ReplaceAll(wrapped);

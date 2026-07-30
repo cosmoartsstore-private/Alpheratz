@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Alpheratz.Core;
@@ -11,6 +12,7 @@ using Alpheratz.Services;
 using Alpheratz.Shared.Models;
 using Alpheratz.Shared.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Features.Gallery;
 
@@ -99,7 +101,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
             {
                 case nameof(GalleryFiltersState.GroupingMode):
                     AppLogger.Trace("GalleryViewModel.onFiltersChanged: branch=GroupingMode (client rebuild)");
-                    photosState.rebuildDisplayItems(filtersState.GroupingMode);
+                    photosState.SetGroupingMode(filtersState.GroupingMode);
                     break;
                 case "BatchCompleted":
                 case nameof(GalleryFiltersState.DebouncedQuery):
@@ -256,7 +258,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         catch (Exception err)
         {
             AppLogger.Error($"GalleryViewModel.toggleFavorite: threw: {err}");
-            toastService.addToast($"お気に入りの更新に失敗しました: {err}", ToastType.error);
+            toastService.addToast(getMsg("GalleryViewModel.favoriteUpdateFailed"), ToastType.error);
         }
         AppLogger.Trace("GalleryViewModel.toggleFavorite: exit");
     }
@@ -275,7 +277,9 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         if (normalized.Length > MAX_TAG_LENGTH)
         {
             AppLogger.Trace("GalleryViewModel.addTag: skip (too long)");
-            toastService.addToast($"タグは{MAX_TAG_LENGTH}文字以内で入力してください。", ToastType.error);
+            toastService.addToast(
+                getMsg("GalleryViewModel.tagTooLong", ("maxLength", MAX_TAG_LENGTH)),
+                ToastType.error);
             return;
         }
 
@@ -296,12 +300,12 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
                     .OrderBy(item => item, StringComparer.Create(new CultureInfo("ja-JP"), false))
                     .ToArray())).ConfigureAwait(false);
             await loadTagFilterCounts().ConfigureAwait(false);
-            toastService.addToast("タグを追加しました。");
+            toastService.addToast(getMsg("GalleryViewModel.tagAdded"));
         }
         catch (Exception err)
         {
             AppLogger.Error($"GalleryViewModel.addTag: threw: {err}");
-            toastService.addToast($"タグの追加に失敗しました: {err}", ToastType.error);
+            toastService.addToast(getMsg("GalleryViewModel.tagAddFailed"), ToastType.error);
         }
         AppLogger.Trace("GalleryViewModel.addTag: exit");
     }
@@ -319,7 +323,9 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
 
         if (normalizedTags.Any(tag => tag.Length > MAX_TAG_LENGTH))
         {
-            toastService.addToast($"タグは{MAX_TAG_LENGTH}文字以内で入力してください。", ToastType.error);
+            toastService.addToast(
+                getMsg("GalleryViewModel.tagTooLong", ("maxLength", MAX_TAG_LENGTH)),
+                ToastType.error);
             return;
         }
 
@@ -344,12 +350,15 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
                     .OrderBy(item => item, StringComparer.Create(new CultureInfo("ja-JP"), false))
                     .ToArray())).ConfigureAwait(false);
             await loadTagFilterCounts().ConfigureAwait(false);
-            toastService.addToast(additions.Length == 1 ? "タグを追加しました。" : $"{additions.Length} 件のタグを追加しました。");
+            toastService.addToast(
+                additions.Length == 1
+                    ? getMsg("GalleryViewModel.tagAdded")
+                    : getMsg("GalleryViewModel.tagsAdded", ("count", additions.Length)));
         }
         catch (Exception err)
         {
             AppLogger.Error($"GalleryViewModel.addTags: threw: {err}");
-            toastService.addToast($"タグの追加に失敗しました: {err}", ToastType.error);
+            toastService.addToast(getMsg("GalleryViewModel.tagAddFailed"), ToastType.error);
         }
         AppLogger.Trace("GalleryViewModel.addTags: exit");
     }
@@ -365,12 +374,12 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
             await dispatcherService.RunOnUiThread(() =>
                 updatePhoto(photoPath, photo => photo.Tags = photo.Tags.Where(item => item != tag).ToArray())).ConfigureAwait(false);
             await loadTagFilterCounts().ConfigureAwait(false);
-            toastService.addToast("タグを削除しました。");
+            toastService.addToast(getMsg("GalleryViewModel.tagRemoved"));
         }
         catch (Exception err)
         {
             AppLogger.Error($"GalleryViewModel.removeTag: threw: {err}");
-            toastService.addToast($"タグの削除に失敗しました: {err}", ToastType.error);
+            toastService.addToast(getMsg("GalleryViewModel.tagRemoveFailed"), ToastType.error);
         }
         AppLogger.Trace("GalleryViewModel.removeTag: exit");
     }
@@ -417,12 +426,12 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
             }).ConfigureAwait(false);
             await loadWorldFilterOptions().ConfigureAwait(false);
 
-            toastService.addToast("ワールド情報を反映しました。");
+            toastService.addToast(getMsg("GalleryViewModel.worldInfoApplied"));
         }
         catch (Exception err)
         {
             AppLogger.Error($"GalleryViewModel.applySimilarWorldMatch: threw: {err}");
-            toastService.addToast($"ワールド情報の反映に失敗しました: {err}", ToastType.error);
+            toastService.addToast(getMsg("GalleryViewModel.worldInfoApplyFailed"), ToastType.error);
         }
         AppLogger.Trace("GalleryViewModel.applySimilarWorldMatch: exit");
     }
@@ -434,12 +443,12 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         try
         {
             await phashService.StartPdqAnalysisAsync().ConfigureAwait(false);
-            toastService.addToast("ワールド不明写真の一括分析を開始しました");
+            toastService.addToast(getMsg("GalleryViewModel.unknownWorldAnalysisStarted"));
         }
         catch (Exception err)
         {
             AppLogger.Error($"GalleryViewModel.handleStartUnknownWorldAnalysis: threw: {err}");
-            toastService.addToast($"ワールド不明写真の一括分析を開始できませんでした: {err}", ToastType.error);
+            toastService.addToast(getMsg("GalleryViewModel.unknownWorldAnalysisStartFailed"), ToastType.error);
         }
         AppLogger.Trace("GalleryViewModel.handleStartUnknownWorldAnalysis: exit");
     }
@@ -478,22 +487,19 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
     public async Task bulkSetFavorite(bool isFavorite)
     {
         AppLogger.Trace($"GalleryViewModel.bulkSetFavorite: enter isFavorite={isFavorite}");
+        var selectionVersion = selectionState.SelectionVersion;
         var refs = (await selectionState.getSelectedPhotoRefsSnapshot().ConfigureAwait(false)).ToList();
         if (refs.Count == 0) return;
         try
         {
-            await photoService.BulkSetPhotoFavoriteAsync(refs, isFavorite).ConfigureAwait(false);
+            var result = await photoService.BulkSetPhotoFavoriteAsync(refs, isFavorite).ConfigureAwait(false);
             await dispatcherService.RunOnUiThread(() =>
-            {
-                foreach (var r in refs)
-                    updatePhoto(r.photo_path, p => p.IsFavorite = isFavorite);
-            }).ConfigureAwait(false);
-            toastService.addToast(isFavorite ? "お気に入りに追加しました" : "お気に入りを解除しました");
+                applyBulkFavoriteResult(result, isFavorite, selectionVersion)).ConfigureAwait(false);
         }
         catch (Exception err)
         {
             AppLogger.Error($"GalleryViewModel.bulkSetFavorite: threw: {err}");
-            toastService.addToast($"お気に入りの更新に失敗しました: {err}", ToastType.error);
+            toastService.addToast(getMsg("GalleryViewModel.favoriteUpdateFailed"), ToastType.error);
         }
         AppLogger.Trace("GalleryViewModel.bulkSetFavorite: exit");
     }
@@ -520,47 +526,173 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         if (normalizedTags.Any(tag => tag.Length > MAX_TAG_LENGTH))
         {
             AppLogger.Trace("GalleryViewModel.bulkAddTags: skip (too long)");
-            toastService.addToast($"タグは{MAX_TAG_LENGTH}文字以内で入力してください。", ToastType.error);
+            toastService.addToast(
+                getMsg("GalleryViewModel.tagTooLong", ("maxLength", MAX_TAG_LENGTH)),
+                ToastType.error);
             return;
         }
 
+        var selectionVersion = selectionState.SelectionVersion;
         var refs = (await selectionState.getSelectedPhotoRefsSnapshot().ConfigureAwait(false)).ToList();
         if (refs.Count == 0) return;
         try
         {
-            await photoService.BulkAddPhotoTagsAsync(refs, normalizedTags).ConfigureAwait(false);
-
+            var result = await photoService.BulkAddPhotoTagsAsync(refs, normalizedTags).ConfigureAwait(false);
             await dispatcherService.RunOnUiThread(() =>
-            {
-                foreach (var r in refs)
-                {
-                    updatePhoto(r.photo_path, photo =>
-                    {
-                        var additions = normalizedTags
-                            .Where(tag => !photo.Tags.Contains(tag, StringComparer.OrdinalIgnoreCase))
-                            .ToArray();
-                        if (additions.Length == 0) return;
-
-                        photo.Tags = photo.Tags
-                            .Concat(additions)
-                            .Distinct(StringComparer.OrdinalIgnoreCase)
-                            .OrderBy(item => item, StringComparer.Create(new CultureInfo("ja-JP"), false))
-                            .ToArray();
-                    });
-                }
-            }).ConfigureAwait(false);
-            await loadTagFilterCounts().ConfigureAwait(false);
-            var label = normalizedTags.Length == 1
-                ? $"タグ \"{normalizedTags[0]}\""
-                : $"{normalizedTags.Length} 件のタグ";
-            toastService.addToast($"{label} を {refs.Count} 枚に追加しました");
+                applyBulkTagResult(result, normalizedTags, selectionVersion)).ConfigureAwait(false);
+            if (result.SucceededCount > 0)
+                await loadTagFilterCounts().ConfigureAwait(false);
         }
         catch (Exception err)
         {
             AppLogger.Error($"GalleryViewModel.bulkAddTags: threw: {err}");
-            toastService.addToast($"タグの追加に失敗しました: {err}", ToastType.error);
+            toastService.addToast(getMsg("GalleryViewModel.tagAddFailed"), ToastType.error);
         }
         AppLogger.Trace("GalleryViewModel.bulkAddTags: exit");
+    }
+
+    /// <summary>一括お気に入り結果の完了済み写真だけを表示へ反映し、失敗写真を再試行対象として残す。</summary>
+    internal void applyBulkFavoriteResult(
+        PhotoBulkUpdateResult result,
+        bool isFavorite,
+        long? selectionVersion = null)
+    {
+        foreach (var photoRef in result.SucceededPhotos)
+            updatePhoto(photoRef.photo_path, photo => photo.IsFavorite = isFavorite);
+
+        retainFailedBulkSelection(result, selectionVersion);
+        var successMessage = isFavorite
+            ? getMsg("GalleryViewModel.bulkFavoriteAdded", ("count", result.SucceededCount))
+            : getMsg("GalleryViewModel.bulkFavoriteRemoved", ("count", result.SucceededCount));
+        notifyBulkUpdateResult(
+            result,
+            successMessage,
+            getMsg("GalleryViewModel.favoriteOperationLabel"));
+    }
+
+    /// <summary>一括タグ結果の完了済み写真だけへ要求タグを反映し、失敗写真を再試行対象として残す。</summary>
+    internal void applyBulkTagResult(
+        PhotoBulkUpdateResult result,
+        IReadOnlyList<string> normalizedTags,
+        long? selectionVersion = null)
+    {
+        foreach (var photoRef in result.SucceededPhotos)
+        {
+            updatePhoto(photoRef.photo_path, photo =>
+            {
+                var additions = normalizedTags
+                    .Where(tag => !photo.Tags.Contains(tag, StringComparer.OrdinalIgnoreCase))
+                    .ToArray();
+                if (additions.Length == 0) return;
+
+                photo.Tags = photo.Tags
+                    .Concat(additions)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(item => item, StringComparer.Create(new CultureInfo("ja-JP"), false))
+                    .ToArray();
+            });
+        }
+
+        retainFailedBulkSelection(result, selectionVersion);
+        var successMessage = normalizedTags.Count == 1
+            ? getMsg(
+                "GalleryViewModel.bulkSingleTagAdded",
+                ("tag", normalizedTags[0]),
+                ("photoCount", result.SucceededCount))
+            : getMsg(
+                "GalleryViewModel.bulkTagsAdded",
+                ("tagCount", normalizedTags.Count),
+                ("photoCount", result.SucceededCount));
+        notifyBulkUpdateResult(
+            result,
+            successMessage,
+            getMsg("GalleryViewModel.tagOperationLabel"));
+    }
+
+    /// <summary>部分失敗時は完了済み写真を選択から外し、失敗写真だけを再実行できる状態にする。</summary>
+    private void retainFailedBulkSelection(PhotoBulkUpdateResult result, long? selectionVersion)
+    {
+        if (result.FailedCount == 0)
+            return;
+        if (selectionVersion is { } expectedVersion
+            && selectionState.SelectionVersion != expectedVersion)
+        {
+            AppLogger.Trace("GalleryViewModel.retainFailedBulkSelection: skip (selection changed)");
+            return;
+        }
+
+        var failedRefs = result.FailedPhotos
+            .Select(failure => failure.Photo)
+            .DistinctBy(photoRef => photoRef.photo_path, StringComparer.Ordinal)
+            .ToArray();
+        var failedPaths = failedRefs
+            .Select(photoRef => photoRef.photo_path)
+            .ToHashSet(StringComparer.Ordinal);
+
+        foreach (var succeeded in result.SucceededPhotos)
+            updatePhoto(succeeded.photo_path, photo => photo.IsSelected = false);
+
+        foreach (var failed in failedRefs)
+            updatePhoto(failed.photo_path, photo => photo.IsSelected = true);
+
+        foreach (var selectedPath in selectionState.selectedPhotoPaths.ToArray())
+        {
+            if (!failedPaths.Contains(selectedPath))
+                selectionState.selectedPhotoPaths.Remove(selectedPath);
+        }
+
+        foreach (var failedPath in failedPaths)
+        {
+            if (!selectionState.selectedPhotoPaths.Contains(failedPath))
+                selectionState.selectedPhotoPaths.Add(failedPath);
+        }
+
+        selectionState.setSelectedPhotoRefs(failedRefs);
+    }
+
+    /// <summary>一括更新の完了件数と失敗写真名を、既存のトースト通知へ変換する。</summary>
+    private void notifyBulkUpdateResult(
+        PhotoBulkUpdateResult result,
+        string successMessage,
+        string operationLabel)
+    {
+        if (result.FailedCount == 0)
+        {
+            toastService.addToast(successMessage);
+            return;
+        }
+
+        var names = result.FailedPhotos
+            .Select(failure => Path.GetFileName(
+                failure.Photo.photo_path.Replace('/', Path.DirectorySeparatorChar)))
+            .Select(name => string.IsNullOrWhiteSpace(name)
+                ? getMsg("GalleryViewModel.unknownPhotoName")
+                : name)
+            .ToArray();
+        const int displayedNameCount = 5;
+        var nameSummary = string.Join("、", names.Take(displayedNameCount));
+        if (names.Length > displayedNameCount)
+        {
+            nameSummary += "、" + getMsg(
+                "GalleryViewModel.additionalPhotoCount",
+                ("count", names.Length - displayedNameCount));
+        }
+
+        var status = result.WasCanceled
+            ? getMsg("GalleryViewModel.bulkUpdateCanceled", ("operation", operationLabel))
+            : getMsg("GalleryViewModel.bulkUpdateFailed", ("operation", operationLabel));
+        var completed = result.SucceededCount > 0
+            ? getMsg("GalleryViewModel.bulkUpdateCompleted", ("count", result.SucceededCount))
+            : string.Empty;
+        toastService.addToast(
+            getMsg(
+                "GalleryViewModel.bulkUpdateFailureSummary",
+                ("status", status),
+                ("completed", completed),
+                ("failedCount", result.FailedCount),
+                ("names", nameSummary)),
+            ToastType.error,
+            duration: 7000);
     }
 
     // 選択中写真を指定フォルダへコピーし、コピー件数とスキップ件数を通知する。
@@ -574,14 +706,19 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
             // 既存ファイル名でスキップされた件数も、コピー結果としてユーザーに伝える。
             var (copied, skipped) = await photoService.BulkCopyPhotosAsync(refs, destinationFolder).ConfigureAwait(false);
             if (skipped == 0)
-                toastService.addToast($"{copied} 枚のファイルをコピーしました");
+                toastService.addToast(getMsg("GalleryViewModel.photosCopied", ("count", copied)));
             else
-                toastService.addToast($"{copied} 枚をコピーしました ({skipped} 枚はスキップ)", ToastType.info);
+                toastService.addToast(
+                    getMsg(
+                        "GalleryViewModel.photosCopiedWithFailures",
+                        ("copied", copied),
+                        ("failed", skipped)),
+                    ToastType.info);
         }
         catch (Exception err)
         {
             AppLogger.Error($"GalleryViewModel.bulkCopyPhotos: threw: {err}");
-            toastService.addToast($"コピーに失敗しました: {err}", ToastType.error);
+            toastService.addToast(getMsg("GalleryViewModel.photoCopyFailed"), ToastType.error);
         }
         AppLogger.Trace("GalleryViewModel.bulkCopyPhotos: exit");
     }

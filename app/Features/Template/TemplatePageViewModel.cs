@@ -10,6 +10,7 @@ using Alpheratz.Services;
 using Alpheratz.Shared.Models;
 using Alpheratz.Shared.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Features.Template;
 
@@ -81,7 +82,7 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("TemplatePageViewModel.buildTweetText: enter");
         try
         {
-            var world = string.IsNullOrWhiteSpace(photo.WorldName) ? "ワールド不明" : photo.WorldName.Trim();
+            var world = string.IsNullOrWhiteSpace(photo.WorldName) ? getMsg("common.unknownWorld") : photo.WorldName.Trim();
             var date = photo.Timestamp.Length >= 16 ? photo.Timestamp[..16].Replace('T', ' ') : string.Empty;
             var tags = string.Join(" ", (photo.Tags ?? []).Select(t => $"#{t.Replace(" ", "", StringComparison.Ordinal)}"));
 
@@ -108,35 +109,63 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
 
     /// <summary>
     /// アクティブテンプレートで写真からツイートを組み立て、画像をクリップボードに置いて
-    /// Twitter Web Intent をブラウザで開く。
+    /// Twitter Web Intent をブラウザで開く。すべて完了した場合だけ true を返す。
     /// 「画像クリップボード + テキスト Intent」の組合せにしているのは、Twitter Intent URL に
-    /// 画像を直接添付する公式 API が存在しないため。ユーザはブラウザ側で貼り付ける動線になる。
+    /// 画像を直接添付する公式 API が存在しないため。利用者はブラウザ側で画像を貼り付ける。
     /// </summary>
-    public async Task openTweetIntent(PhotoThumbnailItem photo)
+    public async Task<bool> openTweetIntent(PhotoThumbnailItem photo)
     {
         AppLogger.Trace("TemplatePageViewModel.openTweetIntent: enter");
         if (string.IsNullOrWhiteSpace(ActiveTweetTemplate))
         {
             AppLogger.Trace("TemplatePageViewModel.openTweetIntent: skip (no active template)");
-            return;
+            toastService.addToast(getMsg("TemplatePageViewModel.activeTemplateRequired"), ToastType.error);
+            return false;
         }
 
         try
         {
-            var text = Uri.EscapeDataString(buildTweetText(ActiveTweetTemplate, photo));
+            var tweetText = buildTweetText(ActiveTweetTemplate, photo);
+            if (string.IsNullOrEmpty(tweetText))
+            {
+                AppLogger.Trace("TemplatePageViewModel.openTweetIntent: skip (empty tweet text)");
+                toastService.addToast(getMsg("TemplatePageViewModel.postTextBuildFailed"), ToastType.error);
+                return false;
+            }
+
+            var text = Uri.EscapeDataString(tweetText);
             var intentUrl = $"https://twitter.com/intent/tweet?text={text}";
             await worldService.CopyImageToClipboardAsync(photo.PhotoPath).ConfigureAwait(false);
-            await worldService.OpenTweetIntentAsync(intentUrl).ConfigureAwait(false);
+            if (!await worldService.OpenTweetIntentAsync(intentUrl).ConfigureAwait(false))
+            {
+                toastService.addToast(getMsg("TemplatePageViewModel.postScreenOpenFailed"), ToastType.error);
+                return false;
+            }
             if (OpenWorldLinkOnPost && !string.IsNullOrWhiteSpace(photo.WorldId))
             {
-                await worldService.OpenWorldUrlAsync(photo.WorldId).ConfigureAwait(false);
+                try
+                {
+                    await worldService.OpenWorldUrlAsync(photo.WorldId).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Error($"TemplatePageViewModel.openTweetIntent: world page open failed: {ex}");
+                    toastService.addToast(getMsg("TemplatePageViewModel.worldPageOpenFailed"), ToastType.error);
+                    return false;
+                }
             }
+            return true;
         }
         catch (Exception ex)
         {
             AppLogger.Error($"TemplatePageViewModel.openTweetIntent: threw: {ex}");
+            toastService.addToast(getMsg("TemplatePageViewModel.postPreparationFailed"), ToastType.error);
+            return false;
         }
-        AppLogger.Trace("TemplatePageViewModel.openTweetIntent: exit");
+        finally
+        {
+            AppLogger.Trace("TemplatePageViewModel.openTweetIntent: exit");
+        }
     }
 
     /// <summary>指定テンプレートを編集モードに遷移する（EditingTweetTemplate=template, draft=template）。</summary>
@@ -199,7 +228,7 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
     /// 分岐：
     ///   - 編集モード (EditingTweetTemplate != null) → 該当 index を新値で差し替え、
     ///     アクティブテンプレートが旧値ならアクティブも新値に追従させる
-    ///   - 新規モード → 重複が無ければ末尾に追加、アクティブテンプレ未選択なら自動的にアクティブ化
+    ///   - 新規モード → 末尾に追加し、アクティブテンプレ未選択なら自動的にアクティブ化
     /// 永続化自体は呼出側 (saveTemplates) の責務。本関数はインメモリ更新のみ。
     /// </summary>
     public void saveTemplateDraft()
@@ -252,6 +281,22 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
     public async Task saveTemplate(AlpheratzSettingDto currentSetting)
     {
         AppLogger.Trace("TemplatePageViewModel.saveTemplate: enter");
+        var normalized = TweetTemplateDraft.Trim();
+        if (string.IsNullOrEmpty(normalized))
+        {
+            AppLogger.Trace("TemplatePageViewModel.saveTemplate: skip (empty)");
+            toastService.addToast(getMsg("TemplatePageViewModel.templateRequired"), ToastType.error);
+            return;
+        }
+        var changesToExistingTemplate = EditingTweetTemplate is not null
+            && !string.Equals(EditingTweetTemplate, normalized, StringComparison.Ordinal);
+        if (tweetTemplates.Contains(normalized)
+            && (EditingTweetTemplate is null || changesToExistingTemplate))
+        {
+            AppLogger.Trace("TemplatePageViewModel.saveTemplate: skip (duplicate)");
+            toastService.addToast(getMsg("TemplatePageViewModel.templateAlreadyExists"), ToastType.error);
+            return;
+        }
         saveTemplateDraft();
         await saveTemplates(currentSetting).ConfigureAwait(false);
         AppLogger.Trace("TemplatePageViewModel.saveTemplate: exit");
@@ -263,17 +308,17 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
         AppLogger.Trace($"TemplatePageViewModel.saveTemplates: enter count={tweetTemplates.Count}");
         try
         {
-            await settingsService.SaveSettingAsync(currentSetting with
+            await settingsService.SaveSettingAsync(new AlpheratzSettingDto
             {
                 tweetTemplates = tweetTemplates,
                 activeTweetTemplate = ActiveTweetTemplate,
             }).ConfigureAwait(false);
-            toastService.addToast("テンプレートを保存しました。");
+            toastService.addToast(getMsg("TemplatePageViewModel.templateSaved"));
         }
         catch (Exception ex)
         {
             AppLogger.Error($"TemplatePageViewModel.saveTemplates: threw: {ex}");
-            toastService.addToast($"テンプレートの保存に失敗しました: {ex}", ToastType.error);
+            toastService.addToast(getMsg("TemplatePageViewModel.templateSaveFailed"), ToastType.error);
         }
         AppLogger.Trace("TemplatePageViewModel.saveTemplates: exit");
     }

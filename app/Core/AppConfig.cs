@@ -56,6 +56,7 @@ public sealed class AppConfig
     public void SaveSetting(AlpheratzSetting setting)
     {
         AppLogger.Trace("AppConfig.SaveSetting: enter");
+        string? tempPath = null;
         try
         {
             lock (_lock)
@@ -64,7 +65,29 @@ public sealed class AppConfig
                     ?? throw new InvalidOperationException("設定ファイルの保存先を取得できません");
                 var path = Path.Combine(dir, "setting.json");
                 var json = JsonSerializer.Serialize(setting, JsonOptions);
-                File.WriteAllText(path, json, System.Text.Encoding.UTF8);
+                tempPath = Path.Combine(dir, $"setting.{Guid.NewGuid():N}.tmp");
+
+                // 最終ファイルへ直接書くと、プロセス終了や書込み失敗で既存設定まで破損する。
+                // 同一ディレクトリの作業ファイルをディスクへ反映してから rename し、
+                // 読込側には常に旧版か新版のどちらか一方だけを見せる。
+                var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+                using (var stream = new FileStream(
+                    tempPath,
+                    FileMode.CreateNew,
+                    FileAccess.Write,
+                    FileShare.None,
+                    bufferSize: 4096,
+                    FileOptions.WriteThrough))
+                {
+                    stream.Write(bytes);
+                    stream.Flush(flushToDisk: true);
+                }
+
+                if (File.Exists(path))
+                    File.Replace(tempPath, path, destinationBackupFileName: null, ignoreMetadataErrors: true);
+                else
+                    File.Move(tempPath, path);
+                tempPath = null;
             }
         }
         catch (Exception ex)
@@ -72,6 +95,14 @@ public sealed class AppConfig
             // 保存失敗は UI 側で通知する必要があるため、ログ後に呼出側へ返す。
             AppLogger.Error($"AppConfig.SaveSetting: threw: {ex}");
             throw;
+        }
+        finally
+        {
+            if (tempPath is not null)
+            {
+                try { File.Delete(tempPath); }
+                catch (Exception ex) { AppLogger.Warn($"設定の作業ファイルを削除できません [{tempPath}]: {ex.Message}"); }
+            }
         }
         AppLogger.Trace("AppConfig.SaveSetting: exit");
     }
@@ -120,7 +151,12 @@ public sealed class AppConfig
             }
             if (enabled)
             {
-                var exe = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName ?? "";
+                var exe = Environment.ProcessPath;
+                if (string.IsNullOrWhiteSpace(exe))
+                {
+                    AppLogger.Warn("自動起動へ登録する実行ファイルのパスを取得できませんでした");
+                    return;
+                }
                 key.SetValue("Alpheratz", $"\"{exe}\"");
             }
             else

@@ -1,4 +1,5 @@
 using Alpheratz.Core.Database;
+using Alpheratz.Messages;
 using Alpheratz.Models;
 using Alpheratz.Services;
 using Microsoft.Data.Sqlite;
@@ -189,8 +190,8 @@ public sealed class PhotoServiceBehaviorTests : IDisposable
             new SelectedPhotoRefDto { photo_path = "/photo/b.jpg", source_slot = 1 },
         };
 
-        await service.BulkSetPhotoFavoriteAsync(refs, isFavorite: true);
-        await service.BulkAddPhotoTagAsync(refs, "bulk");
+        var favoriteResult = await service.BulkSetPhotoFavoriteAsync(refs, isFavorite: true);
+        var tagResult = await service.BulkAddPhotoTagAsync(refs, "bulk");
         await service.RemovePhotoTagAsync("/photo/a.jpg", "bulk", sourceSlot: 1);
         var selectedRefs = await service.GetSelectedPhotoRefsAsync(["/photo/a.jpg", "/photo/b.jpg"]);
         var tagsA = await service.GetPhotoTagsAsync("/photo/a.jpg", sourceSlot: 1);
@@ -208,10 +209,161 @@ public sealed class PhotoServiceBehaviorTests : IDisposable
             offset: null));
 
         Assert.Equal(2, selectedRefs.Count);
+        Assert.Equal(2, favoriteResult.SucceededCount);
+        Assert.Empty(favoriteResult.FailedPhotos);
+        Assert.Equal(2, tagResult.SucceededCount);
+        Assert.Empty(tagResult.FailedPhotos);
         Assert.Empty(tagsA);
         Assert.Equal(["bulk"], tagsB);
         Assert.Equal(2, page.total);
         Assert.All(page.items, photo => Assert.True(photo.is_favorite));
+    }
+
+    /// <summary>
+    /// 一括更新の途中で 1 写真だけ失敗しても残りを続行し、完了・失敗を写真単位で返すことを確認する。
+    /// </summary>
+    [Fact]
+    public async Task RunBulkPhotoUpdatesAsync_ContinuesAfterIndividualFailure()
+    {
+        var refs = new[]
+        {
+            new SelectedPhotoRefDto { photo_path = "/photo/a.jpg", source_slot = 1 },
+            new SelectedPhotoRefDto { photo_path = "/photo/b.jpg", source_slot = 1 },
+            new SelectedPhotoRefDto { photo_path = "/photo/c.jpg", source_slot = 1 },
+        };
+        var visited = new List<string>();
+
+        var result = await service.RunBulkPhotoUpdatesAsync(
+            refs,
+            "test",
+            photo =>
+            {
+                visited.Add(photo.photo_path);
+                return photo.photo_path == "/photo/b.jpg"
+                    ? Task.FromException(new IOException("書き込み失敗"))
+                    : Task.CompletedTask;
+            });
+
+        Assert.Equal(["/photo/a.jpg", "/photo/b.jpg", "/photo/c.jpg"], visited);
+        Assert.Equal(["/photo/a.jpg", "/photo/c.jpg"], result.SucceededPhotos.Select(photo => photo.photo_path));
+        var failure = Assert.Single(result.FailedPhotos);
+        Assert.Equal("/photo/b.jpg", failure.Photo.photo_path);
+        Assert.Equal(MessageCatalog.getMsg("PhotoService.operationFailed"), failure.Reason);
+        Assert.False(failure.IsCanceled);
+    }
+
+    /// <summary>
+    /// 写真更新中にキャンセルされた場合、完了済み写真を成功として残し、後続写真を未更新として返すことを確認する。
+    /// </summary>
+    [Fact]
+    public async Task RunBulkPhotoUpdatesAsync_CancellationReturnsCompletedPrefixAndPendingPhotos()
+    {
+        var refs = new[]
+        {
+            new SelectedPhotoRefDto { photo_path = "/photo/a.jpg", source_slot = 1 },
+            new SelectedPhotoRefDto { photo_path = "/photo/b.jpg", source_slot = 1 },
+            new SelectedPhotoRefDto { photo_path = "/photo/c.jpg", source_slot = 1 },
+        };
+        using var cts = new CancellationTokenSource();
+
+        var result = await service.RunBulkPhotoUpdatesAsync(
+            refs,
+            "test",
+            photo =>
+            {
+                if (photo.photo_path == "/photo/a.jpg")
+                    cts.Cancel();
+                return Task.CompletedTask;
+            },
+            cts.Token);
+
+        Assert.Equal("/photo/a.jpg", Assert.Single(result.SucceededPhotos).photo_path);
+        Assert.Equal(["/photo/b.jpg", "/photo/c.jpg"], result.FailedPhotos.Select(failure => failure.Photo.photo_path));
+        Assert.All(result.FailedPhotos, failure => Assert.True(failure.IsCanceled));
+        Assert.True(result.WasCanceled);
+    }
+
+    /// <summary>
+    /// 一括お気に入りで失効した写真参照を成功扱いせず、更新できた写真と分けて返すことを確認する。
+    /// </summary>
+    [Fact]
+    public async Task BulkSetPhotoFavoriteAsync_ReturnsFailureForStaleReference()
+    {
+        await db.UpsertPhotoAsync(Photo("/photo/a.jpg", "a.jpg", "2026-06-05 10:00:00"));
+        var refs = new[]
+        {
+            new SelectedPhotoRefDto { photo_path = "/photo/a.jpg", source_slot = 1 },
+            new SelectedPhotoRefDto { photo_path = "/photo/deleted.jpg", source_slot = 1 },
+        };
+
+        var result = await service.BulkSetPhotoFavoriteAsync(refs, isFavorite: true);
+        var saved = await db.GetPhotoRecordAsync("/photo/a.jpg");
+
+        Assert.NotNull(saved);
+        Assert.True(saved.is_favorite);
+        Assert.Equal("/photo/a.jpg", Assert.Single(result.SucceededPhotos).photo_path);
+        Assert.Equal("/photo/deleted.jpg", Assert.Single(result.FailedPhotos).Photo.photo_path);
+    }
+
+    /// <summary>
+    /// 一括タグ追加で失効した写真参照だけが失敗となり、他写真のDB更新が維持されることを確認する。
+    /// </summary>
+    [Fact]
+    public async Task BulkAddPhotoTagsAsync_ReturnsPerPhotoResultForStaleReference()
+    {
+        await db.UpsertPhotoAsync(Photo("/photo/a.jpg", "a.jpg", "2026-06-05 10:00:00"));
+        var refs = new[]
+        {
+            new SelectedPhotoRefDto { photo_path = "/photo/a.jpg", source_slot = 1 },
+            new SelectedPhotoRefDto { photo_path = "/photo/deleted.jpg", source_slot = 1 },
+        };
+
+        var result = await service.BulkAddPhotoTagsAsync(refs, ["night", "city"]);
+        var tags = await db.GetPhotoTagsAsync("/photo/a.jpg");
+
+        Assert.Equal(["city", "night"], tags);
+        Assert.Equal("/photo/a.jpg", Assert.Single(result.SucceededPhotos).photo_path);
+        Assert.Equal("/photo/deleted.jpg", Assert.Single(result.FailedPhotos).Photo.photo_path);
+    }
+
+    /// <summary>
+    /// 一括複数タグで 1 写真が途中失敗しても、その写真だけをロールバックし、他写真の完了結果を維持する。
+    /// </summary>
+    [Fact]
+    public async Task BulkAddPhotoTagsAsync_RollsBackFailedPhotoAndContinues()
+    {
+        await db.UpsertPhotoAsync(Photo("/photo/a.jpg", "a.jpg", "2026-06-05 10:00:00"));
+        await db.UpsertPhotoAsync(Photo("/photo/b.jpg", "b.jpg", "2026-06-05 11:00:00"));
+        var dbPath = Path.Combine(tempDir, "Alpheratz.db");
+        using (var connection = new SqliteConnection($"Data Source={dbPath}"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+CREATE TRIGGER reject_blocked_photo_tag
+BEFORE INSERT ON photo_tags
+WHEN NEW.photo_path = '/photo/b.jpg'
+ AND NEW.tag_id = (SELECT id FROM tags WHERE name = 'blocked')
+BEGIN
+    SELECT RAISE(ABORT, 'blocked tag');
+END;
+""";
+            command.ExecuteNonQuery();
+        }
+        var refs = new[]
+        {
+            new SelectedPhotoRefDto { photo_path = "/photo/a.jpg", source_slot = 1 },
+            new SelectedPhotoRefDto { photo_path = "/photo/b.jpg", source_slot = 1 },
+        };
+
+        var result = await service.BulkAddPhotoTagsAsync(refs, ["first", "blocked"]);
+        var firstTags = await db.GetPhotoTagsAsync("/photo/a.jpg");
+        var secondTags = await db.GetPhotoTagsAsync("/photo/b.jpg");
+
+        Assert.Equal(["blocked", "first"], firstTags);
+        Assert.Empty(secondTags);
+        Assert.Equal("/photo/a.jpg", Assert.Single(result.SucceededPhotos).photo_path);
+        Assert.Equal("/photo/b.jpg", Assert.Single(result.FailedPhotos).Photo.photo_path);
     }
 
     /// <summary>

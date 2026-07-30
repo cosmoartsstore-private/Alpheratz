@@ -1,4 +1,5 @@
 using Alpheratz.Services;
+using Alpheratz.Messages;
 using Microsoft.Data.Sqlite;
 
 namespace Alpheratz.Tests;
@@ -39,7 +40,7 @@ public sealed class ExternalIntegrationBehaviorTests : IDisposable
         using var reader = cmd.ExecuteReader();
         Assert.True(reader.Read());
         Assert.Equal("Alpheratz", reader.GetString(0));
-        Assert.Equal("VRChat写真ギャラリー化・ワールドリンク展開サポートアプリ", reader.GetString(1));
+        Assert.Equal(MessageCatalog.getMsg("StellaRecordRegistration.appDescription"), reader.GetString(1));
         Assert.Equal("F:/apps/Alpheratz.exe", reader.GetString(2));
         Assert.Equal(4, reader.GetInt32(3));
         Assert.False(reader.Read());

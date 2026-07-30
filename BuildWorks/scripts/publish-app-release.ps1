@@ -7,12 +7,15 @@ $AppPublishRoot = Join-Path $BuildWorksRoot "artifacts\publish\Alpheratz"
 $XbfSourceRoot = Join-Path $RepoRoot "app\artifacts\obj\x64\Release\net8.0-windows10.0.19041.0\win-x64"
 
 if (Test-Path $AppPublishRoot) {
-    Remove-Item $AppPublishRoot -Recurse -Force
+    Remove-Item -LiteralPath $AppPublishRoot -Recurse -Force
 }
 
 # Build a self-contained frontend package.
 # The CLI flag keeps the script explicit even when the project file already sets it.
 & dotnet publish $FrontendProjectPath -c Release -p:Platform=x64 -r win-x64 --self-contained true -o $AppPublishRoot
+if ($LASTEXITCODE -ne 0) {
+    throw "Frontend の publish に失敗しました。終了コード: $LASTEXITCODE"
+}
 
 $FrontendExe = Join-Path $AppPublishRoot "Alpheratz.Frontend.exe"
 if (!(Test-Path $FrontendExe)) {

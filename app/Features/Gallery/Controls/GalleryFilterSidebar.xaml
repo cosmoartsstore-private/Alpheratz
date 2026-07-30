@@ -1,8 +1,11 @@
 <UserControl
     x:Class="Alpheratz.Features.Gallery.Controls.GalleryFilterSidebar"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:messages="using:Alpheratz.Messages">
     <Border Style="{StaticResource SidebarBorderStyle}">
-        <TextBlock Text="検索条件" FontSize="{StaticResource AFontSizeLg}" FontWeight="ExtraBold"/>
+        <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterSidebar.heading')}"
+                   FontSize="{StaticResource AFontSizeLg}"
+                   FontWeight="ExtraBold"/>
     </Border>
 </UserControl>

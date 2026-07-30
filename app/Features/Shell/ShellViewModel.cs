@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,6 +18,7 @@ using Alpheratz.Services;
 using Alpheratz.Shared.Models;
 using Alpheratz.Shared.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Features.Shell;
 
@@ -39,6 +41,10 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     private readonly ThumbnailWorker thumbnailWorker;
 
     private bool isScanningRef;
+    private readonly object activeScanGate = new();
+    private Task? activeScanTask;
+    private CancellationTokenSource? activeScanCancellation;
+    private readonly SemaphoreSlim folderMutationGate = new(1, 1);
     private readonly List<IAsyncDisposable> scanUnlistenFns = [];
     private readonly List<IAsyncDisposable> phashUnlistenFns = [];
 
@@ -49,6 +55,8 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     // ここで明示的に 1 つずつ走らせる。トレードオフ：スキャン後の補完が逐次なので終了が
     // やや遅いが、ユーザは UI 操作可能なので体感問題にはなりにくい。
     private readonly SemaphoreSlim postScanGate = new(1, 1);
+    private readonly object postScanOperationsGate = new();
+    private readonly Dictionary<Task, CancellationTokenSource> postScanOperations = [];
 
     // phash 計算進捗イベントは数十 ms ごとに発火するため、状態更新の最小間隔を 1 秒に絞る。
     private const long PhashProgressUpdateMinIntervalMs = 1000;
@@ -155,6 +163,18 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
                 registerPhashWorker(),
                 refreshSettings()).ConfigureAwait(false);
 
+            // フォルダ設定の保存後にアプリが終了していた場合は、ギャラリーを読む前に
+            // 旧スロットの整理を再実行する。整理できない間は新しい走査を開始しない。
+            var folderCleanupReady = await ResumePendingFolderCleanupAsync().ConfigureAwait(false);
+            if (!folderCleanupReady)
+            {
+                ScanStatus = "error";
+                // 旧 DB は表示しないが、同一セッションで整理を再試行した後の scan 完了を
+                // 受け取れるようイベント購読だけは初期化する。
+                await galleryViewModel.photosState.InitializeAsync(loadInitialData: false).ConfigureAwait(false);
+                return;
+            }
+
             // 写真メタデータ・タグマスタ・ワールド候補は互いに独立した SELECT。
             // 逐次 await すると 3 つの DB ラウンドトリップ分のレイテンシが積み上がる
             // ため、Task.WhenAll で並行発行する。
@@ -174,7 +194,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
 
             if (string.IsNullOrWhiteSpace(PhotoFolderPath) && string.IsNullOrWhiteSpace(SecondaryPhotoFolderPath))
             {
-                toastService.addToast("写真フォルダが未設定です。設定から参照フォルダを選択してください。", ToastType.info);
+                toastService.addToast(getMsg("PhotoScanner.folderUnconfigured"), ToastType.info);
                 return;
             }
 
@@ -185,38 +205,139 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     }
 
     /// <summary>写真スキャンをバックグラウンドで開始する。すでに実行中なら何もしない。</summary>
-    public Task startScan()
+    public async Task startScan()
     {
         AppLogger.Trace($"ShellViewModel.startScan: enter isScanningRef={isScanningRef}");
-        if (DETACH_RUNTIME_DATA || isScanningRef) return Task.CompletedTask;
-        isScanningRef = true; ScanStatus = "scanning";
-        ScanProgress = new ScanProgressDto { processed = 0, total = 0, current_world = "", phase = "scan" };
-        try
+        if (DETACH_RUNTIME_DATA) return;
+
+        // 設定だけ更新され旧データ整理が未完了の状態では、新旧フォルダを同じ slot として
+        // 混在させない。次回起動または次のフォルダ操作で整理を再試行する。
+        if (await settingsService.GetPendingFolderCleanupAsync().ConfigureAwait(false) is not null)
         {
-            // バックグラウンド起動時の例外も scan:error として通知できるよう、
-            // Task.Run の内側で ScanAsync 全体を try/catch する。
-            _ = Task.Run(async () =>
+            AppLogger.Warn("ShellViewModel.startScan: skip (folder cleanup pending)");
+            toastService.addToast(getMsg("ShellViewModel.folderCleanupPending"), ToastType.info);
+            return;
+        }
+
+        Task task;
+        CancellationTokenSource cancellationSource;
+        lock (activeScanGate)
+        {
+            if (isScanningRef || activeScanTask is { IsCompleted: false })
+            {
+                AppLogger.Trace("ShellViewModel.startScan: skip (already running)");
+                return;
+            }
+
+            isScanningRef = true;
+            ScanStatus = "scanning";
+            ScanProgress = new ScanProgressDto { processed = 0, total = 0, current_world = "", phase = "scan" };
+            cancellationSource = new CancellationTokenSource();
+            task = Task.Run(async () =>
             {
                 try
                 {
-                    await scanner.ScanAsync().ConfigureAwait(false);
+                    await scanner.ScanAsync(cancellationSource.Token).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
                     AppLogger.Error($"ShellViewModel.startScan: ScanAsync wrapper threw: {ex}");
-                    try { await eventBus.PublishAsync(EventNames.ScanError, ex.Message).ConfigureAwait(false); }
+                    try { await eventBus.PublishAsync(EventNames.ScanError, getMsg("PhotoScanner.failed")).ConfigureAwait(false); }
                     catch (Exception pubEx) { AppLogger.Error($"ShellViewModel.startScan: failed to publish scan:error: {pubEx}"); }
                 }
             });
+            activeScanTask = task;
+            activeScanCancellation = cancellationSource;
         }
-        catch (Exception err)
-        {
-            AppLogger.Error($"ShellViewModel.startScan: threw: {err}");
-            isScanningRef = false; ScanStatus = "error";
-            toastService.addToast($"スキャンの開始に失敗しました: {err}", ToastType.error);
-        }
+
+        _ = task.ContinueWith(
+            completed =>
+            {
+                CancellationTokenSource? completedCancellation = null;
+                lock (activeScanGate)
+                {
+                    if (ReferenceEquals(activeScanTask, completed))
+                    {
+                        activeScanTask = null;
+                        completedCancellation = activeScanCancellation;
+                        activeScanCancellation = null;
+                    }
+                }
+                completedCancellation?.Dispose();
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+
         AppLogger.Trace("ShellViewModel.startScan: exit");
-        return Task.CompletedTask;
+    }
+
+    /// <summary>実行中のスキャンと後続解析を中断し、旧フォルダに対する DB 書込みが終了するまで待つ。</summary>
+    private async Task StopActiveScanAsync()
+    {
+        Task? running;
+        CancellationTokenSource? scanCancellation;
+        lock (activeScanGate)
+        {
+            running = activeScanTask is { IsCompleted: false } task ? task : null;
+            scanCancellation = activeScanCancellation;
+        }
+
+        CancelPostScanOperations();
+        if (running is not null)
+        {
+            try { scanCancellation?.Cancel(); }
+            catch (ObjectDisposedException) { }
+            scanner.RequestCancel();
+            try { await running.ConfigureAwait(false); }
+            catch (Exception ex) { AppLogger.Warn($"ShellViewModel.StopActiveScanAsync: scan completion failed: {ex.Message}"); }
+        }
+
+        // scan:completed の購読処理は activeScanTask の完了前に後続解析を登録する。
+        // 主走査を待ってから再度取得することで、直前に登録された処理も漏らさず停止する。
+        await StopPostScanOperationsAsync().ConfigureAwait(false);
+
+        await dispatcherService.RunOnUiThread(() =>
+        {
+            isScanningRef = false;
+            if (ScanStatus == "scanning")
+                ScanStatus = "idle";
+        }).ConfigureAwait(false);
+    }
+
+    private void CancelPostScanOperations()
+    {
+        CancellationTokenSource[] cancellationSources;
+        lock (postScanOperationsGate)
+            cancellationSources = postScanOperations.Values.ToArray();
+
+        foreach (var cancellationSource in cancellationSources)
+        {
+            try { cancellationSource.Cancel(); }
+            catch (ObjectDisposedException) { }
+        }
+    }
+
+    private async Task StopPostScanOperationsAsync()
+    {
+        while (true)
+        {
+            KeyValuePair<Task, CancellationTokenSource>[] operations;
+            lock (postScanOperationsGate)
+                operations = postScanOperations.ToArray();
+            if (operations.Length == 0)
+                return;
+
+            foreach (var operation in operations)
+            {
+                try { operation.Value.Cancel(); }
+                catch (ObjectDisposedException) { }
+            }
+
+            try { await Task.WhenAll(operations.Select(operation => operation.Key)).ConfigureAwait(false); }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { AppLogger.Warn($"ShellViewModel.StopPostScanOperationsAsync: completion failed: {ex.Message}"); }
+        }
     }
 
     /// <summary>実行中スキャンへキャンセルを要求する。</summary>
@@ -224,11 +345,19 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     {
         AppLogger.Trace("ShellViewModel.cancelScan: enter");
         if (DETACH_RUNTIME_DATA) return Task.CompletedTask;
-        try { scanner.RequestCancel(); }
+        try
+        {
+            CancellationTokenSource? cancellationSource;
+            lock (activeScanGate)
+                cancellationSource = activeScanCancellation;
+            try { cancellationSource?.Cancel(); }
+            catch (ObjectDisposedException) { }
+            scanner.RequestCancel();
+        }
         catch (Exception err)
         {
             AppLogger.Error($"ShellViewModel.cancelScan: threw: {err}");
-            toastService.addToast($"スキャンの中断に失敗しました: {err}", ToastType.error);
+            toastService.addToast(getMsg("ShellViewModel.scanCancelFailed"), ToastType.error);
         }
         AppLogger.Trace("ShellViewModel.cancelScan: exit");
         return Task.CompletedTask;
@@ -297,7 +426,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         catch (Exception ex)
         {
             AppLogger.Error($"ShellViewModel.deleteTagAndRefreshGallery: threw: {ex}");
-            toastService.addToast($"タグ削除後のギャラリー更新に失敗しました: {ex}", ToastType.error);
+            toastService.addToast(getMsg("ShellViewModel.tagRefreshFailed"), ToastType.error);
         }
         AppLogger.Trace("ShellViewModel.deleteTagAndRefreshGallery: exit");
     }
@@ -306,35 +435,72 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     /// scan:completed 後の archive 解決 / orientation 計算 / phash 計算を順番に走らせる。
     /// この 3 つはすべて DB 書き込みを伴うため、同時実行せず postScanGate で直列化する。
     /// </summary>
-    private async Task runPostScanWorkflow()
+    private async Task runPostScanWorkflow(CancellationToken ct)
     {
-        await postScanGate.WaitAsync().ConfigureAwait(false);
         try
         {
+            await postScanGate.WaitAsync(ct).ConfigureAwait(false);
             try
             {
-                var resolved = await worldService.ResolveUnknownWorldsFromArchiveAsync().ConfigureAwait(false);
-                if (resolved > 0) await galleryViewModel.photosState.loadPhotos().ConfigureAwait(false);
+                try
+                {
+                    var resolved = await worldService.ResolveUnknownWorldsFromArchiveAsync(ct).ConfigureAwait(false);
+                    ct.ThrowIfCancellationRequested();
+                    if (resolved > 0) await galleryViewModel.photosState.loadPhotos().ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch (Exception ex) { AppLogger.Error($"ShellViewModel.runPostScanWorkflow archive: threw: {ex}"); }
+
+                try { await orientationService.StartOrientationCalculationAsync(ct).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch (Exception ex) { AppLogger.Error($"ShellViewModel.runPostScanWorkflow orientation: threw: {ex}"); }
+
+                try { await phashService.StartPdqAnalysisAsync(ct).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch (Exception ex) { AppLogger.Error($"ShellViewModel.runPostScanWorkflow phash: threw: {ex}"); }
+
+                try
+                {
+                    ct.ThrowIfCancellationRequested();
+                    await refreshGalleryFilterMetadata().ConfigureAwait(false);
+                    ct.ThrowIfCancellationRequested();
+                    await eventBus.PublishAsync(EventNames.ScanEnrichCompleted, null).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch (Exception ex) { AppLogger.Error($"ShellViewModel.runPostScanWorkflow refresh: threw: {ex}"); }
             }
-            catch (Exception ex) { AppLogger.Error($"ShellViewModel.runPostScanWorkflow archive: threw: {ex}"); }
-
-            try { await orientationService.StartOrientationCalculationAsync().ConfigureAwait(false); }
-            catch (Exception ex) { AppLogger.Error($"ShellViewModel.runPostScanWorkflow orientation: threw: {ex}"); }
-
-            try { await phashService.StartPdqAnalysisAsync().ConfigureAwait(false); }
-            catch (Exception ex) { AppLogger.Error($"ShellViewModel.runPostScanWorkflow phash: threw: {ex}"); }
-
-            try
+            finally
             {
-                await refreshGalleryFilterMetadata().ConfigureAwait(false);
-                await eventBus.PublishAsync(EventNames.ScanEnrichCompleted, null).ConfigureAwait(false);
+                postScanGate.Release();
             }
-            catch (Exception ex) { AppLogger.Error($"ShellViewModel.runPostScanWorkflow refresh: threw: {ex}"); }
         }
-        finally
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            postScanGate.Release();
+            AppLogger.Trace("ShellViewModel.runPostScanWorkflow: cancelled");
         }
+    }
+
+    private void StartPostScanWorkflow()
+    {
+        var cancellationSource = new CancellationTokenSource();
+        var task = Task.Run(() => runPostScanWorkflow(cancellationSource.Token));
+        lock (postScanOperationsGate)
+            postScanOperations.Add(task, cancellationSource);
+
+        _ = task.ContinueWith(
+            completed =>
+            {
+                CancellationTokenSource? removed = null;
+                lock (postScanOperationsGate)
+                {
+                    if (postScanOperations.Remove(completed, out var operation))
+                        removed = operation;
+                }
+                removed?.Dispose();
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
     }
 
     /// <summary>スキャン進捗、完了、エラーのイベント購読を登録する。</summary>
@@ -349,6 +515,12 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
                 dispatcherService.requestAnimationFrame(() => ScanProgress = payload);
                 return Task.CompletedTask;
             }));
+            scanUnlistenFns.Add(eventBus.Subscribe<string>(EventNames.ScanWarning, payload =>
+            {
+                dispatcherService.requestAnimationFrame(() =>
+                    toastService.addToast(payload, ToastType.info, duration: 7000));
+                return Task.CompletedTask;
+            }));
             scanUnlistenFns.Add(eventBus.Subscribe(EventNames.ScanCompleted, async () =>
             {
                 try
@@ -356,7 +528,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
                     dispatcherService.requestAnimationFrame(() => { isScanningRef = false; ScanStatus = "completed"; });
                     await refreshGalleryFilterMetadata().ConfigureAwait(false);
                     // archive → orientation → phash を直列実行する。
-                    _ = Task.Run(runPostScanWorkflow);
+                    StartPostScanWorkflow();
                 }
                 catch (Exception ex) { AppLogger.Error($"ShellViewModel.scan:completed: threw: {ex}"); }
             }));
@@ -364,10 +536,15 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
             {
                 try
                 {
+                    var expectedFolderChangeCancellation =
+                        IsApplyingFolderChange
+                        && string.Equals(payload, getMsg("PhotoScanner.cancelled"), StringComparison.Ordinal);
                     dispatcherService.requestAnimationFrame(() =>
                     {
-                        isScanningRef = false; ScanStatus = "error";
-                        toastService.addToast(string.IsNullOrWhiteSpace(payload) ? "スキャンに失敗しました。" : payload, ToastType.error);
+                        isScanningRef = false;
+                        ScanStatus = expectedFolderChangeCancellation ? "idle" : "error";
+                        if (!expectedFolderChangeCancellation)
+                            toastService.addToast(string.IsNullOrWhiteSpace(payload) ? getMsg("PhotoScanner.failed") : payload, ToastType.error);
                     });
                 }
                 catch (Exception ex) { AppLogger.Error($"ShellViewModel.scan:error: threw: {ex}"); }
@@ -420,25 +597,22 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
                 var hadWork = PdqProgress.total > 0;
                 PdqProgress = PdqProgress with { done = PdqProgress.total, current = null };
                 if (hadWork)
-                    toastService.addToast("類似画像の解析が完了しました", ToastType.success);
+                    toastService.addToast(getMsg("ShellViewModel.phashComplete"), ToastType.success);
                 // PDQ ハッシュ計算完了の通知のみを行う。ワールドの自動確定 (緩い閾値での最近接
                 // 1 件の勝手採用) は誤割り当ての発生源になるため撤去した。PDQ 解決は手動の
                 // WorldResolve ランキング UI (phash_confirmed) を唯一の経路とする。
                 await RefreshWorldResolveAvailabilityAsync().ConfigureAwait(false);
             }));
-            // phash_error は従来購読者が無く silent だった。中断 (payload="中断されました") は info、
-            // それ以外の失敗は error でトースト化する。購読解除は phashUnlistenFns 経由で
-            // DisposeAsync が確実に行う。
+            // 解析中断は info、それ以外の失敗は error で通知する。
+            // 購読解除は phashUnlistenFns 経由で DisposeAsync が確実に行う。
             phashUnlistenFns.Add(eventBus.Subscribe<string>(EventNames.PhashError, async payload =>
             {
                 try
                 {
                     IsPdqRunning = false;
                     await RefreshWorldResolveAvailabilityAsync().ConfigureAwait(false);
-                    var isCancelled = payload == "中断されました";
-                    var message = isCancelled
-                        ? "類似画像の解析を中断しました"
-                        : (string.IsNullOrWhiteSpace(payload) ? "類似画像の解析に失敗しました。" : $"類似画像の解析に失敗しました: {payload}");
+                    var isCancelled = payload == getMsg("PhashService.cancelled");
+                    var message = isCancelled ? getMsg("PhashService.cancelled") : getMsg("PhashService.failed");
                     toastService.addToast(message, isCancelled ? ToastType.info : ToastType.error);
                 }
                 catch (Exception ex) { AppLogger.Error($"ShellViewModel.phash_error: threw: {ex}"); }
@@ -488,68 +662,231 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         return payload;
     }
 
-    /// <summary>保留中スロットの写真フォルダを変更し、設定保存と DB キャッシュリセットを行う。</summary>
-    public async Task applyFolderChange(string newPath)
+    /// <summary>
+    /// 保存済みのフォルダ整理要求を再実行する。
+    /// マーカーはユーザーが対象 slot のリセットを承認した記録なので、保存後に設定ファイルが
+    /// 手動変更されていても旧 DB 行を残さず、対象 slot を空にしてから要求を解除する。
+    /// </summary>
+    private async Task<bool> ResumePendingFolderCleanupAsync()
     {
-        AppLogger.Trace($"ShellViewModel.applyFolderChange: enter newPath={newPath}");
+        var cleanup = await settingsService.GetPendingFolderCleanupAsync().ConfigureAwait(false);
+        if (cleanup is null)
+            return true;
+
+        try
+        {
+            if (cleanup.SourceSlot is not (1 or 2) || string.IsNullOrWhiteSpace(cleanup.OperationId))
+                throw new InvalidDataException("写真フォルダ整理要求が破損しています");
+
+            var isCurrent = await settingsService.IsPendingFolderCleanupCurrentAsync(cleanup).ConfigureAwait(false);
+            if (!isCurrent)
+                AppLogger.Warn($"ShellViewModel.ResumePendingFolderCleanupAsync: path changed for operation {cleanup.OperationId}; reset approved slot");
+
+            // 旧フォルダの生成処理が imgCache 削除後に完了すると、削除済みキャッシュを再作成する。
+            // Gallery と共有ワーカーの新規要求を止め、WorldResolve を含む全生成の完了を
+            // 待ってから DB とキャッシュを整理する。
+            await galleryViewModel.photosState.suspendThumbnailGenerationAndWait().ConfigureAwait(false);
+            await thumbnailWorker.SuspendOperationsAndWaitAsync().ConfigureAwait(false);
+            await db.ResetPhotoCacheBySlotAsync(cleanup.SourceSlot).ConfigureAwait(false);
+            await settingsService.ClearPendingFolderCleanupAsync(cleanup.OperationId).ConfigureAwait(false);
+            thumbnailWorker.ResumeOperations();
+            galleryViewModel.photosState.allowThumbnailReloadAfterFolderCleanup();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"ShellViewModel.ResumePendingFolderCleanupAsync: threw: {ex}");
+            toastService.addToast(getMsg("ShellViewModel.folderCleanupFailed"), ToastType.error);
+            return false;
+        }
+    }
+
+    /// <summary>保留中スロットの写真フォルダを変更し、設定保存後に DB キャッシュをリセットする。</summary>
+    public async Task applyFolderChange(int slot, string newPath)
+    {
+        AppLogger.Trace($"ShellViewModel.applyFolderChange: enter slot={slot} newPath={newPath}");
+        await folderMutationGate.WaitAsync().ConfigureAwait(false);
         IsApplyingFolderChange = true;
         try
         {
-            await db.ResetPhotoCacheBySlotAsync(PendingFolderSlot).ConfigureAwait(false);
-            PendingFolderPath = null;
-            await settingsService.SaveSettingAsync(buildSettingPayload(new AlpheratzSettingDto
+            if (slot is not (1 or 2))
+                throw new ArgumentOutOfRangeException(nameof(slot), slot, "source_slot は 1 または 2 である必要があります");
+            if (string.IsNullOrWhiteSpace(newPath) || !Directory.Exists(newPath))
+                throw new DirectoryNotFoundException($"写真フォルダが見つかりません: {newPath}");
+
+            var currentPath = slot == 1 ? PhotoFolderPath : SecondaryPhotoFolderPath;
+            var pendingCleanup = await settingsService.GetPendingFolderCleanupAsync().ConfigureAwait(false);
+            if (pendingCleanup is null && AreSameFolderPath(currentPath, newPath))
             {
-                photoFolderPath = PendingFolderSlot == 1 ? newPath : PhotoFolderPath,
-                secondaryPhotoFolderPath = PendingFolderSlot == 2 ? newPath : SecondaryPhotoFolderPath,
-            })).ConfigureAwait(false);
+                ClearPendingFolderChangeIfCurrent(slot, newPath);
+                AppLogger.Trace("ShellViewModel.applyFolderChange: skip (same folder)");
+                return;
+            }
+            var otherPath = slot == 1 ? SecondaryPhotoFolderPath : PhotoFolderPath;
+            if (pendingCleanup is null
+                && !string.IsNullOrWhiteSpace(otherPath)
+                && AppPaths.AreOverlappingDirectories(newPath, otherPath))
+            {
+                throw new InvalidOperationException("1st と 2nd の写真フォルダには、同じフォルダや親子関係のフォルダを設定できません");
+            }
+
+            await StopActiveScanAsync().ConfigureAwait(false);
+            if (!await ResumePendingFolderCleanupAsync().ConfigureAwait(false))
+                return;
+
+            if (pendingCleanup is not null)
+            {
+                await refreshSettings().ConfigureAwait(false);
+                currentPath = slot == 1 ? PhotoFolderPath : SecondaryPhotoFolderPath;
+                if (AreSameFolderPath(currentPath, newPath))
+                {
+                    ClearPendingFolderChangeIfCurrent(slot, newPath);
+                    await Task.WhenAll(
+                        galleryViewModel.photosState.loadPhotos(),
+                        tagMasterViewModel.loadTags(),
+                        refreshGalleryFilterMetadata()).ConfigureAwait(false);
+                    await startScan().ConfigureAwait(false);
+                    toastService.addToast(getMsg("ShellViewModel.folderCleanupComplete"));
+                    return;
+                }
+            }
+
+            await settingsService.SaveFolderChangeAsync(slot, currentPath, newPath).ConfigureAwait(false);
+            ClearPendingFolderChangeIfCurrent(slot, newPath);
             await refreshSettings().ConfigureAwait(false);
-            await galleryViewModel.photosState.loadPhotos().ConfigureAwait(false);
-            await refreshGalleryFilterMetadata().ConfigureAwait(false);
+
+            if (!await ResumePendingFolderCleanupAsync().ConfigureAwait(false))
+                return;
+
+            await Task.WhenAll(
+                galleryViewModel.photosState.loadPhotos(),
+                tagMasterViewModel.loadTags(),
+                refreshGalleryFilterMetadata()).ConfigureAwait(false);
             await startScan().ConfigureAwait(false);
-            toastService.addToast("写真フォルダを更新しました");
+            toastService.addToast(getMsg("ShellViewModel.folderUpdated"));
         }
         catch (Exception err)
         {
             AppLogger.Error($"ShellViewModel.applyFolderChange: threw: {err}");
-            toastService.addToast($"写真フォルダの更新に失敗しました: {err}", ToastType.error);
+            var messageKey = err switch
+            {
+                DirectoryNotFoundException => "ShellViewModel.folderMissing",
+                InvalidOperationException => "ShellViewModel.foldersOverlap",
+                _ => "ShellViewModel.folderUpdateFailed",
+            };
+            toastService.addToast(getMsg(messageKey), ToastType.error);
         }
-        finally { IsApplyingFolderChange = false; }
+        finally
+        {
+            // 失敗時も同じ保留値を残さない。残すと同一フォルダを再選択しても
+            // PropertyChanged が発火せず、確認ダイアログを再表示できなくなる。
+            ClearPendingFolderChangeIfCurrent(slot, newPath);
+            IsApplyingFolderChange = false;
+            folderMutationGate.Release();
+        }
         AppLogger.Trace("ShellViewModel.applyFolderChange: exit");
     }
 
-    /// <summary>指定スロットの写真キャッシュを削除し、設定上のフォルダパスも空にする。</summary>
-    public async Task executeResetFolder(int slot)
+    private void ClearPendingFolderChangeIfCurrent(int slot, string path)
     {
-        AppLogger.Trace($"ShellViewModel.executeResetFolder: enter slot={slot}");
-        var currentPath = slot == 1 ? PhotoFolderPath : SecondaryPhotoFolderPath;
-        if (string.IsNullOrEmpty(currentPath)) return;
-        var nextPrimaryPath = slot == 1 ? "" : PhotoFolderPath;
-        var nextSecondaryPath = slot == 2 ? "" : SecondaryPhotoFolderPath;
-        IsApplyingFolderChange = true;
+        if (PendingFolderSlot == slot
+            && PendingFolderPath is { } pendingPath
+            && AreSameFolderPath(pendingPath, path))
+        {
+            PendingFolderPath = null;
+        }
+    }
+
+    private static bool AreSameFolderPath(string left, string right)
+    {
+        if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
+            return false;
+
         try
         {
-            await db.ResetPhotoCacheBySlotAsync(slot).ConfigureAwait(false);
-            await settingsService.SaveSettingAsync(buildSettingPayload(new AlpheratzSettingDto
-            { photoFolderPath = nextPrimaryPath, secondaryPhotoFolderPath = nextSecondaryPath })).ConfigureAwait(false);
-            await refreshSettings().ConfigureAwait(false);
-            await galleryViewModel.photosState.loadPhotos().ConfigureAwait(false);
-            await refreshGalleryFilterMetadata().ConfigureAwait(false);
+            return AppPaths.AreSameDirectory(left, right);
+        }
+        catch
+        {
+            return string.Equals(
+                left.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                right.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    /// <summary>指定スロットの写真キャッシュを削除し、設定上のフォルダパスも空にする。</summary>
+    public async Task executeResetFolder(int slot, string? expectedPath = null)
+    {
+        AppLogger.Trace($"ShellViewModel.executeResetFolder: enter slot={slot}");
+        await folderMutationGate.WaitAsync().ConfigureAwait(false);
+        IsApplyingFolderChange = true;
+        var currentPath = string.Empty;
+        try
+        {
+            if (slot is not (1 or 2))
+                throw new ArgumentOutOfRangeException(nameof(slot), slot, "source_slot は 1 または 2 である必要があります");
+
+            // 確認後に別のフォルダ操作が先に完了していた場合、古い確認内容で現在の設定を消さない。
+            currentPath = slot == 1 ? PhotoFolderPath : SecondaryPhotoFolderPath;
+            if (string.IsNullOrEmpty(currentPath))
+                return;
+            if (!string.IsNullOrWhiteSpace(expectedPath) && !AreSameFolderPath(currentPath, expectedPath))
+            {
+                AppLogger.Warn("ShellViewModel.executeResetFolder: skip (folder changed after confirmation)");
+                return;
+            }
+
+            await StopActiveScanAsync().ConfigureAwait(false);
+            if (!await ResumePendingFolderCleanupAsync().ConfigureAwait(false))
+                return;
+
+            await settingsService.SaveFolderChangeAsync(slot, currentPath, string.Empty).ConfigureAwait(false);
             PendingResetRequest = null;
-            toastService.addToast(slot == 1 ? "1st 写真フォルダをリセットしました" : "2nd 写真フォルダをリセットしました");
+            await refreshSettings().ConfigureAwait(false);
+
+            if (!await ResumePendingFolderCleanupAsync().ConfigureAwait(false))
+                return;
+
+            await Task.WhenAll(
+                galleryViewModel.photosState.loadPhotos(),
+                tagMasterViewModel.loadTags(),
+                refreshGalleryFilterMetadata()).ConfigureAwait(false);
+            toastService.addToast(getMsg("ShellViewModel.folderReset", ("slot", slot)));
         }
         catch (Exception err)
         {
             AppLogger.Error($"ShellViewModel.executeResetFolder: threw: {err}");
-            toastService.addToast($"写真フォルダのリセットに失敗しました: {err}", ToastType.error);
+            toastService.addToast(getMsg("ShellViewModel.folderResetFailed"), ToastType.error);
         }
-        finally { IsApplyingFolderChange = false; }
+        finally
+        {
+            ClearPendingResetRequestIfCurrent(slot, expectedPath ?? currentPath);
+            IsApplyingFolderChange = false;
+            folderMutationGate.Release();
+        }
         AppLogger.Trace("ShellViewModel.executeResetFolder: exit");
+    }
+
+    private void ClearPendingResetRequestIfCurrent(int slot, string path)
+    {
+        if (PendingResetRequest is { } request
+            && request.slot == slot
+            && AreSameFolderPath(request.path, path))
+        {
+            PendingResetRequest = null;
+        }
     }
 
     /// <summary>フォルダ変更の確認ダイアログに必要な保留状態を設定する。</summary>
     public void promptFolderChange(int slot, string newPath)
     {
         AppLogger.Trace($"ShellViewModel.promptFolderChange: enter slot={slot} newPath={newPath}");
+        if (IsApplyingFolderChange)
+        {
+            AppLogger.Trace("ShellViewModel.promptFolderChange: skip (folder operation running)");
+            return;
+        }
         PendingFolderSlot = slot; PendingFolderPath = newPath; PendingResetRequest = null;
         AppLogger.Trace("ShellViewModel.promptFolderChange: exit");
     }
@@ -558,6 +895,11 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     public void handleResetFolder(int slot)
     {
         AppLogger.Trace($"ShellViewModel.handleResetFolder: enter slot={slot}");
+        if (IsApplyingFolderChange)
+        {
+            AppLogger.Trace("ShellViewModel.handleResetFolder: skip (folder operation running)");
+            return;
+        }
         var currentPath = slot == 1 ? PhotoFolderPath : SecondaryPhotoFolderPath;
         if (string.IsNullOrEmpty(currentPath)) return;
         PendingFolderPath = null;
@@ -579,7 +921,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         if (ViewMode == nextMode) return;
         try
         {
-            await settingsService.SaveSettingAsync(buildSettingPayload(new AlpheratzSettingDto { viewMode = nextMode })).ConfigureAwait(false);
+            await settingsService.SaveSettingAsync(new AlpheratzSettingDto { viewMode = nextMode }).ConfigureAwait(false);
             await dispatcherService.RunOnUiThread(() =>
             {
                 if (nextMode == ViewMode.gallery && galleryViewModel.filtersState.GroupingMode != GroupingMode.none)
@@ -591,26 +933,33 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         catch (Exception err)
         {
             AppLogger.Error($"ShellViewModel.handleSetViewMode: threw: {err}");
-            toastService.addToast($"ビューモードの変更に失敗しました: {err}", ToastType.error);
+            toastService.addToast(getMsg("ShellViewModel.viewModeUpdateFailed"), ToastType.error);
         }
         AppLogger.Trace($"ShellViewModel.handleSetViewMode: exit ViewMode={ViewMode}");
     }
 
     /// <summary>テーマ設定を更新し、設定ファイルへ保存する。</summary>
-    public async Task handleThemeChange(ThemeMode mode)
+    public async Task<bool> handleThemeChange(ThemeMode mode)
     {
         AppLogger.Trace($"ShellViewModel.handleThemeChange: enter mode={mode}");
         try
         {
-            await settingsService.SaveSettingAsync(buildSettingPayload(new AlpheratzSettingDto { themeMode = mode })).ConfigureAwait(false);
-            ThemeMode = mode;
+            await settingsService.SaveSettingAsync(new AlpheratzSettingDto { themeMode = mode }).ConfigureAwait(false);
+            await dispatcherService.RunOnUiThread(() =>
+            {
+                ThemeMode = mode;
+                settingsViewModel.ThemeMode = mode;
+            }).ConfigureAwait(false);
+            AppLogger.Trace("ShellViewModel.handleThemeChange: exit success");
+            return true;
         }
         catch (Exception err)
         {
             AppLogger.Error($"ShellViewModel.handleThemeChange: threw: {err}");
-            toastService.addToast($"テーマの変更に失敗しました: {err}", ToastType.error);
+            toastService.addToast(getMsg("ShellViewModel.themeUpdateFailed"), ToastType.error);
+            AppLogger.Trace("ShellViewModel.handleThemeChange: exit failure");
+            return false;
         }
-        AppLogger.Trace("ShellViewModel.handleThemeChange: exit");
     }
 
     /// <summary>自動起動の希望値を更新し、設定ファイルと OS 側へ保存する。</summary>
@@ -619,14 +968,14 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         AppLogger.Trace($"ShellViewModel.handleOpenWorldOnPostPreference: enter enabled={enabled}");
         try
         {
-            await settingsService.SaveSettingAsync(buildSettingPayload(new AlpheratzSettingDto { openWorldLinkOnPost = enabled })).ConfigureAwait(false);
+            await settingsService.SaveSettingAsync(new AlpheratzSettingDto { openWorldLinkOnPost = enabled }).ConfigureAwait(false);
             OpenWorldLinkOnPost = enabled;
             templatePageViewModel.OpenWorldLinkOnPost = enabled;
         }
         catch (Exception err)
         {
             AppLogger.Error($"ShellViewModel.handleOpenWorldOnPostPreference: threw: {err}");
-            toastService.addToast($"謚慕ｨｿ譎ゅ・繝ｯ繝ｼ繝ｫ繝峨Μ繝ｳ繧ｯ險ｭ螳壹・譖ｴ譁ｰ縺ｫ螟ｱ謨励＠縺ｾ縺励◆: {err}", ToastType.error);
+            toastService.addToast(getMsg("ShellViewModel.worldLinkSettingUpdateFailed"), ToastType.error);
         }
         AppLogger.Trace("ShellViewModel.handleOpenWorldOnPostPreference: exit");
     }
@@ -638,12 +987,12 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         {
             await settingsService.SaveStartupPreferenceAsync(enabled).ConfigureAwait(false);
             StartupEnabled = enabled;
-            toastService.addToast(enabled ? "Alpheratz をログイン時に起動する設定にしました。" : "Alpheratz のログイン時起動を無効にしました。");
+            toastService.addToast(getMsg(enabled ? "ShellViewModel.startupEnabled" : "ShellViewModel.startupDisabled"));
         }
         catch (Exception err)
         {
             AppLogger.Error($"ShellViewModel.handleStartupPreference: threw: {err}");
-            toastService.addToast($"自動起動設定の更新に失敗しました: {err}", ToastType.error);
+            toastService.addToast(getMsg("ShellViewModel.startupUpdateFailed"), ToastType.error);
         }
         AppLogger.Trace("ShellViewModel.handleStartupPreference: exit");
     }
@@ -652,6 +1001,8 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     public async ValueTask DisposeAsync()
     {
         AppLogger.Trace($"ShellViewModel.DisposeAsync: enter scanCount={scanUnlistenFns.Count} phashCount={phashUnlistenFns.Count}");
+        try { await StopActiveScanAsync().ConfigureAwait(false); }
+        catch (Exception ex) { AppLogger.Error($"ShellViewModel.DisposeAsync: stop scan threw: {ex}"); }
         foreach (var unlisten in scanUnlistenFns)
         {
             try { await unlisten.DisposeAsync().ConfigureAwait(false); }
@@ -662,6 +1013,8 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
             try { await unlisten.DisposeAsync().ConfigureAwait(false); }
             catch (Exception ex) { AppLogger.Error($"ShellViewModel.DisposeAsync: phash unlisten threw: {ex}"); }
         }
+        try { await galleryViewModel.photosState.DisposeAsync().ConfigureAwait(false); }
+        catch (Exception ex) { AppLogger.Error($"ShellViewModel.DisposeAsync: gallery photos dispose threw: {ex}"); }
         galleryViewModel.Cleanup();
         AppLogger.Trace("ShellViewModel.DisposeAsync: exit");
     }

@@ -2,6 +2,7 @@
     x:Class="Alpheratz.Features.Gallery.Controls.GalleryFilterPanel"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:messages="using:Alpheratz.Messages"
     xmlns:shared="using:Alpheratz.Shared.Controls"
     Unloaded="UserControl_Unloaded">
     <UserControl.Resources>
@@ -28,7 +29,7 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- Header -->
+            <!-- 見出し -->
             <Border x:Name="FilterPanelHeader"
                     Grid.Row="0"
                     Padding="14,12"
@@ -41,7 +42,9 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <TextBlock Text="条件検索" FontSize="{StaticResource AFontSizeLg}" FontWeight="ExtraBold"/>
+                        <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.heading')}"
+                                   FontSize="{StaticResource AFontSizeLg}"
+                                   FontWeight="ExtraBold"/>
                         <Border x:Name="BadgeBorder" Visibility="Collapsed"
                                 Background="{ThemeResource APrimary}" CornerRadius="{StaticResource ARadiusPill}"
                                 MinWidth="20" Height="20" Padding="6,0">
@@ -49,7 +52,9 @@
                                        Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                     </StackPanel>
-                    <Button Grid.Column="1" Content="リセット" Style="{StaticResource GhostButtonStyle}"
+                    <Button Grid.Column="1"
+                            Content="{x:Bind messages:MessageCatalog.getMsg('common.reset')}"
+                            Style="{StaticResource GhostButtonStyle}"
                             FontSize="{StaticResource AFontSizeSm}" FontWeight="Bold" Click="ResetFilters_Click"/>
                 </Grid>
             </Border>
@@ -57,20 +62,23 @@
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                 <StackPanel Padding="0" Spacing="0">
 
-                    <!-- 表示順 (Sort) -->
+                    <!-- 表示順 -->
                     <Border Style="{StaticResource FilterPanelCardStyle}" Tag="FilterPanelCard">
                         <Border Style="{StaticResource FilterPanelCardSectionStyle}">
                             <StackPanel Spacing="8">
-                                <TextBlock Text="表示順" Style="{StaticResource SectionTitleStyle}"/>
+                                <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.sortHeading')}"
+                                           Style="{StaticResource SectionTitleStyle}"/>
                                 <Grid ColumnSpacing="6">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
-                                    <Button x:Name="SortDateBtn" Content="新しい順"
+                                    <Button x:Name="SortDateBtn"
+                                            Content="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.sortNewest')}"
                                             Style="{StaticResource GhostButtonStyle}" FontSize="{StaticResource AFontSizeSm}" FontWeight="ExtraBold"
                                             HorizontalAlignment="Stretch" MinHeight="42" Click="SortDate_Click"/>
-                                    <Button x:Name="SortWorldBtn" Grid.Column="1" Content="ワールド名順"
+                                    <Button x:Name="SortWorldBtn" Grid.Column="1"
+                                            Content="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.sortWorldName')}"
                                             Style="{StaticResource GhostButtonStyle}" FontSize="{StaticResource AFontSizeSm}" FontWeight="ExtraBold"
                                             HorizontalAlignment="Stretch" MinHeight="42" Click="SortWorld_Click"/>
                                 </Grid>
@@ -78,11 +86,12 @@
                         </Border>
                     </Border>
 
-                    <!-- 撮影日 (Date) -->
+                    <!-- 撮影日 -->
                     <Border Style="{StaticResource FilterPanelCardStyle}" Tag="FilterPanelCard">
                         <Border Style="{StaticResource FilterPanelCardSectionStyle}">
                             <StackPanel Spacing="8">
-                                <TextBlock Text="撮影日" Style="{StaticResource SectionTitleStyle}"/>
+                                <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.dateHeading')}"
+                                           Style="{StaticResource SectionTitleStyle}"/>
                                 <Grid ColumnSpacing="6">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
@@ -101,11 +110,16 @@
                                                                 VerticalAlignment="Center"/>
                                             </Border>
                                             <StackPanel Spacing="1" VerticalAlignment="Center">
-                                                <TextBlock x:Name="DateRangeLabel" Text="すべての期間" FontSize="{StaticResource AFontSizeMd}" FontWeight="Bold" Foreground="{ThemeResource ATextDim}"/>
+                                                <TextBlock x:Name="DateRangeLabel"
+                                                           Text="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.allDates')}"
+                                                           FontSize="{StaticResource AFontSizeMd}"
+                                                           FontWeight="Bold"
+                                                           Foreground="{ThemeResource ATextDim}"/>
                                             </StackPanel>
                                         </StackPanel>
                                     </Button>
                                     <Button x:Name="DateClearBtn" Grid.Column="1" Content="×" Visibility="Collapsed"
+                                            AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.clearDateFilter')}"
                                             Style="{StaticResource GhostButtonStyle}" FontSize="{StaticResource AFontSizeSm}" FontWeight="Bold"
                                             MinWidth="42" Click="DateClear_Click"/>
                                 </Grid>
@@ -115,12 +129,17 @@
                                         BorderBrush="{ThemeResource ABorder}" BorderThickness="1">
                                     <StackPanel>
                                         <Border Padding="12,10" BorderBrush="{ThemeResource ABorder}" BorderThickness="0,0,0,1">
-                                                <StackPanel Spacing="2">
-                                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <StackPanel Spacing="2">
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
                                                     <shared:AppIcon IconName="calendarRange" IconSize="14" Foreground="{ThemeResource ATextFaint}"/>
-                                                    <TextBlock x:Name="CalendarRangeLabel" Text="すべての期間" FontSize="{StaticResource AFontSizeSm}" Foreground="{ThemeResource ATextFaint}"/>
+                                                    <TextBlock x:Name="CalendarRangeLabel"
+                                                               Text="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.allDates')}"
+                                                               FontSize="{StaticResource AFontSizeSm}"
+                                                               Foreground="{ThemeResource ATextFaint}"/>
                                                 </StackPanel>
-                                                <TextBlock Text="From / To を切り替えて選択します" FontSize="{StaticResource AFontSizeSm}" Foreground="{ThemeResource ATextFaint}"/>
+                                                <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.dateRangeGuidance')}"
+                                                           FontSize="{StaticResource AFontSizeSm}"
+                                                           Foreground="{ThemeResource ATextFaint}"/>
                                             </StackPanel>
                                         </Border>
 
@@ -133,8 +152,13 @@
                                                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                                                     Padding="10,8" CornerRadius="{StaticResource ARadiusMd}" MinHeight="38" Click="FromChip_Click">
                                                 <StackPanel Spacing="2">
-                                                    <TextBlock Text="From" FontSize="{StaticResource AFontSizeXs}" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}"/>
-                                                    <TextBlock x:Name="FromValueText" Text="---" FontSize="{StaticResource AFontSizeSm}" FontWeight="Bold"
+                                                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.startDate')}"
+                                                               FontSize="{StaticResource AFontSizeXs}"
+                                                               FontWeight="ExtraBold"
+                                                               Foreground="{ThemeResource ATextFaint}"/>
+                                                    <TextBlock x:Name="FromValueText"
+                                                               Text="{x:Bind messages:MessageCatalog.getMsg('common.emptyMarker')}"
+                                                               FontSize="{StaticResource AFontSizeSm}" FontWeight="Bold"
                                                                FontFamily="{StaticResource AFontMono}"/>
                                                 </StackPanel>
                                             </Button>
@@ -142,8 +166,13 @@
                                                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                                                     Padding="10,8" CornerRadius="{StaticResource ARadiusMd}" MinHeight="38" Click="ToChip_Click">
                                                 <StackPanel Spacing="2">
-                                                    <TextBlock Text="To" FontSize="{StaticResource AFontSizeXs}" FontWeight="ExtraBold" Foreground="{ThemeResource ATextFaint}"/>
-                                                    <TextBlock x:Name="ToValueText" Text="---" FontSize="{StaticResource AFontSizeSm}" FontWeight="Bold"
+                                                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.endDate')}"
+                                                               FontSize="{StaticResource AFontSizeXs}"
+                                                               FontWeight="ExtraBold"
+                                                               Foreground="{ThemeResource ATextFaint}"/>
+                                                    <TextBlock x:Name="ToValueText"
+                                                               Text="{x:Bind messages:MessageCatalog.getMsg('common.emptyMarker')}"
+                                                               FontSize="{StaticResource AFontSizeSm}" FontWeight="Bold"
                                                                FontFamily="{StaticResource AFontMono}"/>
                                                 </StackPanel>
                                             </Button>
@@ -159,22 +188,34 @@
                                                 <RowDefinition Height="Auto"/>
                                                 <RowDefinition Height="Auto"/>
                                             </Grid.RowDefinitions>
-                                            <Button x:Name="PresetTodayBtn" Content="今日" Style="{StaticResource GhostButtonStyle}"
+                                            <Button x:Name="PresetTodayBtn"
+                                                    Content="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.presetToday')}"
+                                                    Style="{StaticResource GhostButtonStyle}"
                                                     HorizontalAlignment="Stretch" MinHeight="38" FontSize="{StaticResource AFontSizeSm}" FontWeight="Bold" CornerRadius="{StaticResource ARadiusMd}"
                                                     Click="PresetToday_Click"/>
-                                            <Button x:Name="PresetLast7Btn" Grid.Column="1" Content="直近7日" Style="{StaticResource GhostButtonStyle}"
+                                            <Button x:Name="PresetLast7Btn" Grid.Column="1"
+                                                    Content="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.presetLast7Days')}"
+                                                    Style="{StaticResource GhostButtonStyle}"
                                                     HorizontalAlignment="Stretch" MinHeight="38" FontSize="{StaticResource AFontSizeSm}" FontWeight="Bold" CornerRadius="{StaticResource ARadiusMd}"
                                                     Click="PresetLast7Days_Click"/>
-                                            <Button x:Name="PresetThisMonthBtn" Grid.Row="1" Content="今月" Style="{StaticResource GhostButtonStyle}"
+                                            <Button x:Name="PresetThisMonthBtn" Grid.Row="1"
+                                                    Content="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.presetThisMonth')}"
+                                                    Style="{StaticResource GhostButtonStyle}"
                                                     HorizontalAlignment="Stretch" MinHeight="38" FontSize="{StaticResource AFontSizeSm}" FontWeight="Bold" CornerRadius="{StaticResource ARadiusMd}"
                                                     Click="PresetThisMonth_Click"/>
-                                            <Button x:Name="PresetLastMonthBtn" Grid.Row="1" Grid.Column="1" Content="先月" Style="{StaticResource GhostButtonStyle}"
+                                            <Button x:Name="PresetLastMonthBtn" Grid.Row="1" Grid.Column="1"
+                                                    Content="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.presetLastMonth')}"
+                                                    Style="{StaticResource GhostButtonStyle}"
                                                     HorizontalAlignment="Stretch" MinHeight="38" FontSize="{StaticResource AFontSizeSm}" FontWeight="Bold" CornerRadius="{StaticResource ARadiusMd}"
                                                     Click="PresetLastMonth_Click"/>
-                                            <Button x:Name="PresetHalfYearBtn" Grid.Row="2" Content="半年" Style="{StaticResource GhostButtonStyle}"
+                                            <Button x:Name="PresetHalfYearBtn" Grid.Row="2"
+                                                    Content="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.presetLastSixMonths')}"
+                                                    Style="{StaticResource GhostButtonStyle}"
                                                     HorizontalAlignment="Stretch" MinHeight="38" FontSize="{StaticResource AFontSizeSm}" FontWeight="Bold" CornerRadius="{StaticResource ARadiusMd}"
                                                     Click="PresetHalfYear_Click"/>
-                                            <Button x:Name="PresetOneYearBtn" Grid.Row="2" Grid.Column="1" Content="一年" Style="{StaticResource GhostButtonStyle}"
+                                            <Button x:Name="PresetOneYearBtn" Grid.Row="2" Grid.Column="1"
+                                                    Content="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.presetLastYear')}"
+                                                    Style="{StaticResource GhostButtonStyle}"
                                                     HorizontalAlignment="Stretch" MinHeight="38" FontSize="{StaticResource AFontSizeSm}" FontWeight="Bold" CornerRadius="{StaticResource ARadiusMd}"
                                                     Click="PresetOneYear_Click"/>
                                         </Grid>
@@ -187,11 +228,15 @@
                                                         <ColumnDefinition Width="*"/>
                                                         <ColumnDefinition Width="Auto"/>
                                                     </Grid.ColumnDefinitions>
-                                                    <Button x:Name="MonthPrevBtn" Content="‹" Style="{StaticResource GhostButtonStyle}"
+                                                    <Button x:Name="MonthPrevBtn" Content="‹"
+                                                            AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.previousMonth')}"
+                                                            Style="{StaticResource GhostButtonStyle}"
                                                             MinWidth="34" MinHeight="34" Padding="0" CornerRadius="{StaticResource ARadiusMd}" Click="MonthPrev_Click"/>
                                                     <TextBlock x:Name="MonthLabel" Grid.Column="1" FontSize="{StaticResource AFontSizeMd}" FontWeight="ExtraBold"
                                                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                    <Button x:Name="MonthNextBtn" Grid.Column="2" Content="›" Style="{StaticResource GhostButtonStyle}"
+                                                    <Button x:Name="MonthNextBtn" Grid.Column="2" Content="›"
+                                                            AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.nextMonth')}"
+                                                            Style="{StaticResource GhostButtonStyle}"
                                                             MinWidth="34" MinHeight="34" Padding="0" CornerRadius="{StaticResource ARadiusMd}" Click="MonthNext_Click"/>
                                                 </Grid>
                                                 <Grid x:Name="WeekdayHeaderGrid" Margin="0,4,0,2"/>
@@ -206,10 +251,13 @@
                                                     <ColumnDefinition Width="Auto"/>
                                                     <ColumnDefinition Width="Auto"/>
                                                 </Grid.ColumnDefinitions>
-                                                <Button Content="クリア" Style="{StaticResource GhostButtonStyle}"
+                                                <Button Content="{x:Bind messages:MessageCatalog.getMsg('common.clear')}"
+                                                        Style="{StaticResource GhostButtonStyle}"
                                                         MinWidth="92" FontSize="{StaticResource AFontSizeSm}" FontWeight="Bold" CornerRadius="{StaticResource ARadiusMd}"
                                                         Click="CalendarClear_Click"/>
-                                                <Button Grid.Column="2" Content="確認" Style="{StaticResource PrimaryButtonStyle}"
+                                                <Button Grid.Column="2"
+                                                        Content="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.applyDateRange')}"
+                                                        Style="{StaticResource PrimaryButtonStyle}"
                                                         MinWidth="92" FontSize="{StaticResource AFontSizeSm}" FontWeight="Bold" CornerRadius="{StaticResource ARadiusMd}"
                                                         Click="CalendarApply_Click"/>
                                             </Grid>
@@ -220,11 +268,12 @@
                         </Border>
                     </Border>
 
-                    <!-- 向き (Orientation) -->
+                    <!-- 向き -->
                     <Border Style="{StaticResource FilterPanelCardStyle}" Tag="FilterPanelCard">
                         <Border Style="{StaticResource FilterPanelCardSectionStyle}">
                             <StackPanel Spacing="8">
-                                <TextBlock Text="向き" Style="{StaticResource SectionTitleStyle}"/>
+                                <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.orientationHeading')}"
+                                           Style="{StaticResource SectionTitleStyle}"/>
                                 <Grid ColumnSpacing="6">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
@@ -238,7 +287,8 @@
                                                             IconName="images"
                                                             IconSize="16"
                                                             HorizontalAlignment="Center"/>
-                                            <TextBlock Text="すべて" FontSize="{StaticResource AFontSizeXs}" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.orientationAll')}"
+                                                       FontSize="{StaticResource AFontSizeXs}" FontWeight="Bold" HorizontalAlignment="Center"/>
                                         </StackPanel>
                                     </Button>
                                     <Button x:Name="OrientationLandscapeBtn" Grid.Column="1" Style="{StaticResource GhostButtonStyle}"
@@ -248,7 +298,8 @@
                                                             IconName="landscape"
                                                             IconSize="17"
                                                             HorizontalAlignment="Center"/>
-                                            <TextBlock Text="横長" FontSize="{StaticResource AFontSizeXs}" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.orientationLandscape')}"
+                                                       FontSize="{StaticResource AFontSizeXs}" FontWeight="Bold" HorizontalAlignment="Center"/>
                                         </StackPanel>
                                     </Button>
                                     <Button x:Name="OrientationPortraitBtn" Grid.Column="2" Style="{StaticResource GhostButtonStyle}"
@@ -258,7 +309,8 @@
                                                             IconName="portrait"
                                                             IconSize="17"
                                                             HorizontalAlignment="Center"/>
-                                            <TextBlock Text="縦長" FontSize="{StaticResource AFontSizeXs}" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.orientationPortrait')}"
+                                                       FontSize="{StaticResource AFontSizeXs}" FontWeight="Bold" HorizontalAlignment="Center"/>
                                         </StackPanel>
                                     </Button>
                                 </Grid>
@@ -271,7 +323,8 @@
                         <StackPanel>
                             <Border Style="{StaticResource FilterPanelCardSectionStyle}">
                                 <StackPanel Spacing="8">
-                                    <TextBlock Text="タグ" Style="{StaticResource SectionTitleStyle}"/>
+                                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.tagHeading')}"
+                                               Style="{StaticResource SectionTitleStyle}"/>
                                     <Button x:Name="TagTriggerBtn" Style="{StaticResource GhostButtonStyle}"
                                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                                             Padding="10,8" CornerRadius="{StaticResource ARadiusMd}" Click="TagTrigger_Click">
@@ -291,7 +344,9 @@
                                                                 VerticalAlignment="Center"/>
                                             </Border>
                                             <StackPanel Grid.Column="1" Spacing="1" Margin="10,0,0,0">
-                                                <TextBlock x:Name="TagSummaryLabel" Text="すべてのタグ" FontSize="{StaticResource AFontSizeMd}" FontWeight="Bold"
+                                                <TextBlock x:Name="TagSummaryLabel"
+                                                           Text="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.allTags')}"
+                                                           FontSize="{StaticResource AFontSizeMd}" FontWeight="Bold"
                                                            Foreground="{ThemeResource ATextDim}" TextTrimming="CharacterEllipsis"/>
                                             </StackPanel>
                                             <shared:AppIcon Grid.Column="2"
@@ -315,7 +370,8 @@
                                                                     IconSize="14"
                                                                     Foreground="{ThemeResource ATextFaint}"
                                                                     VerticalAlignment="Center"/>
-                                                    <TextBox x:Name="TagSearchBox" Grid.Column="1" PlaceholderText="タグ名で絞り込む..."
+                                                    <TextBox x:Name="TagSearchBox" Grid.Column="1"
+                                                             PlaceholderText="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.tagSearchPlaceholder')}"
                                                              BorderThickness="0" Background="Transparent" Padding="0"
                                                              FontSize="{StaticResource AFontSizeMd}" HorizontalAlignment="Stretch"
                                                              TextChanged="TagSearch_TextChanged"/>
@@ -337,7 +393,8 @@
 
                             <Border Style="{StaticResource FilterPanelCardSectionStyle}">
                                 <StackPanel Spacing="8">
-                                    <TextBlock Text="ワールド" Style="{StaticResource SectionTitleStyle}"/>
+                                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.worldHeading')}"
+                                               Style="{StaticResource SectionTitleStyle}"/>
                                     <Button x:Name="WorldTriggerBtn" Style="{StaticResource GhostButtonStyle}"
                                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                                             Padding="10,8" CornerRadius="{StaticResource ARadiusMd}" Click="WorldTrigger_Click">
@@ -357,7 +414,9 @@
                                                                 VerticalAlignment="Center"/>
                                             </Border>
                                             <StackPanel Grid.Column="1" Spacing="1" Margin="10,0,0,0">
-                                                <TextBlock x:Name="WorldSummaryLabel" Text="すべてのワールド" FontSize="{StaticResource AFontSizeMd}" FontWeight="Bold"
+                                                <TextBlock x:Name="WorldSummaryLabel"
+                                                           Text="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.allWorlds')}"
+                                                           FontSize="{StaticResource AFontSizeMd}" FontWeight="Bold"
                                                            Foreground="{ThemeResource ATextDim}" TextTrimming="CharacterEllipsis"/>
                                             </StackPanel>
                                             <shared:AppIcon Grid.Column="2"
@@ -381,7 +440,8 @@
                                                                     IconSize="14"
                                                                     Foreground="{ThemeResource ATextFaint}"
                                                                     VerticalAlignment="Center"/>
-                                                    <TextBox x:Name="WorldSearchBox" Grid.Column="1" PlaceholderText="ワールド名で絞り込む..."
+                                                    <TextBox x:Name="WorldSearchBox" Grid.Column="1"
+                                                             PlaceholderText="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.worldSearchPlaceholder')}"
                                                              BorderThickness="0" Background="Transparent" Padding="0"
                                                              FontSize="{StaticResource AFontSizeMd}" HorizontalAlignment="Stretch"
                                                              TextChanged="WorldSearch_TextChanged"/>
@@ -401,11 +461,12 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- お気に入り (Favorites) -->
+                    <!-- お気に入り -->
                     <Border Style="{StaticResource FilterPanelCardStyle}" Tag="FilterPanelCard">
                         <Border Style="{StaticResource FilterPanelCardSectionStyle}">
                             <StackPanel Spacing="8">
-                                <TextBlock Text="お気に入り" Style="{StaticResource SectionTitleStyle}"/>
+                                <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.favoriteHeading')}"
+                                           Style="{StaticResource SectionTitleStyle}"/>
                                 <Button x:Name="FavoriteToggleBtn"
                                         Style="{StaticResource GhostButtonStyle}"
                                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
@@ -419,7 +480,8 @@
                                             IconSize="18"
                                             Foreground="{ThemeResource ATextFaint}"
                                             Width="22" Height="22"/>
-                                        <TextBlock x:Name="FavoriteLabel" Text="お気に入りのみ"
+                                        <TextBlock x:Name="FavoriteLabel"
+                                                   Text="{x:Bind messages:MessageCatalog.getMsg('GalleryFilterPanel.favoritesOnly')}"
                                                    FontSize="{StaticResource AFontSizeMd}" FontWeight="ExtraBold"
                                                    Foreground="{ThemeResource ATextDim}"
                                                    VerticalAlignment="Center"/>
@@ -442,9 +504,10 @@
                     Background="{ThemeResource AFilterPanelBackground}"
                     BorderBrush="{ThemeResource AFilterPanelBorder}"
                     BorderThickness="0,1,0,0">
-                <TextBlock FontSize="{StaticResource AFontSizeSm}" Foreground="{ThemeResource ATextFaint}" HorizontalAlignment="Center">
-                    <Run x:Name="FilteredCountRun" Text="0"/><Run Text="枚"/><Run Text=" 該当"/>
-                </TextBlock>
+                <TextBlock x:Name="FilteredCountLabel"
+                           FontSize="{StaticResource AFontSizeSm}"
+                           Foreground="{ThemeResource ATextFaint}"
+                           HorizontalAlignment="Center"/>
             </Border>
         </Grid>
     </Border>

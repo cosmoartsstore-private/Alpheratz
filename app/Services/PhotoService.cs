@@ -7,8 +7,28 @@ using System.Threading.Tasks;
 using Alpheratz.Core;
 using Alpheratz.Core.Database;
 using Alpheratz.Models;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Services;
+
+/// <summary>一括写真更新で個別に完了できなかった写真と理由。</summary>
+public sealed record PhotoBulkUpdateFailure(
+    SelectedPhotoRefDto Photo,
+    string Reason,
+    bool IsCanceled);
+
+/// <summary>
+/// 一括写真更新の個別結果。
+/// 呼び出し側は完了済み写真だけを画面へ反映し、失敗写真を再試行対象として残せる。
+/// </summary>
+public sealed record PhotoBulkUpdateResult(
+    IReadOnlyList<SelectedPhotoRefDto> SucceededPhotos,
+    IReadOnlyList<PhotoBulkUpdateFailure> FailedPhotos)
+{
+    public int SucceededCount => SucceededPhotos.Count;
+    public int FailedCount => FailedPhotos.Count;
+    public bool WasCanceled => FailedPhotos.Any(failure => failure.IsCanceled);
+}
 
 /// <summary>
 /// 写真関連の操作を集約するアプリケーションサービス。
@@ -196,24 +216,119 @@ public sealed class PhotoService
         return task;
     }
 
-    /// <summary>選択写真一括お気に入り設定。_bulkWriteGate で 1 件ずつ直列化して SQLITE_BUSY を回避する。</summary>
-    public async Task BulkSetPhotoFavoriteAsync(IReadOnlyList<SelectedPhotoRefDto> photos, bool isFavorite, CancellationToken ct = default)
+    /// <summary>
+    /// 選択写真を 1 件ずつ更新し、完了・失敗を写真単位で返す。
+    /// キャンセルは写真間で受け付け、実行中の 1 写真を完了させてから残りを未更新として返す。
+    /// </summary>
+    internal async Task<PhotoBulkUpdateResult> RunBulkPhotoUpdatesAsync(
+        IReadOnlyList<SelectedPhotoRefDto> photos,
+        string operationName,
+        Func<SelectedPhotoRefDto, Task> update,
+        CancellationToken ct = default)
     {
-        AppLogger.Trace($"PhotoService.BulkSetPhotoFavoriteAsync: enter count={photos.Count} isFavorite={isFavorite}");
-        await _bulkWriteGate.WaitAsync(ct).ConfigureAwait(false);
+        AppLogger.Trace($"PhotoService.RunBulkPhotoUpdatesAsync: enter operation={operationName} count={photos.Count}");
+        if (photos.Count == 0)
+        {
+            AppLogger.Trace("PhotoService.RunBulkPhotoUpdatesAsync: exit (empty)");
+            return new PhotoBulkUpdateResult([], []);
+        }
+
+        var succeeded = new List<SelectedPhotoRefDto>(photos.Count);
+        var failed = new List<PhotoBulkUpdateFailure>();
+        var gateEntered = false;
         try
         {
-            foreach (var p in photos)
+            try
             {
-                ct.ThrowIfCancellationRequested();
-                await _db.SetPhotoFavoriteAsync(p.photo_path, isFavorite, ct).ConfigureAwait(false);
+                await _bulkWriteGate.WaitAsync(ct).ConfigureAwait(false);
+                gateEntered = true;
             }
+            catch (OperationCanceledException)
+            {
+                AddCanceledFailures(failed, photos, 0);
+                AppLogger.Trace($"PhotoService.RunBulkPhotoUpdatesAsync: exit operation={operationName} succeeded=0 failed={failed.Count} canceled=true");
+                return new PhotoBulkUpdateResult([], failed.ToArray());
+            }
+
+            await Task.Run(async () =>
+            {
+                for (var index = 0; index < photos.Count; index++)
+                {
+                    if (ct.IsCancellationRequested)
+                    {
+                        AddCanceledFailures(failed, photos, index);
+                        break;
+                    }
+
+                    var photo = photos[index];
+                    try
+                    {
+                        await update(photo).ConfigureAwait(false);
+                        succeeded.Add(photo);
+                    }
+                    catch (OperationCanceledException ex)
+                    {
+                        AppLogger.Warn($"PhotoService.RunBulkPhotoUpdatesAsync: canceled operation={operationName} path={photo.photo_path}: {ex.Message}");
+                        AddCanceledFailures(failed, photos, index);
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        AppLogger.Warn($"PhotoService.RunBulkPhotoUpdatesAsync: failed operation={operationName} path={photo.photo_path}: {ex.Message}");
+                        failed.Add(new PhotoBulkUpdateFailure(photo, getMsg("PhotoService.operationFailed"), IsCanceled: false));
+                    }
+                }
+            }).ConfigureAwait(false);
         }
         finally
         {
-            _bulkWriteGate.Release();
+            if (gateEntered)
+                _bulkWriteGate.Release();
         }
-        AppLogger.Trace("PhotoService.BulkSetPhotoFavoriteAsync: exit");
+
+        var result = new PhotoBulkUpdateResult(succeeded.ToArray(), failed.ToArray());
+        AppLogger.Trace(
+            $"PhotoService.RunBulkPhotoUpdatesAsync: exit operation={operationName} " +
+            $"succeeded={result.SucceededCount} failed={result.FailedCount} canceled={result.WasCanceled}");
+        return result;
+    }
+
+    private static void AddCanceledFailures(
+        ICollection<PhotoBulkUpdateFailure> failed,
+        IReadOnlyList<SelectedPhotoRefDto> photos,
+        int startIndex)
+    {
+        for (var index = startIndex; index < photos.Count; index++)
+        {
+            failed.Add(new PhotoBulkUpdateFailure(
+                photos[index],
+                getMsg("PhotoService.operationCancelled"),
+                IsCanceled: true));
+        }
+    }
+
+    /// <summary>選択写真一括お気に入り設定。完了・失敗を写真単位で返す。</summary>
+    public Task<PhotoBulkUpdateResult> BulkSetPhotoFavoriteAsync(
+        IReadOnlyList<SelectedPhotoRefDto> photos,
+        bool isFavorite,
+        CancellationToken ct = default)
+    {
+        AppLogger.Trace($"PhotoService.BulkSetPhotoFavoriteAsync: enter count={photos.Count} isFavorite={isFavorite}");
+        var task = RunBulkPhotoUpdatesAsync(
+            photos,
+            nameof(BulkSetPhotoFavoriteAsync),
+            async photo =>
+            {
+                var updated = await _db.TrySetPhotoFavoriteAsync(
+                    photo.photo_path,
+                    isFavorite,
+                    CancellationToken.None).ConfigureAwait(false);
+                if (!updated)
+                    throw new InvalidOperationException($"写真が見つかりません: {photo.photo_path}");
+            },
+            ct);
+        AppLogger.Trace("PhotoService.BulkSetPhotoFavoriteAsync: exit (dispatched)");
+        return task;
     }
 
     /// <summary>単体写真へのタグ追加（tags マスタへの登録も DB 側でまとめて行う）。</summary>
@@ -228,14 +343,9 @@ public sealed class PhotoService
         await _bulkWriteGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            await RunWriteOffUiThread(async () =>
-            {
-                foreach (var tag in tags)
-                {
-                    ct.ThrowIfCancellationRequested();
-                    await _db.AddPhotoTagAsync(photoPath, tag, ct).ConfigureAwait(false);
-                }
-            }, ct).ConfigureAwait(false);
+            await RunWriteOffUiThread(
+                () => _db.AddPhotoTagsAsync(photoPath, tags, ct),
+                ct).ConfigureAwait(false);
         }
         finally
         {
@@ -244,35 +354,36 @@ public sealed class PhotoService
         AppLogger.Trace("PhotoService.AddPhotoTagsAsync: exit");
     }
 
-    /// <summary>選択写真への一括タグ追加。BulkSetFavorite と同様 _bulkWriteGate で直列化。</summary>
-    public async Task BulkAddPhotoTagAsync(IReadOnlyList<SelectedPhotoRefDto> photos, string tag, CancellationToken ct = default)
-        => await BulkAddPhotoTagsAsync(photos, [tag], ct).ConfigureAwait(false);
+    /// <summary>選択写真への一括タグ追加。完了・失敗を写真単位で返す。</summary>
+    public Task<PhotoBulkUpdateResult> BulkAddPhotoTagAsync(
+        IReadOnlyList<SelectedPhotoRefDto> photos,
+        string tag,
+        CancellationToken ct = default)
+        => BulkAddPhotoTagsAsync(photos, [tag], ct);
 
-    /// <summary>選択写真へ複数タグを一括追加する。全対象を 1 回のゲート内で直列書き込みする。</summary>
-    public async Task BulkAddPhotoTagsAsync(IReadOnlyList<SelectedPhotoRefDto> photos, IReadOnlyList<string> tags, CancellationToken ct = default)
+    /// <summary>
+    /// 選択写真へ複数タグを一括追加し、完了・失敗を写真単位で返す。
+    /// タグ間ではキャンセルせず、1 写真に対する要求タグを完了してから次の写真へ進む。
+    /// </summary>
+    public Task<PhotoBulkUpdateResult> BulkAddPhotoTagsAsync(
+        IReadOnlyList<SelectedPhotoRefDto> photos,
+        IReadOnlyList<string> tags,
+        CancellationToken ct = default)
     {
         AppLogger.Trace($"PhotoService.BulkAddPhotoTagsAsync: enter photoCount={photos.Count} tagCount={tags.Count}");
-        if (photos.Count == 0 || tags.Count == 0) return;
-        await _bulkWriteGate.WaitAsync(ct).ConfigureAwait(false);
-        try
+        if (photos.Count == 0 || tags.Count == 0)
         {
-            await RunWriteOffUiThread(async () =>
-            {
-                foreach (var tag in tags)
-                {
-                    foreach (var p in photos)
-                    {
-                        ct.ThrowIfCancellationRequested();
-                        await _db.AddPhotoTagAsync(p.photo_path, tag, ct).ConfigureAwait(false);
-                    }
-                }
-            }, ct).ConfigureAwait(false);
+            AppLogger.Trace("PhotoService.BulkAddPhotoTagsAsync: exit (empty)");
+            return Task.FromResult(new PhotoBulkUpdateResult([], []));
         }
-        finally
-        {
-            _bulkWriteGate.Release();
-        }
-        AppLogger.Trace("PhotoService.BulkAddPhotoTagsAsync: exit");
+
+        var task = RunBulkPhotoUpdatesAsync(
+            photos,
+            nameof(BulkAddPhotoTagsAsync),
+            photo => _db.AddPhotoTagsAsync(photo.photo_path, tags, CancellationToken.None),
+            ct);
+        AppLogger.Trace("PhotoService.BulkAddPhotoTagsAsync: exit (dispatched)");
+        return task;
     }
 
     /// <summary>単体写真からタグを 1 件外す。tags マスタ自体は残す。</summary>

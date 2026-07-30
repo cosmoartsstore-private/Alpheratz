@@ -32,13 +32,14 @@
 | XAML | WinUI XAML | - | - |
 | MVVM | CommunityToolkit.Mvvm | 8.4.0 | MIT |
 | Styling | XAML Resource Dictionaries | - | - |
+| UI messages | `MessageCatalog.getMsg` + UTF-8 properties | - | Project code |
 
 ### Backend
 
 | Layer | Technology | Version | License |
 | --- | --- | --- | --- |
 | Runtime | .NET | 8.0 | MIT |
-| DI / Host | Microsoft.Extensions.DependencyInjection / Hosting | 8.0.x | MIT |
+| DI | Microsoft.Extensions.DependencyInjection | 8.0.1 | MIT |
 | Database | Microsoft.Data.Sqlite | 8.0.11 | MIT |
 | Imaging | Windows imaging APIs | Windows SDK | Microsoft |
 | PDQ | Custom C# port | - | Project code |
@@ -54,12 +55,17 @@
 | Installer | NSIS | `BuildWorks/nsis/Installer.nsi` |
 | Install Mode | currentUser | `%LOCALAPPDATA%\CosmoArtsStore\Alpheratz` |
 
+Frontend publish では XBF を publish root と assembly mirror へ同期し、Windows App SDK の Controls PRI を root の `resources.pri` として配置する。`App.xbf`, `MainWindow.xbf`, `resources.pri` が揃わない場合は release build を失敗させる。launcher は self-contained single-file として別途 publish する。
+
+NSIS の更新または再インストールでは launcher と `app` だけを入れ替え、既存の `Data` を保持する。アンインストールではアプリ管理下の `Data/db`, `Data/logs`, `Data/cache` も削除する。
+
 ### Quality and Tooling
 
 | Layer | Technology | Version |
 | --- | --- | --- |
 | C# compiler | Roslyn via .NET SDK | 8.x |
 | Nullable analysis | `<Nullable>enable</Nullable>` | - |
+| Text format | `.editorconfig` | UTF-8 / LF / 末尾改行 / 行末空白除去（NSIS は UTF-16LE / CRLF） |
 | Test runner | xUnit runner | 2.5.3 |
 | Coverage | coverlet | 6.0.0 |
 
@@ -67,7 +73,7 @@
 
 - **単体テスト**: `tests/Alpheratz.Tests` の xUnit テスト。
 - **ローカル検証**: `dotnet test tests/Alpheratz.Tests/Alpheratz.Tests.csproj`。
-- **Release 検証**: `BuildWorks/scripts/build-release.ps1` で publish と NSIS installer 生成を確認する。
+- **Release 検証**: `BuildWorks/scripts/build-release.ps1` で frontend、launcher、NSIS installer を順に生成し、`BuildWorks/Alpheratz-Installer.exe` を確認する。
 - **CI**: リポジトリ内の CI 定義に従う。公開 docs ではローカルで実行すべき検証コマンドを一次情報として扱う。
 
 ---
@@ -97,7 +103,7 @@
 
 **Decision**
 
-.NET 8 + WinUI 3 の単一プロセス構成を採用する。
+.NET 8 + WinUI 3 の単一プロセス構成を採用する。依存性注入は `ServiceCollection` から直接構築し、Generic Host は使用しない。
 
 **Rationale**
 
@@ -271,7 +277,9 @@ NSIS による current-user install を採用し、WinUI 3 は unpackaged self-c
 
 **Consequences**
 
-- (+) StellaRecord ランチャー連携に必要なパスをレジストリで共有できる
+- (+) launcher と WinUI 本体の配置先をレジストリで共有できる
+- (+) 更新または再インストール時に既存の `Data` を保持できる
+- (-) アンインストールでは管理対象の `Data` も削除するため、必要に応じて事前バックアップが必要になる
 - (-) コード署名なしでは SmartScreen 警告が出る場合がある
 
 ---

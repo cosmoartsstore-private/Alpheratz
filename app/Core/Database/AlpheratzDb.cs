@@ -34,15 +34,20 @@ INSERT INTO photos (
 )
 ON CONFLICT(photo_path) DO UPDATE SET
     photo_filename = excluded.photo_filename,
-    world_id       = COALESCE(excluded.world_id,      photos.world_id),
-    world_name     = COALESCE(excluded.world_name,    photos.world_name),
+    world_id       = CASE WHEN @reset_phash <> 0 THEN excluded.world_id
+                          ELSE COALESCE(excluded.world_id, photos.world_id) END,
+    world_name     = CASE WHEN @reset_phash <> 0 THEN excluded.world_name
+                          ELSE COALESCE(excluded.world_name, photos.world_name) END,
     timestamp      = excluded.timestamp,
     last_modified_utc = excluded.last_modified_utc,
     orientation    = COALESCE(excluded.orientation,   photos.orientation),
     image_width    = COALESCE(excluded.image_width,   photos.image_width),
     image_height   = COALESCE(excluded.image_height,  photos.image_height),
     source_slot    = excluded.source_slot,
-    match_source   = COALESCE(excluded.match_source,  photos.match_source),
+    match_source   = CASE WHEN @reset_phash <> 0 THEN excluded.match_source
+                          ELSE COALESCE(excluded.match_source, photos.match_source) END,
+    phash           = CASE WHEN @reset_phash <> 0 THEN NULL ELSE photos.phash END,
+    phash_version   = CASE WHEN @reset_phash <> 0 THEN 0 ELSE photos.phash_version END,
     is_missing     = 0
 """;
 
@@ -72,12 +77,21 @@ ON CONFLICT(photo_path) DO UPDATE SET
     {
         var path = databasePath ?? AppPaths.GetDbPath()
             ?? throw new InvalidOperationException("Alpheratz DB の保存先を取得できません");
-        var conn = new SqliteConnection($"Data Source={path}");
-        conn.Open();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;";
-        cmd.ExecuteNonQuery();
-        return conn;
+        var connectionString = new SqliteConnectionStringBuilder { DataSource = path }.ToString();
+        var conn = new SqliteConnection(connectionString);
+        try
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;";
+            cmd.ExecuteNonQuery();
+            return conn;
+        }
+        catch
+        {
+            conn.Dispose();
+            throw;
+        }
     }
 
     /// <summary>起動時に一度だけ呼ばれるスキーマ初期化エントリポイント。</summary>
@@ -263,7 +277,10 @@ ORDER BY t.name COLLATE NOCASE ASC";
     /// Loads tags for a batch of photo_paths in a single query.
     /// Returns a Dictionary keyed by photo_path.
     /// </summary>
-    private static Dictionary<string, List<string>> GetTagsForPaths(SqliteConnection conn, IEnumerable<string> photoPaths)
+    private static Dictionary<string, List<string>> GetTagsForPaths(
+        SqliteConnection conn,
+        IEnumerable<string> photoPaths,
+        SqliteTransaction? transaction = null)
     {
         // SQLite の既定パラメータ上限 (999) を超えないように 500 件ごとに分割実行する。
         const int ChunkSize = 500;
@@ -281,6 +298,7 @@ FROM photo_tags pt
 INNER JOIN tags t ON t.id = pt.tag_id
 WHERE pt.photo_path IN (");
             using var cmd = conn.CreateCommand();
+            cmd.Transaction = transaction;
             for (int i = 0; i < count; i++)
             {
                 if (i > 0) sb.Append(',');
@@ -446,22 +464,30 @@ WHERE pt.photo_path = {tableAlias}.photo_path
         ct.ThrowIfCancellationRequested();
 
         using var conn = OpenConnection();
+        // COUNT・ページ本体・タグ一覧を同じ WAL スナップショットから読み、
+        // スキャン書込みが間に入って Total と Items が食い違うのを防ぐ。
+        using var transaction = conn.BeginTransaction(deferred: true);
 
         // --- COUNT query --------------------------------------------------
         int total;
         {
             using var countCmd = conn.CreateCommand();
+            countCmd.Transaction = transaction;
             var where = BuildPhotoWhereClause(q, countCmd);
             countCmd.CommandText = $"SELECT COUNT(*) FROM photos WHERE {where}";
             total = Convert.ToInt32(countCmd.ExecuteScalar() ?? 0);
         }
 
         if (total == 0)
+        {
+            transaction.Commit();
             return Task.FromResult(new PhotoPage { Items = [], Total = 0 });
+        }
 
         // --- SELECT query -------------------------------------------------
         var phashCol = q.IncludePhash ? "phash" : "NULL";
         using var selCmd = conn.CreateCommand();
+        selCmd.Transaction = transaction;
         var whereSelect = BuildPhotoWhereClause(q, selCmd);
 
         var sqlSb = new StringBuilder();
@@ -487,6 +513,8 @@ ORDER BY {orderClause}");
         }
         if (q.Offset.HasValue)
         {
+            if (!q.Limit.HasValue)
+                sqlSb.Append(" LIMIT -1");
             sqlSb.Append(" OFFSET @offset");
             selCmd.Parameters.AddWithValue("@offset", q.Offset.Value);
         }
@@ -505,7 +533,7 @@ ORDER BY {orderClause}");
         {
             var paths = new List<string>(photoList.Count);
             foreach (var p in photoList) paths.Add(p.photo_path);
-            var tagMap = GetTagsForPaths(conn, paths);
+            var tagMap = GetTagsForPaths(conn, paths, transaction);
             for (int i = 0; i < photoList.Count; i++)
             {
                 var p = photoList[i];
@@ -514,6 +542,7 @@ ORDER BY {orderClause}");
             }
         }
 
+        transaction.Commit();
         AppLogger.Trace($"AlpheratzDb.GetPhotosPageAsync: exit total={total} returned={photoList.Count}");
         return Task.FromResult(new PhotoPage { Items = photoList, Total = total });
         }
@@ -647,16 +676,7 @@ WHERE photo_path = @p";
         AppLogger.Trace($"AlpheratzDb.SetPhotoFavoriteAsync: enter path={photoPath} isFavorite={isFavorite}");
         try
         {
-            ct.ThrowIfCancellationRequested();
-
-            using var conn = OpenConnection();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = "UPDATE photos SET is_favorite = @fav WHERE photo_path = @p";
-            cmd.Parameters.AddWithValue("@fav", isFavorite ? 1L : 0L);
-            cmd.Parameters.AddWithValue("@p", photoPath);
-            var changed = cmd.ExecuteNonQuery();
-            if (changed == 0)
-                AppLogger.Warn($"SetPhotoFavorite: 写真が見つかりません: {photoPath}");
+            _ = SetPhotoFavoriteCore(photoPath, isFavorite, ct);
             AppLogger.Trace("AlpheratzDb.SetPhotoFavoriteAsync: exit");
             return Task.CompletedTask;
         }
@@ -665,6 +685,41 @@ WHERE photo_path = @p";
             AppLogger.Error($"AlpheratzDb.SetPhotoFavoriteAsync: threw: {ex}");
             throw;
         }
+    }
+
+    /// <summary>お気に入りを更新し、対象写真が存在して更新された場合だけ true を返す。</summary>
+    public Task<bool> TrySetPhotoFavoriteAsync(
+        string photoPath,
+        bool isFavorite,
+        CancellationToken ct = default)
+    {
+        AppLogger.Trace($"AlpheratzDb.TrySetPhotoFavoriteAsync: enter path={photoPath} isFavorite={isFavorite}");
+        try
+        {
+            var changed = SetPhotoFavoriteCore(photoPath, isFavorite, ct);
+            AppLogger.Trace($"AlpheratzDb.TrySetPhotoFavoriteAsync: exit changed={changed}");
+            return Task.FromResult(changed);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"AlpheratzDb.TrySetPhotoFavoriteAsync: threw: {ex}");
+            throw;
+        }
+    }
+
+    private bool SetPhotoFavoriteCore(string photoPath, bool isFavorite, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE photos SET is_favorite = @fav WHERE photo_path = @p";
+        cmd.Parameters.AddWithValue("@fav", isFavorite ? 1L : 0L);
+        cmd.Parameters.AddWithValue("@p", photoPath);
+        var changed = cmd.ExecuteNonQuery();
+        if (changed == 0)
+            AppLogger.Warn($"SetPhotoFavorite: 写真が見つかりません: {photoPath}");
+        return changed > 0;
     }
 
     /// <summary>
@@ -678,16 +733,50 @@ WHERE photo_path = @p";
         AppLogger.Trace($"AlpheratzDb.AddPhotoTagAsync: enter path={photoPath} tag={tag}");
         try
         {
+            var task = AddPhotoTagsAsync(photoPath, [tag], ct);
+            AppLogger.Trace("AlpheratzDb.AddPhotoTagAsync: exit");
+            return task;
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"AlpheratzDb.AddPhotoTagAsync: threw: {ex}");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// 写真へ複数タグを同一トランザクションで付与する。
+    /// 途中のタグ追加が失敗した場合、その写真に対する今回の追加をすべてロールバックする。
+    /// </summary>
+    public Task AddPhotoTagsAsync(
+        string photoPath,
+        IReadOnlyList<string> tags,
+        CancellationToken ct = default)
+    {
+        AppLogger.Trace($"AlpheratzDb.AddPhotoTagsAsync: enter path={photoPath} count={tags.Count}");
+        try
+        {
             ct.ThrowIfCancellationRequested();
+            if (tags.Count == 0)
+            {
+                AppLogger.Trace("AlpheratzDb.AddPhotoTagsAsync: exit (empty)");
+                return Task.CompletedTask;
+            }
 
             using var conn = OpenConnection();
             using var tx = conn.BeginTransaction();
 
+            using var findPhoto = conn.CreateCommand();
+            findPhoto.Transaction = tx;
+            findPhoto.CommandText = "SELECT 1 FROM photos WHERE photo_path = @p LIMIT 1";
+            findPhoto.Parameters.AddWithValue("@p", photoPath);
+            if (findPhoto.ExecuteScalar() is null)
+                throw new InvalidOperationException($"写真が見つかりません: {photoPath}");
+
             using var insertTag = conn.CreateCommand();
             insertTag.Transaction = tx;
             insertTag.CommandText = "INSERT INTO tags (name) VALUES (@tag) ON CONFLICT(name) DO NOTHING";
-            insertTag.Parameters.AddWithValue("@tag", tag);
-            insertTag.ExecuteNonQuery();
+            var insertTagParameter = insertTag.Parameters.Add("@tag", SqliteType.Text);
 
             using var linkTag = conn.CreateCommand();
             linkTag.Transaction = tx;
@@ -696,16 +785,24 @@ INSERT INTO photo_tags (photo_path, tag_id)
 SELECT @p, id FROM tags WHERE name = @tag
 ON CONFLICT(photo_path, tag_id) DO NOTHING";
             linkTag.Parameters.AddWithValue("@p", photoPath);
-            linkTag.Parameters.AddWithValue("@tag", tag);
-            linkTag.ExecuteNonQuery();
+            var linkTagParameter = linkTag.Parameters.Add("@tag", SqliteType.Text);
+
+            foreach (var tag in tags)
+            {
+                ct.ThrowIfCancellationRequested();
+                insertTagParameter.Value = tag;
+                insertTag.ExecuteNonQuery();
+                linkTagParameter.Value = tag;
+                linkTag.ExecuteNonQuery();
+            }
 
             tx.Commit();
-            AppLogger.Trace("AlpheratzDb.AddPhotoTagAsync: exit");
+            AppLogger.Trace("AlpheratzDb.AddPhotoTagsAsync: exit");
             return Task.CompletedTask;
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"AlpheratzDb.AddPhotoTagAsync: threw: {ex}");
+            AppLogger.Error($"AlpheratzDb.AddPhotoTagsAsync: threw: {ex}");
             throw;
         }
     }
@@ -856,6 +953,8 @@ WHERE photo_path = @p
         AppLogger.Trace($"AlpheratzDb.ResetPhotoCacheBySlotAsync: enter slot={slot}");
         try
         {
+            if (slot is not (1 or 2))
+                throw new ArgumentOutOfRangeException(nameof(slot), slot, "source_slot は 1 または 2 である必要があります");
             ct.ThrowIfCancellationRequested();
 
             using var conn = OpenConnection();
@@ -909,6 +1008,7 @@ WHERE photo_path = @p
     /// match_source は新規値が null なら既存値を維持する。これにより：
     ///   - 再スキャン時に PDQ で解決済みのワールド情報が「世界不明」に上書きされない
     ///   - EXIF 補完済みの orientation/dimension が空クエリで消えない
+    /// ただし画像内容の変更時は、旧画像に属するワールド情報と PDQ ハッシュを同時に破棄する。
     /// is_missing は常に 0 にリセット（スキャンで再発見されたファイルは復活扱い）。
     /// </summary>
     public Task UpsertPhotoAsync(PhotoUpsertData data, CancellationToken ct = default)
@@ -992,6 +1092,7 @@ WHERE photo_path = @p
         cmd.Parameters.Add("@image_height", SqliteType.Integer);
         cmd.Parameters.Add("@source_slot", SqliteType.Integer);
         cmd.Parameters.Add("@match_source", SqliteType.Text);
+        cmd.Parameters.Add("@reset_phash", SqliteType.Integer);
     }
 
     private static void BindPhotoUpsertParameters(SqliteCommand cmd, PhotoUpsertData data)
@@ -1007,6 +1108,7 @@ WHERE photo_path = @p
         cmd.Parameters["@image_height"].Value = (object?)data.ImageHeight ?? DBNull.Value;
         cmd.Parameters["@source_slot"].Value = data.SourceSlot;
         cmd.Parameters["@match_source"].Value = (object?)data.MatchSource ?? DBNull.Value;
+        cmd.Parameters["@reset_phash"].Value = data.ResetPhash ? 1L : 0L;
     }
 
     /// <summary>
@@ -1124,7 +1226,9 @@ SELECT photo_filename, photo_path, world_id, world_name, timestamp,
        last_modified_utc
 FROM photos";
 
-            var map = new Dictionary<string, ExistingPhotoInfo>(StringComparer.Ordinal);
+            // Windows 上の同一ファイルはパスの大文字小文字だけが変わっても同じものとして扱う。
+            // 設定フォルダの表記揺れで既存行を見失うと、同じ写真を別行として再登録してしまう。
+            var map = new Dictionary<string, ExistingPhotoInfo>(StringComparer.OrdinalIgnoreCase);
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {

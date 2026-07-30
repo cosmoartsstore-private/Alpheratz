@@ -5,6 +5,7 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using WinRT.Interop;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz;
 
@@ -33,7 +34,7 @@ public partial class MainWindow : Window
             throw;
         }
         AppLogger.Trace("MainWindow.ctor: InitializeComponent done");
-        Title = "Alpheratz";
+        Title = getMsg("MainWindow.title");
         ExtendsContentIntoTitleBar = false;
 
         // Win32 API 経由でウィンドウアイコン設定・最大化する

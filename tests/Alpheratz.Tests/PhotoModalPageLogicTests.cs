@@ -87,7 +87,7 @@ public sealed class PhotoModalPageLogicTests
             new WorldActionDisplay(true, PhotoModalPageLogic.WorldActionEnabledLabel, PhotoModalPageLogic.WorldActionEnabledTooltip, "ATextFaint", 1.0),
             PhotoModalPageLogic.WorldAction("wrld_123"));
 
-        Assert.Equal(new MatchSourceDisplay(true, "archive ログから補完"),
+        Assert.Equal(new MatchSourceDisplay(true, "過去の記録から補完"),
             PhotoModalPageLogic.MatchSource("polaris_archive"));
         Assert.Equal(new MatchSourceDisplay(true, "類似写真から推測"),
             PhotoModalPageLogic.MatchSource("phash"));

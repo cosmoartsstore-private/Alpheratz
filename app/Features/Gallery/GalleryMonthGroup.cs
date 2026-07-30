@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Features.Gallery;
 
@@ -34,7 +35,13 @@ public static class GalleryMonthsCalculator
             {
                 if (currentKey.Length > 0)
                 {
-                    groups.Add(new GalleryMonthGroup(currentKey, pendingYear, pendingMonth, $"{pendingMonth}月", pendingFirstIndex, pendingCount));
+                    groups.Add(new GalleryMonthGroup(
+                        currentKey,
+                        pendingYear,
+                        pendingMonth,
+                        getMsg("GalleryMonthGroup.monthLabel", ("month", pendingMonth)),
+                        pendingFirstIndex,
+                        pendingCount));
                 }
                 currentKey = key;
                 pendingYear = year;
@@ -49,7 +56,13 @@ public static class GalleryMonthsCalculator
         }
         if (currentKey.Length > 0)
         {
-            groups.Add(new GalleryMonthGroup(currentKey, pendingYear, pendingMonth, $"{pendingMonth}月", pendingFirstIndex, pendingCount));
+            groups.Add(new GalleryMonthGroup(
+                currentKey,
+                pendingYear,
+                pendingMonth,
+                getMsg("GalleryMonthGroup.monthLabel", ("month", pendingMonth)),
+                pendingFirstIndex,
+                pendingCount));
         }
 
         return groups;
