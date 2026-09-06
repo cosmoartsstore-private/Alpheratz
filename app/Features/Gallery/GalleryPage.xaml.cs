@@ -351,7 +351,7 @@ public sealed partial class GalleryPage : Page
                 BulkOpBar.Visibility = Visibility.Collapsed;
             }
             bulkOpBarWasVisible = state.NextWasVisible;
-            SelectionCountLabel.Text = viewModel.selectionState.selectedPhotoPaths.Count.ToString();
+            SelectionCountLabel.Text = state.SelectionLabel;
         }
         catch (Exception ex)
         {

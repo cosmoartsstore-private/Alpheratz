@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.ComponentModel;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Alpheratz.Core;
@@ -24,6 +25,8 @@ public sealed partial class WorldResolvePage : Page
     private int applyRequestInProgress;
     private int closeRequestInProgress;
     private bool isUnloaded;
+    private WorldResolveItem? manualEditorItem;
+    private Control? previewPreviousFocus;
 
     public Func<Task>? OnClose { get; set; }
     public Func<Task>? OnApplied { get; set; }
@@ -111,17 +114,32 @@ public sealed partial class WorldResolvePage : Page
             MainView.Visibility = Visibility.Collapsed;
             CandidatePickerView.Visibility = Visibility.Visible;
             CandidateLoadingOverlay.Visibility = viewModel.IsCandidateLoading ? Visibility.Visible : Visibility.Collapsed;
+            var hasAutomaticCandidates = viewModel.CandidateList.Count > 0;
+            CandidateListView.Visibility = !viewModel.IsCandidateLoading && hasAutomaticCandidates
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+            CandidateEmptyState.Visibility = !viewModel.IsCandidateLoading && !hasAutomaticCandidates
+                ? Visibility.Visible
+                : Visibility.Collapsed;
 
             if (viewModel.ActivePickerItem is { } item)
             {
                 PickerTargetFilename.Text = item.TargetPhotoFilename;
+                PickerTargetPreviewButton.Tag = item.TargetPhotoPath;
                 SetPickerTargetImage(item.TargetThumbPath);
+                if (!ReferenceEquals(manualEditorItem, item))
+                {
+                    manualEditorItem = item;
+                    ManualWorldNameBox.Text = item.IsManualMatch ? item.MatchWorldName ?? string.Empty : string.Empty;
+                }
+                SyncManualWorldNameButton();
             }
         }
         else
         {
             MainView.Visibility = Visibility.Visible;
             CandidatePickerView.Visibility = Visibility.Collapsed;
+            manualEditorItem = null;
         }
     }
 
@@ -137,6 +155,7 @@ public sealed partial class WorldResolvePage : Page
             ? "WorldResolvePage.searchingCandidates"
             : "WorldResolvePage.checkingTargetPhotos");
         LoadingProgressText.Text = viewModel.SearchProgressText;
+        LoadingProgressText.Visibility = total > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private string FormatLoadingStatus()
@@ -168,7 +187,9 @@ public sealed partial class WorldResolvePage : Page
     // 候補ピッカー以外の背景タップではワールド解析モーダルを閉じる。
     private void Backdrop_Tapped(object sender, TappedRoutedEventArgs e)
     {
-        if (!viewModel.IsCandidatePickerOpen)
+        if (ImagePreviewView.Visibility == Visibility.Visible)
+            CloseImagePreview();
+        else if (!viewModel.IsCandidatePickerOpen)
             RequestClose();
     }
 
@@ -180,7 +201,9 @@ public sealed partial class WorldResolvePage : Page
     {
         if (e.Key == Windows.System.VirtualKey.Escape)
         {
-            if (viewModel.IsCandidatePickerOpen)
+            if (ImagePreviewView.Visibility == Visibility.Visible)
+                CloseImagePreview();
+            else if (viewModel.IsCandidatePickerOpen)
                 CloseCandidatePicker();
             else
                 RequestClose();
@@ -229,8 +252,82 @@ public sealed partial class WorldResolvePage : Page
         }
     }
 
+    // 手動入力欄に有効なワールド名がある場合だけ候補設定を許可する。
+    private void ManualWorldName_TextChanged(object sender, TextChangedEventArgs e)
+        => SyncManualWorldNameButton();
+
+    private void SyncManualWorldNameButton()
+    {
+        UseManualWorldNameButton.IsEnabled = !string.IsNullOrWhiteSpace(ManualWorldNameBox.Text);
+    }
+
+    // 自由入力した名前を候補として設定し、未解決写真一覧へ戻る。
+    private void UseManualWorldName_Click(object sender, RoutedEventArgs e)
+    {
+        if (!UseManualWorldNameButton.IsEnabled)
+            return;
+        CancelCandidateOperations();
+        viewModel.SelectManualWorldName(ManualWorldNameBox.Text);
+    }
+
     // 候補ピッカーを閉じ、未解決写真一覧へ戻る。
     private void BackFromPicker_Click(object sender, RoutedEventArgs e) => CloseCandidatePicker();
+
+    // 一覧の小さいサムネイルから、元ファイルを画面内プレビューへ読み込む。
+    private void OpenImagePreview_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string path }
+            || string.IsNullOrWhiteSpace(path)
+            || !File.Exists(path))
+        {
+            return;
+        }
+
+        try
+        {
+            previewPreviousFocus = FocusManager.GetFocusedElement(XamlRoot) as Control;
+            PreviewFilename.Text = Path.GetFileName(path);
+            PreviewImage.Source = new BitmapImage
+            {
+                CreateOptions = BitmapCreateOptions.IgnoreImageCache,
+                DecodePixelWidth = 1800,
+                DecodePixelType = DecodePixelType.Logical,
+                UriSource = new Uri(path, UriKind.Absolute),
+            };
+            ImagePreviewView.Visibility = Visibility.Visible;
+            PreviewCloseButton.Focus(FocusState.Programmatic);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Warn($"WorldResolvePage.OpenImagePreview: {ex.Message}");
+            PreviewImage.Source = null;
+            ImagePreviewView.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    // プレビューの背景操作ではプレビューだけを閉じる。
+    private void ImagePreviewBackdrop_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        CloseImagePreview();
+        e.Handled = true;
+    }
+
+    // プレビュー本文内の操作を背景へ伝播させない。
+    private void PreviewContent_Tapped(object sender, TappedRoutedEventArgs e) => e.Handled = true;
+
+    private void CloseImagePreview_Click(object sender, RoutedEventArgs e) => CloseImagePreview();
+
+    private void CloseImagePreview()
+    {
+        if (ImagePreviewView.Visibility != Visibility.Visible)
+            return;
+
+        ImagePreviewView.Visibility = Visibility.Collapsed;
+        PreviewImage.Source = null;
+        var returnFocus = previewPreviousFocus;
+        previewPreviousFocus = null;
+        returnFocus?.Focus(FocusState.Programmatic);
+    }
 
     // 選択されたワールド割り当てを保存し、ギャラリー更新後に閉じる。
     private async void ApplyConfirmed_Click(object sender, RoutedEventArgs e)
@@ -295,6 +392,8 @@ public sealed partial class WorldResolvePage : Page
         await viewModel.StopGenerationAsync();
 
         viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        PreviewImage.Source = null;
+        previewPreviousFocus = null;
         ItemsListView.ItemsSource = null;
         CandidateListView.ItemsSource = null;
         DataContext = null;

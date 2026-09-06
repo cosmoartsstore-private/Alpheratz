@@ -402,8 +402,8 @@ public sealed class PhotoScannerBehaviorTests : IDisposable
         Assert.Equal("2026-06-05 10:20:30", first.timestamp);
         Assert.Equal("横長ワールド", second.world_name);
         Assert.Equal(2, progressEvents.Max(progress => progress.total));
-        Assert.Contains(progressEvents, progress => progress.current_world == "横長ワールド");
         Assert.Contains(progressEvents, progress => progress.processed == 2 && progress.total == 2);
+        Assert.All(progressEvents, progress => Assert.InRange(progress.processed, 0, progress.total));
         Assert.Equal(2, completedCount);
         Assert.Null(deleted);
     }

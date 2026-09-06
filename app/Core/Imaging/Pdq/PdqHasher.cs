@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 
 namespace Alpheratz.Core.Imaging.Pdq;
 
@@ -12,7 +13,7 @@ namespace Alpheratz.Core.Imaging.Pdq;
 ///   3. 64x64 に decimate (中心セル サンプリング)
 ///   4. 64x64 → 16x16 の離散コサイン変換 (DCT) で低周波成分を抽出
 ///   5. 16x16 (=256 セル) を中央値で二値化 → 256 ビット = 32 バイトハッシュ
-///   6. quality は画素分散から算出 (低分散 = 単色寄り = ハッシュ信頼性低)
+///   6. quality は隣接画素の勾配から算出 (低勾配 = 単色寄り = ハッシュ信頼性低)
 ///
 /// 32 バイトハッシュ同士の Hamming 距離が 64 以下なら「ほぼ同じ画像」と判定する慣習。
 /// </summary>
@@ -37,6 +38,38 @@ public static class PdqHasher
     public const float LumaFromR = 0.299f;
     public const float LumaFromG = 0.587f;
     public const float LumaFromB = 0.114f;
+
+    /// <summary>
+    /// DCT 係数のビット表現を初回利用時だけ float へ変換する。
+    /// 係数値と積算順は従来と同じまま、画像ごとの変換処理を除去する。
+    /// </summary>
+    private static class CachedDctMatrix
+    {
+        internal static readonly float[][] Value = Create();
+
+        private static float[][] Create()
+        {
+            var source = PdqDctMatrix.Matrix;
+            var result = new float[source.Length][];
+            for (var i = 0; i < source.Length; i++)
+            {
+                result[i] = new float[source[i].Length];
+                for (var j = 0; j < source[i].Length; j++)
+                    result[i][j] = BitConverter.UInt32BitsToSingle(source[i][j]);
+            }
+            return result;
+        }
+    }
+
+    /// <summary>
+    /// 距離計算用に 256 ビットを 4 個の整数へ展開した PDQ ハッシュ。
+    /// DB 保存形式の文字列は入出力境界に残し、大量比較ではこの形式を使う。
+    /// </summary>
+    internal readonly record struct PackedHash256(
+        ulong Part0,
+        ulong Part1,
+        ulong Part2,
+        ulong Part3);
 
     /// <summary>
     /// PDQ ハッシュとクオリティを返すパブリックエントリポイント。
@@ -80,6 +113,19 @@ public static class PdqHasher
     public static void JaroszFilter(float[] buffer, int rows, int cols, int winRows, int winCols, int reps)
     {
         var tmp = new float[buffer.Length];
+        JaroszFilter(buffer, tmp, rows, cols, winRows, winCols, reps);
+    }
+
+    /// <summary>呼出側が確保した一時領域を使って Jarosz フィルタを適用する。</summary>
+    private static void JaroszFilter(
+        float[] buffer,
+        float[] tmp,
+        int rows,
+        int cols,
+        int winRows,
+        int winCols,
+        int reps)
+    {
         for (var r = 0; r < reps; r++)
         {
             BoxAlongRows(buffer, tmp, rows, cols, winRows);
@@ -198,7 +244,7 @@ public static class PdqHasher
     {
         var inRows = input.Length;
         var inCols = input[0].Length;
-        var matrix = PdqDctMatrix.Matrix;
+        var matrix = CachedDctMatrix.Value;
 
         var intermediate = new float[DctOutputWh][];
         for (var i = 0; i < DctOutputWh; i++)
@@ -209,7 +255,7 @@ public static class PdqHasher
                 var sum = 0f;
                 for (var k = 0; k < BufferWh; k++)
                 {
-                    sum += BitConverter.UInt32BitsToSingle(matrix[i][k]) * input[k][j];
+                    sum += matrix[i][k] * input[k][j];
                 }
                 intermediate[i][j] = sum;
             }
@@ -223,7 +269,7 @@ public static class PdqHasher
                 var sum = 0f;
                 for (var k = 0; k < BufferWh; k++)
                 {
-                    sum += intermediate[i][k] * BitConverter.UInt32BitsToSingle(matrix[j][k]);
+                    sum += intermediate[i][k] * matrix[j][k];
                 }
                 output[i * DctOutputWh + j] = sum;
             }
@@ -302,8 +348,8 @@ public static class PdqHasher
     /// <summary>
     /// ハッシュの信頼度メトリック (0.0 - 1.0)。
     /// 64x64 バッファ内の水平・垂直方向の隣接画素差分の絶対値を合計し、定数で正規化する。
-    /// 単色平面のような「ハッシュしても意味の薄い画像」では低い値になり、
-    /// PDQ マッチングで低信頼ハッシュを除外するための閾値判定に使う。
+    /// 単色平面のような「ハッシュしても意味の薄い画像」では低い値になる。
+    /// DB 保存経路では利用しないが、公開 GeneratePdq の品質情報として返す。
     /// </summary>
     public static float QualityMetric(float[][] buffer)
     {
@@ -360,12 +406,24 @@ public static class PdqHasher
     }
 
     /// <summary>
-    /// hex 文字列同士のハミング距離。バイト配列へ戻さず 4bit ずつ直接 XOR + popcount で計算する
-    /// (アロケーションを避けるため)。長さが違うか hex 文字以外を含むと null を返す。
+    /// hex 文字列同士のハミング距離。標準の 256 ビットハッシュは 4 個の整数へ変換し、
+    /// それ以外の長さは 4bit ずつ直接 XOR + popcount で計算する。
+    /// 長さが違うか hex 文字以外を含むと null を返す。
     /// </summary>
     public static int? HexHammingDistance(string left, string right)
     {
         if (left.Length != right.Length) return null;
+
+        if (left.Length == HashLength * 2)
+        {
+            if (!TryParsePackedHash(left, out var packedLeft)
+                || !TryParsePackedHash(right, out var packedRight))
+            {
+                return null;
+            }
+            return PackedHammingDistance(in packedLeft, in packedRight);
+        }
+
         var distance = 0;
         for (var i = 0; i < left.Length; i++)
         {
@@ -431,6 +489,182 @@ public static class PdqHasher
         return result;
     }
 
+    /// <summary>
+    /// DB 格納形式の各バリアントを距離計算用の固定長整数へ一度だけ変換する。
+    /// 不正なバリアントの除外規則は <see cref="ParseHashVariants"/> と同じ。
+    /// </summary>
+    internal static PackedHash256[] ParsePackedHashVariants(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return [];
+
+        var result = new System.Collections.Generic.List<PackedHash256>(4);
+        var remaining = value.AsSpan();
+        while (true)
+        {
+            var separatorIndex = remaining.IndexOf('|');
+            var part = separatorIndex >= 0 ? remaining[..separatorIndex] : remaining;
+            if (TryParsePackedHash(part.Trim(), out var hash))
+                result.Add(hash);
+
+            if (separatorIndex < 0)
+                break;
+            remaining = remaining[(separatorIndex + 1)..];
+        }
+        return result.ToArray();
+    }
+
+    /// <summary>固定長整数に変換済みの PDQ バリアント同士から最小距離を返す。</summary>
+    internal static int ClosestPackedHashDistance(
+        PackedHash256[] leftVariants,
+        PackedHash256[] rightVariants)
+    {
+        System.Diagnostics.Debug.Assert(leftVariants.Length > 0 && rightVariants.Length > 0);
+
+        var best = int.MaxValue;
+        for (var leftIndex = 0; leftIndex < leftVariants.Length; leftIndex++)
+        {
+            ref readonly var left = ref leftVariants[leftIndex];
+            for (var rightIndex = 0; rightIndex < rightVariants.Length; rightIndex++)
+            {
+                ref readonly var right = ref rightVariants[rightIndex];
+                var distance = PackedHammingDistance(in left, in right);
+                if (distance < best) best = distance;
+                if (best == 0) return 0;
+            }
+        }
+        return best;
+    }
+
+    private static bool TryParsePackedHash(ReadOnlySpan<char> hex, out PackedHash256 hash)
+    {
+        hash = default;
+        if (hex.Length != HashLength * 2) return false;
+
+        const System.Globalization.NumberStyles style = System.Globalization.NumberStyles.AllowHexSpecifier;
+        var culture = System.Globalization.CultureInfo.InvariantCulture;
+        if (!ulong.TryParse(hex[..16], style, culture, out var part0)
+            || !ulong.TryParse(hex.Slice(16, 16), style, culture, out var part1)
+            || !ulong.TryParse(hex.Slice(32, 16), style, culture, out var part2)
+            || !ulong.TryParse(hex.Slice(48, 16), style, culture, out var part3))
+        {
+            return false;
+        }
+
+        hash = new PackedHash256(part0, part1, part2, part3);
+        return true;
+    }
+
+    private static int PackedHammingDistance(in PackedHash256 left, in PackedHash256 right)
+        => System.Numerics.BitOperations.PopCount(left.Part0 ^ right.Part0)
+            + System.Numerics.BitOperations.PopCount(left.Part1 ^ right.Part1)
+            + System.Numerics.BitOperations.PopCount(left.Part2 ^ right.Part2)
+            + System.Numerics.BitOperations.PopCount(left.Part3 ^ right.Part3);
+
+    /// <summary>フィルタ済み画像を固定長の連続バッファへ縮小する。</summary>
+    private static void Decimate64x64(float[] input, int inRows, int inCols, float[] output)
+    {
+        for (var outi = 0; outi < BufferWh; outi++)
+        {
+            var ini = ((outi * 2 + 1) * inRows) / (BufferWh * 2);
+            var outputOffset = outi * BufferWh;
+            for (var outj = 0; outj < BufferWh; outj++)
+            {
+                var inj = ((outj * 2 + 1) * inCols) / (BufferWh * 2);
+                output[outputOffset + outj] = input[ini * inCols + inj];
+            }
+        }
+    }
+
+    /// <summary>
+    /// 連続バッファ版の 64x64 → 16x16 DCT。
+    /// 公開版と同じ係数・ループ順で計算し、4方向で作業領域を再利用する。
+    /// </summary>
+    private static void Dct64To16(
+        float[] input,
+        float[] intermediate,
+        float[] output)
+    {
+        var matrix = CachedDctMatrix.Value;
+        for (var i = 0; i < DctOutputWh; i++)
+        {
+            var intermediateOffset = i * BufferWh;
+            for (var j = 0; j < BufferWh; j++)
+            {
+                var sum = 0f;
+                for (var k = 0; k < BufferWh; k++)
+                    sum += matrix[i][k] * input[k * BufferWh + j];
+                intermediate[intermediateOffset + j] = sum;
+            }
+        }
+
+        for (var i = 0; i < DctOutputWh; i++)
+        {
+            var intermediateOffset = i * BufferWh;
+            var outputOffset = i * DctOutputWh;
+            for (var j = 0; j < DctOutputWh; j++)
+            {
+                var sum = 0f;
+                for (var k = 0; k < BufferWh; k++)
+                    sum += intermediate[intermediateOffset + k] * matrix[j][k];
+                output[outputOffset + j] = sum;
+            }
+        }
+    }
+
+    /// <summary>固定長 DCT 出力を、呼出側が用意した 32 バイトへ二値化する。</summary>
+    private static void Buffer16x16ToBits(float[] input, Span<byte> hash)
+    {
+        var values = input.AsSpan(0, DctOutputMatrixSize);
+        var median = TorbenMedian(values);
+        for (var i = 0; i < HashLength; i++)
+        {
+            byte b = 0;
+            for (var j = 0; j < 8; j++)
+            {
+                if (values[i * 8 + j] > median) b |= (byte)(1 << j);
+            }
+            hash[HashLength - i - 1] = b;
+        }
+    }
+
+    /// <summary>作業領域の有効範囲だけを対象に中央値を計算する。</summary>
+    private static float TorbenMedian(ReadOnlySpan<float> values)
+    {
+        var min = values[0];
+        var max = values[0];
+        for (var i = 1; i < values.Length; i++)
+        {
+            if (values[i] < min) min = values[i];
+            if (values[i] > max) max = values[i];
+        }
+
+        var half = (values.Length + 1) / 2;
+        while (true)
+        {
+            var guess = (min + max) / 2f;
+            var less = 0;
+            var greater = 0;
+            var equal = 0;
+            var maxLtGuess = min;
+            var minGtGuess = max;
+            for (var i = 0; i < values.Length; i++)
+            {
+                var value = values[i];
+                if (value < guess) { less++; if (value > maxLtGuess) maxLtGuess = value; }
+                else if (value > guess) { greater++; if (value < minGtGuess) minGtGuess = value; }
+                else equal++;
+            }
+            if (less <= half && greater <= half)
+            {
+                if (less >= half) return maxLtGuess;
+                if (less + equal >= half) return guess;
+                return minGtGuess;
+            }
+            if (less > greater) max = maxLtGuess;
+            else min = minGtGuess;
+        }
+    }
+
     // -----------------------------------------------------------------
     // Rotation helpers - operate on row-major luma buffers (w * h floats).
     // -----------------------------------------------------------------
@@ -438,6 +672,12 @@ public static class PdqHasher
     public static (float[] luma, int width, int height) Rotate90(float[] luma, int w, int h)
     {
         var rotated = new float[w * h];
+        Rotate90(luma, rotated, w, h);
+        return (rotated, h, w);
+    }
+
+    private static void Rotate90(float[] luma, float[] rotated, int w, int h)
+    {
         for (var i = 0; i < h; i++)
         {
             for (var j = 0; j < w; j++)
@@ -446,12 +686,17 @@ public static class PdqHasher
                 rotated[j * h + (h - 1 - i)] = luma[i * w + j];
             }
         }
-        return (rotated, h, w);
     }
 
     public static (float[] luma, int width, int height) Rotate180(float[] luma, int w, int h)
     {
         var rotated = new float[w * h];
+        Rotate180(luma, rotated, w, h);
+        return (rotated, w, h);
+    }
+
+    private static void Rotate180(float[] luma, float[] rotated, int w, int h)
+    {
         for (var i = 0; i < h; i++)
         {
             for (var j = 0; j < w; j++)
@@ -459,12 +704,17 @@ public static class PdqHasher
                 rotated[(h - 1 - i) * w + (w - 1 - j)] = luma[i * w + j];
             }
         }
-        return (rotated, w, h);
     }
 
     public static (float[] luma, int width, int height) Rotate270(float[] luma, int w, int h)
     {
         var rotated = new float[w * h];
+        Rotate270(luma, rotated, w, h);
+        return (rotated, h, w);
+    }
+
+    private static void Rotate270(float[] luma, float[] rotated, int w, int h)
+    {
         for (var i = 0; i < h; i++)
         {
             for (var j = 0; j < w; j++)
@@ -473,31 +723,95 @@ public static class PdqHasher
                 rotated[(w - 1 - j) * h + i] = luma[i * w + j];
             }
         }
-        return (rotated, h, w);
     }
 
-    // Compute four hash variants (0/90/180/270) and join with '|' for storage.
+    /// <summary>
+    /// 0/90/180/270 度のハッシュを DB 保存形式へ変換する。
+    /// 各方向の数式と積算順を維持しながら、フィルタ・DCT 作業領域を4方向で再利用する。
+    /// </summary>
     public static string ComputeHashVariantsHex(float[] luma, int w, int h)
     {
-        var variants = new string[4];
-        var v0 = GeneratePdq(luma, w, h);
-        if (v0 is null) return string.Empty;
-        variants[0] = ToHex(v0.Value.Hash);
+        if (w < MinHashableDim || h < MinHashableDim) return string.Empty;
 
-        var (l90, w90, h90) = Rotate90(luma, w, h);
-        var v90 = GeneratePdq(l90, w90, h90);
-        variants[1] = v90 is null ? string.Empty : ToHex(v90.Value.Hash);
+        var pixelCount = checked(w * h);
+        var pool = ArrayPool<float>.Shared;
+        var work = pool.Rent(pixelCount);
+        var filterScratch = pool.Rent(pixelCount);
+        var buffer64x64 = pool.Rent(BufferWh * BufferWh);
+        var intermediate = pool.Rent(DctOutputWh * BufferWh);
+        var buffer16x16 = pool.Rent(DctOutputMatrixSize);
+        var hashes = ArrayPool<byte>.Shared.Rent(HashLength * 4);
+        try
+        {
+            Array.Copy(luma, work, pixelCount);
+            ComputeHash(work, filterScratch, buffer64x64, intermediate, buffer16x16, w, h, hashes.AsSpan(0, HashLength));
 
-        var (l180, w180, h180) = Rotate180(luma, w, h);
-        var v180 = GeneratePdq(l180, w180, h180);
-        variants[2] = v180 is null ? string.Empty : ToHex(v180.Value.Hash);
+            Rotate90(luma, work, w, h);
+            ComputeHash(work, filterScratch, buffer64x64, intermediate, buffer16x16, h, w, hashes.AsSpan(HashLength, HashLength));
 
-        var (l270, w270, h270) = Rotate270(luma, w, h);
-        var v270 = GeneratePdq(l270, w270, h270);
-        variants[3] = v270 is null ? string.Empty : ToHex(v270.Value.Hash);
+            Rotate180(luma, work, w, h);
+            ComputeHash(work, filterScratch, buffer64x64, intermediate, buffer16x16, w, h, hashes.AsSpan(HashLength * 2, HashLength));
 
-        var nonEmpty = new System.Collections.Generic.List<string>();
-        foreach (var s in variants) if (!string.IsNullOrEmpty(s)) nonEmpty.Add(s);
-        return string.Join("|", nonEmpty);
+            Rotate270(luma, work, w, h);
+            ComputeHash(work, filterScratch, buffer64x64, intermediate, buffer16x16, h, w, hashes.AsSpan(HashLength * 3, HashLength));
+
+            // 4 個の中間文字列と大小文字変換を作らず、DB 保存形式を一度で構築する。
+            return string.Create(HashLength * 8 + 3, hashes, static (destination, source) =>
+            {
+                var outputIndex = 0;
+                for (var variant = 0; variant < 4; variant++)
+                {
+                    if (variant > 0)
+                        destination[outputIndex++] = '|';
+
+                    var sourceOffset = variant * HashLength;
+                    for (var byteIndex = 0; byteIndex < HashLength; byteIndex++)
+                    {
+                        var value = source[sourceOffset + byteIndex];
+                        destination[outputIndex++] = LowerHexDigit(value >> 4);
+                        destination[outputIndex++] = LowerHexDigit(value & 0x0F);
+                    }
+                }
+            });
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(hashes);
+            pool.Return(buffer16x16);
+            pool.Return(intermediate);
+            pool.Return(buffer64x64);
+            pool.Return(filterScratch);
+            pool.Return(work);
+        }
     }
+
+    /// <summary>回転済み入力から品質値を省略し、呼出側の32バイト領域へハッシュを書き込む。</summary>
+    private static void ComputeHash(
+        float[] work,
+        float[] filterScratch,
+        float[] buffer64x64,
+        float[] intermediate,
+        float[] buffer16x16,
+        int width,
+        int height,
+        Span<byte> hash)
+    {
+        var windowAlongRows = ComputeJaroszFilterWindowSize(width, BufferWh);
+        var windowAlongCols = ComputeJaroszFilterWindowSize(height, BufferWh);
+        JaroszFilter(
+            work,
+            filterScratch,
+            height,
+            width,
+            windowAlongRows,
+            windowAlongCols,
+            PdqNumJaroszXyPasses);
+        Decimate64x64(work, height, width, buffer64x64);
+        Dct64To16(buffer64x64, intermediate, buffer16x16);
+
+        Buffer16x16ToBits(buffer16x16, hash);
+    }
+
+    private static char LowerHexDigit(int value)
+        => (char)(value < 10 ? '0' + value : 'a' + value - 10);
 }

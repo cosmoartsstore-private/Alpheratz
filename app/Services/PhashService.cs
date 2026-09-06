@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Alpheratz.Core;
@@ -13,14 +14,20 @@ namespace Alpheratz.Services;
 /// <summary>
 /// DB に既に存在し phash 列が空の写真をバックグラウンドで埋めるワーカー。
 /// PDQ ハッシュ計算 (PdqHasher) → hex 文字列で UpdatePhotoPhashAsync で書き込む。
-/// quality 値はログ目的のみ（DB スキーマには持っていない）。
+/// DB スキーマに quality 列がないため、保存用の4方向ハッシュでは quality を計算しない。
 /// 進捗は "phash_progress" / 完了は "phash_complete" を LocalEventBus で発行する。
 /// </summary>
 public sealed class PhashService
 {
     private const int ChunkSize = 30;
-    private const int MaxParallelChunks = 20;
-    private const int BatchSize = ChunkSize * MaxParallelChunks;
+    private const int MaxParallelChunks = 8;
+    // 同時実行数より多いチャンクを取得し、画像ごとの処理時間差を次の割り当てで均す。
+    // DB更新とキャンセル時の確定単位は従来どおり30件に保つ。
+    private const int ChunkWavesPerBatch = 2;
+    // 画面側が識別できない細かさの通知を積み上げず、解析本体と UI キューのメモリを守る。
+    private const long ProgressPublishIntervalMilliseconds = 100;
+    private static int AnalysisParallelism
+        => Math.Clamp(Environment.ProcessorCount / 2, 1, MaxParallelChunks);
 
     private readonly AlpheratzDb db;
     private readonly LocalEventBus eventBus;
@@ -28,6 +35,8 @@ public sealed class PhashService
     private PhashProgressEvent currentProgress = PhashProgressEvent.Empty;
     private readonly object progressLock = new();
     private Task progressPublishTail = Task.CompletedTask;
+    private long lastProgressPublishedAt;
+    private int progressPublicationCount;
 
     /// <summary>補完対象 DB と進捗通知先を受け取ってワーカーを作成する。</summary>
     public PhashService(AlpheratzDb db, LocalEventBus eventBus)
@@ -61,6 +70,11 @@ public sealed class PhashService
             return;
         }
 
+        var analysisStartedAt = Stopwatch.GetTimestamp();
+        var managedBytesBefore = GC.GetTotalMemory(forceFullCollection: false);
+        var workingSetBefore = Environment.WorkingSet;
+        var measuredTotal = 0;
+        var parallelism = AnalysisParallelism;
         // 中断や例外時に完了イベントを出すと、UI が正常完了として扱ってしまう。
         // 成否を明示的に保持し、成功時だけ complete、失敗時は error を発行する。
         var succeeded = false;
@@ -68,6 +82,7 @@ public sealed class PhashService
         try
         {
             var total = await db.GetPendingPhashCountAsync(ct).ConfigureAwait(false);
+            measuredTotal = total;
             UpdateProgress(0, total, null, reset: true);
             if (total == 0)
             {
@@ -77,17 +92,18 @@ public sealed class PhashService
             }
 
             var done = 0;
+            var batchSize = ChunkSize * parallelism * ChunkWavesPerBatch;
             using var writeGate = new SemaphoreSlim(1, 1);
             while (!ct.IsCancellationRequested)
             {
-                var batch = await db.GetPendingPhashBatchAsync(BatchSize, ct).ConfigureAwait(false);
+                var batch = await db.GetPendingPhashBatchAsync(batchSize, ct).ConfigureAwait(false);
                 if (batch.Count == 0) break;
 
                 var chunks = batch.Chunk(ChunkSize).Select(static chunk => chunk.ToArray()).ToArray();
                 await Parallel.ForEachAsync(chunks, new ParallelOptions
                 {
                     CancellationToken = ct,
-                    MaxDegreeOfParallelism = MaxParallelChunks,
+                    MaxDegreeOfParallelism = parallelism,
                 }, async (chunk, token) =>
                 {
                     var updates = new List<AlpheratzDb.PhotoPhashUpdate>(chunk.Length);
@@ -135,7 +151,7 @@ public sealed class PhashService
                 PhashProgressEvent snapshot;
                 lock (progressLock)
                     snapshot = currentProgress;
-                UpdateProgress(snapshot.done, snapshot.total, null);
+                UpdateProgress(snapshot.done, snapshot.total, null, forcePublish: true);
                 await WaitForProgressPublicationsAsync().ConfigureAwait(false);
                 if (succeeded)
                     await eventBus.PublishAsync(EventNames.PhashComplete, new object()).ConfigureAwait(false);
@@ -147,6 +163,20 @@ public sealed class PhashService
                 // 最終進捗と完了／エラー通知までを 1 回の実行として扱い、次回起動との通知混在を防ぐ。
                 Interlocked.Exchange(ref isRunning, 0);
             }
+
+            int publications;
+            PhashProgressEvent finalSnapshot;
+            lock (progressLock)
+            {
+                publications = progressPublicationCount;
+                finalSnapshot = currentProgress;
+            }
+            AppLogger.Info(
+                $"Performance.Pdq total={measuredTotal} done={finalSnapshot.done} parallelism={parallelism} " +
+                $"progress_publications={publications} " +
+                $"elapsed_ms={Stopwatch.GetElapsedTime(analysisStartedAt).TotalMilliseconds:F3} " +
+                $"managed_delta_bytes={GC.GetTotalMemory(forceFullCollection: false) - managedBytesBefore} " +
+                $"working_set_delta_bytes={Environment.WorkingSet - workingSetBefore}");
         }
 
         AppLogger.Trace("PhashService.StartPdqAnalysisAsync: exit");
@@ -159,15 +189,14 @@ public sealed class PhashService
     {
         try
         {
-            var image = await PdqImageReader.ReadLumaAsync(item.PhotoPath, ct).ConfigureAwait(false);
+            using var image = await PdqImageReader.ReadPooledLumaAsync(item.PhotoPath, ct).ConfigureAwait(false);
             if (image is null)
             {
                 AppLogger.Warn($"PhashService: skip (unreadable) [{item.PhotoFilename}]");
                 return new AlpheratzDb.PhotoPhashUpdate(item.PhotoPath, "unreadable");
             }
 
-            var (luma, w, h) = image.Value;
-            var combinedHex = PdqHasher.ComputeHashVariantsHex(luma, w, h);
+            var combinedHex = PdqHasher.ComputeHashVariantsHex(image.Buffer, image.Width, image.Height);
             if (string.IsNullOrEmpty(combinedHex))
             {
                 AppLogger.Warn($"PhashService: skip (no hash) [{item.PhotoFilename}]");
@@ -185,7 +214,12 @@ public sealed class PhashService
     }
 
     /// <summary>進捗スナップショットを更新し、イベントバスへ通知する。</summary>
-    private void UpdateProgress(int done, int total, string? current, bool reset = false)
+    private void UpdateProgress(
+        int done,
+        int total,
+        string? current,
+        bool reset = false,
+        bool forcePublish = false)
     {
         lock (progressLock)
         {
@@ -196,6 +230,21 @@ public sealed class PhashService
 
             var snapshot = new PhashProgressEvent { done = done, total = total, current = current };
             currentProgress = snapshot;
+            var now = Environment.TickCount64;
+            if (reset)
+                progressPublicationCount = 0;
+
+            var reachedEnd = total > 0 && done >= total;
+            if (!reset
+                && !forcePublish
+                && !reachedEnd
+                && now - lastProgressPublishedAt < ProgressPublishIntervalMilliseconds)
+            {
+                return;
+            }
+
+            lastProgressPublishedAt = now;
+            progressPublicationCount++;
             progressPublishTail = progressPublishTail.ContinueWith(
                 _ => eventBus.PublishAsync(EventNames.PhashProgress, snapshot),
                 CancellationToken.None,

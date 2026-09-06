@@ -2,8 +2,11 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Linq;
 using System.Threading.Tasks;
 using Alpheratz.Core;
+using Alpheratz.Features.TagMaster;
+using Alpheratz.Features.Template;
 using Alpheratz.Models.Events;
 using Alpheratz.Services;
 using Alpheratz.Shared.Models;
@@ -12,14 +15,16 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Features.Settings;
 
 /// <summary>
-/// 設定モーダル。左サイドバーで 4 セクション (全般 / タグマスタ / 投稿テンプレート / クレジット) を
+/// 設定モーダル。左サイドバーで 5 セクション (全般 / 類似の写真 / タグマスタ / 投稿テンプレート / クレジット) を
 /// 切り替える。<see cref="SettingsCompositeViewModel"/> をルート DataContext として、
 /// 各セクションは <c>{Binding Settings.X}</c> / <c>{Binding TagMaster.X}</c> /
-/// <c>{Binding Template.X}</c> でネストアクセスする。
+/// <c>{Binding Template.X}</c> でネストアクセスする。「類似の写真」セクションでは既存の写真分析を使う
+/// ワールド名補完と、<see cref="DuplicatePhotosViewModel"/> による完全一致写真の選択・削除を提供する。
 ///
 /// 表示は ShellStage の ModalContent スロット経由 (<see cref="ShellPage.ShowSettings"/>)。
 /// 旧 <c>Stage.MainContent</c> 差し替え経路は廃止。
@@ -28,10 +33,13 @@ namespace Alpheratz.Features.Settings;
 public sealed partial class SettingsPage : Page
 {
     private readonly SettingsCompositeViewModel viewModel;
+    private readonly DuplicatePhotosViewModel? duplicatePhotosViewModel;
     private string activeSettingsSection = "general";
     private PhashProgressEvent worldAnalysisProgress = PhashProgressEvent.Empty;
     private bool worldAnalysisRunning;
     private bool worldAnalysisEnabled;
+    private bool templateInputLimitReached;
+    private bool photoUserDataBackupBusy;
 
     // ===== 共通 =====
     /// <summary>モーダル閉じる操作 (× ボタン / 背景クリック / ESC)。</summary>
@@ -47,8 +55,18 @@ public sealed partial class SettingsPage : Page
     public Func<bool, Task>? OnOpenWorldOnPostChanged { get; set; }
     /// <summary>テーマ切替 (true=Dark)。</summary>
     public Func<bool, Task<bool>>? OnThemeChanged { get; set; }
-    /// <summary>「ワールド名の推測」操作から WorldResolve モーダルを開く。</summary>
+
+    // ===== 類似の写真 =====
+    /// <summary>「ワールド名補完」操作から WorldResolve モーダルを開く。</summary>
     public Func<Task>? OnStartWorldAnalysis { get; set; }
+    /// <summary>選択済みの重複写真について確認を取り、削除処理を開始する。</summary>
+    public Func<Task>? OnDeleteDuplicatePhotos { get; set; }
+
+    // ===== 全般（続き） =====
+    /// <summary>現在の写真からお気に入りとタグのバックアップを作成する。</summary>
+    public Func<Task>? OnCreatePhotoUserDataBackup { get; set; }
+    /// <summary>ファイル名一致でお気に入りとタグを復元する。</summary>
+    public Func<Task>? OnRestorePhotoUserDataBackup { get; set; }
 
     // ===== タグマスタ =====
     /// <summary>タグマスタ追加 (TagDraft の内容で作成)。</summary>
@@ -68,7 +86,9 @@ public sealed partial class SettingsPage : Page
     /// <summary>テンプレート選択 (アクティブテンプレートの切替)。</summary>
     public Func<string, Task>? OnSelectTemplate { get; set; }
 
-    public SettingsPage(SettingsCompositeViewModel viewModel)
+    public SettingsPage(
+        SettingsCompositeViewModel viewModel,
+        DuplicatePhotosViewModel? duplicatePhotosViewModel = null)
     {
         AppLogger.Trace("SettingsPage.ctor: enter");
         try
@@ -81,7 +101,9 @@ public sealed partial class SettingsPage : Page
             throw;
         }
         this.viewModel = viewModel;
+        this.duplicatePhotosViewModel = duplicatePhotosViewModel;
         DataContext = viewModel;
+        SimilarPhotosSection.DataContext = duplicatePhotosViewModel;
 
         // ShellPage は SettingsPage インスタンスをキャッシュして使い回すため、
         // モーダル開閉ごとに Loaded/Unloaded が繰り返し発火する。サブスクリプションは
@@ -93,7 +115,7 @@ public sealed partial class SettingsPage : Page
         AppLogger.Trace("SettingsPage.ctor: exit");
     }
 
-    /// <summary>PDQ 解析が完了するまで、ワールド名の推測画面への遷移を無効化する。</summary>
+    /// <summary>PDQ 解析が完了するまで、ワールド名補完画面への遷移を無効化する。</summary>
     public void SetWorldAnalysisEnabled(bool enabled)
     {
         try
@@ -104,7 +126,7 @@ public sealed partial class SettingsPage : Page
         catch (Exception ex) { AppLogger.Error($"SettingsPage.SetWorldAnalysisEnabled: threw: {ex}"); }
     }
 
-    /// <summary>PDQ 解析の進捗を、ワールド名の推測ボタンの待機表示へ反映する。</summary>
+    /// <summary>PDQ 解析の進捗を、ワールド名補完ボタンの待機表示へ反映する。</summary>
     public void SetWorldAnalysisProgress(PhashProgressEvent progress, bool isRunning, bool enabled)
     {
         try
@@ -165,11 +187,13 @@ public sealed partial class SettingsPage : Page
 
         Grid.SetRow(GeneralSection, 0);
         Grid.SetColumn(GeneralSection, 0);
-        Grid.SetRow(TagMasterSection, 1);
+        Grid.SetRow(SimilarPhotosSection, 1);
+        Grid.SetColumn(SimilarPhotosSection, 0);
+        Grid.SetRow(TagMasterSection, 2);
         Grid.SetColumn(TagMasterSection, 0);
-        Grid.SetRow(TemplateSection, 2);
+        Grid.SetRow(TemplateSection, 3);
         Grid.SetColumn(TemplateSection, 0);
-        Grid.SetRow(CreditsSection, 3);
+        Grid.SetRow(CreditsSection, 4);
         Grid.SetColumn(CreditsSection, 0);
     }
 
@@ -179,11 +203,14 @@ public sealed partial class SettingsPage : Page
         try
         {
             viewModel.TagMaster.masterTags.CollectionChanged += MasterTags_CollectionChanged;
+            viewModel.TagMaster.PropertyChanged += TagMaster_PropertyChanged;
             viewModel.Template.PropertyChanged += TemplateViewModel_PropertyChanged;
             viewModel.Settings.PropertyChanged += SettingsViewModel_PropertyChanged;
             ActualThemeChanged += OnActualThemeChanged;
             UpdateTagEmptyState();
+            UpdateTagEditorState();
             UpdateEditorState();
+            UpdateTemplateValidationState();
             UpdateThemeSwitchVisual();
             ShowSettingsSection(activeSettingsSection);
         }
@@ -196,6 +223,7 @@ public sealed partial class SettingsPage : Page
         try
         {
             viewModel.TagMaster.masterTags.CollectionChanged -= MasterTags_CollectionChanged;
+            viewModel.TagMaster.PropertyChanged -= TagMaster_PropertyChanged;
             viewModel.Template.PropertyChanged -= TemplateViewModel_PropertyChanged;
             viewModel.Settings.PropertyChanged -= SettingsViewModel_PropertyChanged;
             ActualThemeChanged -= OnActualThemeChanged;
@@ -239,6 +267,7 @@ public sealed partial class SettingsPage : Page
     {
         activeSettingsSection = section;
         GeneralSection.Visibility = section == "general" ? Visibility.Visible : Visibility.Collapsed;
+        SimilarPhotosSection.Visibility = section == "similar" ? Visibility.Visible : Visibility.Collapsed;
         TagMasterSection.Visibility = section == "tags" ? Visibility.Visible : Visibility.Collapsed;
         TemplateSection.Visibility = section == "templates" ? Visibility.Visible : Visibility.Collapsed;
         CreditsSection.Visibility = section == "credits" ? Visibility.Visible : Visibility.Collapsed;
@@ -248,6 +277,7 @@ public sealed partial class SettingsPage : Page
     private void RefreshSettingsNavVisuals()
     {
         ApplySettingsNavButtonStyle(GeneralNavButton, activeSettingsSection == "general");
+        ApplySettingsNavButtonStyle(SimilarPhotosNavButton, activeSettingsSection == "similar");
         ApplySettingsNavButtonStyle(TagMasterNavButton, activeSettingsSection == "tags");
         ApplySettingsNavButtonStyle(TemplateNavButton, activeSettingsSection == "templates");
         ApplySettingsNavButtonStyle(CreditsNavButton, activeSettingsSection == "credits");
@@ -417,7 +447,7 @@ public sealed partial class SettingsPage : Page
         AppLogger.Trace("SettingsPage.RegisterStellaRecord_Click: exit");
     }
 
-    /// <summary>ワールド名の推測モーダルの表示を要求する。</summary>
+    /// <summary>ワールド名補完モーダルの表示を要求する。</summary>
     private async void StartWorldAnalysis_Click(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("SettingsPage.StartWorldAnalysis_Click: enter");
@@ -430,10 +460,104 @@ public sealed partial class SettingsPage : Page
         AppLogger.Trace("SettingsPage.StartWorldAnalysis_Click: exit");
     }
 
+    /// <summary>現在の全写真からお気に入りとタグのバックアップ作成を要求する。</summary>
+    private async void CreatePhotoUserDataBackup_Click(object sender, RoutedEventArgs e)
+    {
+        await RunPhotoUserDataBackupActionAsync(
+            nameof(CreatePhotoUserDataBackup_Click),
+            OnCreatePhotoUserDataBackup);
+    }
+
+    /// <summary>保存済みのお気に入りとタグをファイル名一致で復元する。</summary>
+    private async void RestorePhotoUserDataBackup_Click(object sender, RoutedEventArgs e)
+    {
+        await RunPhotoUserDataBackupActionAsync(
+            nameof(RestorePhotoUserDataBackup_Click),
+            OnRestorePhotoUserDataBackup);
+    }
+
+    /// <summary>バックアップ操作の多重実行を防ぎ、2つの操作ボタンと進捗表示を同期する。</summary>
+    private async Task RunPhotoUserDataBackupActionAsync(string operationName, Func<Task>? operation)
+    {
+        if (photoUserDataBackupBusy || operation is null) return;
+
+        AppLogger.Trace($"SettingsPage.{operationName}: enter");
+        photoUserDataBackupBusy = true;
+        UpdatePhotoUserDataBackupBusyState();
+        try
+        {
+            // 確認モーダルと完了後のボタン更新はいずれも UI 操作なので、UI コンテキストを維持する。
+            await operation();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"SettingsPage.{operationName}: threw: {ex}");
+        }
+        finally
+        {
+            photoUserDataBackupBusy = false;
+            UpdatePhotoUserDataBackupBusyState();
+            AppLogger.Trace($"SettingsPage.{operationName}: exit");
+        }
+    }
+
+    private void UpdatePhotoUserDataBackupBusyState()
+    {
+        CreatePhotoUserDataBackupButton.IsEnabled = !photoUserDataBackupBusy;
+        RestorePhotoUserDataBackupButton.IsEnabled = !photoUserDataBackupBusy;
+        PhotoUserDataBackupProgress.IsActive = photoUserDataBackupBusy;
+        PhotoUserDataBackupProgress.Visibility = photoUserDataBackupBusy
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    /// <summary>登録済み写真のファイル内容を比較し、完全一致する写真を検出する。</summary>
+    private async void DetectDuplicatePhotos_Click(object sender, RoutedEventArgs e)
+    {
+        AppLogger.Trace("SettingsPage.DetectDuplicatePhotos_Click: enter");
+        try
+        {
+            if (duplicatePhotosViewModel is not null)
+                await duplicatePhotosViewModel.DetectAsync();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"SettingsPage.DetectDuplicatePhotos_Click: threw: {ex}");
+        }
+        AppLogger.Trace("SettingsPage.DetectDuplicatePhotos_Click: exit");
+    }
+
+    /// <summary>選択した重複写真の削除確認を Shell へ要求する。</summary>
+    private async void DeleteDuplicatePhotos_Click(object sender, RoutedEventArgs e)
+    {
+        AppLogger.Trace("SettingsPage.DeleteDuplicatePhotos_Click: enter");
+        try
+        {
+            if (OnDeleteDuplicatePhotos is not null)
+                await OnDeleteDuplicatePhotos();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"SettingsPage.DeleteDuplicatePhotos_Click: threw: {ex}");
+        }
+        AppLogger.Trace("SettingsPage.DeleteDuplicatePhotos_Click: exit");
+    }
+
     /// <summary>タグマスタの件数変更を UI スレッドへ戻して空表示に反映する。</summary>
     private void MasterTags_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        DispatcherQueue.TryEnqueue(UpdateTagEmptyState);
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            UpdateTagEmptyState();
+            UpdateTagEditorState();
+        });
+    }
+
+    /// <summary>タグ入力の変更を、警告表示と追加ボタンの状態へ反映する。</summary>
+    private void TagMaster_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(TagMasterViewModel.TagDraft))
+            DispatcherQueue.TryEnqueue(UpdateTagEditorState);
     }
 
     /// <summary>タグマスタ一覧の空表示を現在件数に合わせて切り替える。</summary>
@@ -444,13 +568,39 @@ public sealed partial class SettingsPage : Page
             : Visibility.Collapsed;
     }
 
+    /// <summary>文字数上限と重複を検証し、入力欄直下に現在の登録可否を表示する。</summary>
+    private void UpdateTagEditorState()
+    {
+        var draft = viewModel.TagMaster.TagDraft;
+        var normalized = draft.Trim();
+        var duplicate = normalized.Length > 0
+            && viewModel.TagMaster.masterTags.Any(existing =>
+                string.Equals(existing, normalized, StringComparison.OrdinalIgnoreCase));
+        var tooLong = draft.Length > TagMasterViewModel.MaxTagLength;
+        var atLimit = draft.Length >= TagMasterViewModel.MaxTagLength;
+
+        AddTagButton.IsEnabled = normalized.Length > 0 && !duplicate && !tooLong;
+
+        TagValidationText.Text = duplicate
+            ? getMsg("TagMasterViewModel.tagAlreadyExists")
+            : atLimit
+                ? getMsg(
+                    "SettingsPage.tagLengthLimitReached",
+                    ("maxLength", TagMasterViewModel.MaxTagLength))
+                : string.Empty;
+        TagValidationText.Visibility = TagValidationText.Text.Length > 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
     /// <summary>タグ入力欄の Enter キーでタグ追加を実行する。</summary>
     private void TagInput_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (SettingsPageLogic.ShouldSubmitTag(e.Key))
         {
             e.Handled = true;
-            AddTag_Click(sender, e);
+            if (AddTagButton.IsEnabled)
+                AddTag_Click(sender, e);
         }
     }
 
@@ -460,6 +610,8 @@ public sealed partial class SettingsPage : Page
         AppLogger.Trace("SettingsPage.AddTag_Click: enter");
         try
         {
+            if (!AddTagButton.IsEnabled)
+                return;
             if (OnCreateTag is not null)
             {
                 await OnCreateTag();
@@ -500,6 +652,9 @@ public sealed partial class SettingsPage : Page
     /// <summary>テンプレート ViewModel の変更通知から編集欄またはカード表示を更新する。</summary>
     private void TemplateViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(TemplatePageViewModel.TweetTemplateDraft))
+            DispatcherQueue.TryEnqueue(UpdateTemplateValidationState);
+
         switch (SettingsPageLogic.TemplatePropertyAction(e.PropertyName))
         {
             case TemplatePropertyUpdate.UpdateEditor:
@@ -518,6 +673,91 @@ public sealed partial class SettingsPage : Page
         CancelEditButton.Visibility = state.CancelVisible ? Visibility.Visible : Visibility.Collapsed;
         SaveButton.Content = state.SaveButtonText;
         EditorModeLabel.Text = state.ModeLabel;
+        UpdateTemplateValidationState();
+    }
+
+    /// <summary>X の加重文字数と重複状態を表示し、保存できる入力だけ登録操作を有効にする。</summary>
+    private void UpdateTemplateValidationState()
+    {
+        var draft = viewModel.Template.TweetTemplateDraft;
+        var normalized = draft.Trim();
+        var count = TemplatePageViewModel.countPostCharacters(draft);
+        var inputWithinLimit = TemplatePageViewModel.isTemplateInputWithinLimit(draft);
+        var remaining = Math.Max(0, TemplatePageViewModel.StandardPostCharacterLimit - count);
+        var placeholderMayOverflow = remaining <= TemplatePageViewModel.PlaceholderWarningRemainingCharacters
+            && TemplatePageViewModel.containsPostPlaceholder(draft);
+        var changesExisting = viewModel.Template.EditingTweetTemplate is not null
+            && !string.Equals(viewModel.Template.EditingTweetTemplate, normalized, StringComparison.Ordinal);
+        var duplicate = normalized.Length > 0
+            && viewModel.Template.tweetTemplates.Contains(normalized)
+            && (viewModel.Template.EditingTweetTemplate is null || changesExisting);
+
+        SaveButton.IsEnabled = normalized.Length > 0 && inputWithinLimit && !duplicate;
+        TemplateCharacterCountText.Text = getMsg(
+            "SettingsPage.templateLengthCount",
+            ("count", count),
+            ("max", TemplatePageViewModel.StandardPostCharacterLimit));
+        string validationMessage;
+        if (templateInputLimitReached || !inputWithinLimit)
+        {
+            validationMessage = getMsg(
+                "SettingsPage.templateLengthLimitReached",
+                ("max", TemplatePageViewModel.StandardPostCharacterLimit));
+        }
+        else if (duplicate)
+        {
+            validationMessage = getMsg("TemplatePageViewModel.templateAlreadyExists");
+        }
+        else if (placeholderMayOverflow)
+        {
+            validationMessage = getMsg(
+                "SettingsPage.templatePlaceholderMayOverflow",
+                ("remaining", remaining));
+        }
+        else
+        {
+            validationMessage = string.Empty;
+        }
+
+        TemplateValidationText.Text = validationMessage;
+        TemplateValidationText.Visibility = TemplateValidationText.Text.Length > 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    /// <summary>280文字または X の加重上限を超える変更を入力欄へ反映させない。</summary>
+    private void TemplateInputBox_BeforeTextChanging(TextBox sender, TextBoxBeforeTextChangingEventArgs args)
+    {
+        var canAccept = TemplatePageViewModel.isTemplateInputWithinLimit(args.NewText);
+        args.Cancel = !canAccept;
+        templateInputLimitReached = !canAccept;
+        if (!canAccept)
+            DispatcherQueue.TryEnqueue(UpdateTemplateValidationState);
+    }
+
+    /// <summary>現在の選択範囲へワールド名プレースホルダーを挿入する。</summary>
+    private void InsertWorldNameToken_Click(object sender, RoutedEventArgs e)
+    {
+        var token = getMsg("SettingsPage.worldNameToken");
+        var current = TemplateInputBox.Text ?? string.Empty;
+        var selectionStart = Math.Clamp(TemplateInputBox.SelectionStart, 0, current.Length);
+        var selectionLength = Math.Clamp(
+            TemplateInputBox.SelectionLength,
+            0,
+            current.Length - selectionStart);
+        var next = current.Remove(selectionStart, selectionLength).Insert(selectionStart, token);
+
+        if (!TemplatePageViewModel.isTemplateInputWithinLimit(next))
+        {
+            templateInputLimitReached = true;
+            UpdateTemplateValidationState();
+            return;
+        }
+
+        TemplateInputBox.Text = next;
+        TemplateInputBox.SelectionStart = selectionStart + token.Length;
+        TemplateInputBox.SelectionLength = 0;
+        TemplateInputBox.Focus(FocusState.Programmatic);
     }
 
     /// <summary>テンプレート編集をキャンセルし、カード表示を更新する。</summary>
@@ -539,6 +779,8 @@ public sealed partial class SettingsPage : Page
         AppLogger.Trace("SettingsPage.SaveTemplate_Click: enter");
         try
         {
+            if (!SaveButton.IsEnabled)
+                return;
             if (OnSaveTemplate is not null)
             {
                 await OnSaveTemplate().ConfigureAwait(false);

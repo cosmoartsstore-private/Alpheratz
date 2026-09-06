@@ -1,0 +1,49 @@
+name: CI
+
+# StarGazer と同じく、main へ入る変更をクリーンな環境で検証する回帰ゲート。
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 同一branchへ新しいpushが来た場合は、古い実行を残さない。
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Test and package (Windows)
+    runs-on: windows-2025
+    timeout-minutes: 30
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "true"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+
+      # windows-2025 image は NSIS を同梱しないため、package生成用に明示導入する。
+      - name: Install NSIS
+        shell: powershell
+        run: choco install nsis --no-progress --yes
+
+      - name: Restore
+        run: dotnet restore tests/Alpheratz.Tests/Alpheratz.Tests.csproj
+
+      - name: Unit tests
+        run: dotnet test tests/Alpheratz.Tests/Alpheratz.Tests.csproj --configuration Debug --no-restore --verbosity minimal
+
+      # unit testだけでなく、XBF/PRI、launcher、VC++ runtime、NSISを含む最終成果物まで検証する。
+      - name: Build release installer
+        shell: powershell
+        run: .\BuildWorks\scripts\build-release.ps1

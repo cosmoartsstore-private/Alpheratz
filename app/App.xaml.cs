@@ -99,7 +99,8 @@ public partial class App : Application
         AppLogger.Trace("App.OnLaunched: exit");
     }
 
-    // DI、DB、Window、スプラッシュを順に初期化し、Shell への遷移を開始する。
+    // DI、Window、スプラッシュ、DB を順に初期化し、Shell への遷移を開始する。
+    // DB 失敗時にも利用者へ説明できるよう、データ初期化より先に最小限の画面を用意する。
     private void OnLaunchedCore(LaunchActivatedEventArgs args)
     {
         AppLogger.Trace($"App.OnLaunchedCore: enter (build {System.Reflection.Assembly.GetExecutingAssembly().GetName().Version})");
@@ -143,22 +144,6 @@ public partial class App : Application
         var lifecycle = serviceProvider.GetRequiredService<AppLifecycleService>();
         lifecycle.advanceTo(AppLifecyclePhase.sdkReady);
 
-        try
-        {
-            serviceProvider.GetRequiredService<AlpheratzDb>().Initialize();
-            AppLogger.Trace("App.OnLaunchedCore: DB initialized");
-        }
-        catch (Exception ex)
-        {
-            // DB が初期化できない状態では画面のデータ操作を安全に開始できない。
-            AppLogger.Fatal($"App.OnLaunchedCore: DB initialize failed: {ex}");
-            throw;
-        }
-        lifecycle.advanceTo(AppLifecyclePhase.servicesReady);
-
-        var shellViewModel = serviceProvider.GetRequiredService<ShellViewModel>();
-        AppLogger.Trace("App.OnLaunchedCore: ShellViewModel resolved");
-
         // WinUI 3 の compositor は Window 作成まで初期化されないため、
         // Page.InitializeComponent より先に Window を作成・Activate する。
         // 逆順にすると Application.LoadComponent 内で停止することがある。
@@ -195,7 +180,6 @@ public partial class App : Application
         {
             AppLogger.Trace("App.OnLaunchedCore: creating BootstrapPage");
             bootstrapPage = new BootstrapPage();
-            bootstrapPage.SetPhase(lifecycle.CurrentPhase);
             win.SetRoot(bootstrapPage);
             splashShownAt = DateTimeOffset.UtcNow;
             AppLogger.Trace("App.OnLaunchedCore: BootstrapPage shown");
@@ -206,9 +190,26 @@ public partial class App : Application
             throw;
         }
 
-        // ライフサイクルフェーズをスプラッシュの表示へ反映する。
-        // PhaseAdvanced は initialize() 継続などバックグラウンドから発火し得るため、
-        // UI 更新は DispatcherQueue へ戻す。
+        try
+        {
+            serviceProvider.GetRequiredService<AlpheratzDb>().Initialize();
+            AppLogger.Trace("App.OnLaunchedCore: DB initialized");
+        }
+        catch (Exception ex)
+        {
+            // DB が初期化できない状態では画面のデータ操作を安全に開始できない。
+            // スプラッシュを残したままにせず、利用者が終了できる失敗画面へ切り替える。
+            AppLogger.Fatal($"App.OnLaunchedCore: DB initialize failed: {ex}");
+            bootstrapPage.ShowInitializationError();
+            return;
+        }
+        lifecycle.advanceTo(AppLifecyclePhase.servicesReady);
+
+        var shellViewModel = serviceProvider.GetRequiredService<ShellViewModel>();
+        AppLogger.Trace("App.OnLaunchedCore: ShellViewModel resolved");
+
+        // dataReady 到達後の画面差替えは UI スレッドで行う。
+        // PhaseAdvanced は initialize() 継続などバックグラウンドから発火し得る。
         splashLifecycle = lifecycle;
         splashPhaseHandler = (_, phase) =>
         {
@@ -216,9 +217,6 @@ public partial class App : Application
             {
                 dispatcherQueue.TryEnqueue(() =>
                 {
-                    try { bootstrapPage.SetPhase(phase); }
-                    catch (Exception ex) { AppLogger.Fatal($"App.bootstrap.PhaseAdvanced ui: threw: {ex}"); }
-
                     if (phase >= AppLifecyclePhase.dataReady)
                     {
                         var elapsed = DateTimeOffset.UtcNow - splashShownAt;
@@ -274,30 +272,26 @@ public partial class App : Application
     private bool shellSwapped;
     private DateTimeOffset splashShownAt;
 
-    // スプラッシュの導入アニメーション後に ShellViewModel の初期化をバックグラウンドで開始する。
+    // スプラッシュの導入アニメーション後に ShellViewModel を初期化する。
     private async Task BeginSplashSequenceAsync(BootstrapPage bootstrapPage, ShellViewModel shellViewModel, AppLifecycleService lifecycle)
     {
-        AppLogger.Trace("App.BeginSplashSequence: intro blank start");
-        await Task.Delay(TimeSpan.FromSeconds(1));
-        await bootstrapPage.FadeInAsync();
-        splashShownAt = DateTimeOffset.UtcNow;
-        AppLogger.Trace("App.BeginSplashSequence: fade-in done, starting init");
-
-        _ = shellViewModel.initialize().ContinueWith(t =>
+        try
         {
-            AppLogger.Trace($"App.initContinuation: enter status={t.Status}");
-            try
-            {
-                if (t.IsCompletedSuccessfully)
-                    lifecycle.advanceTo(AppLifecyclePhase.dataReady);
-                else if (t.Exception is not null)
-                    AppLogger.Fatal($"App.initContinuation: initialize() failed: {t.Exception}");
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Fatal($"App.initContinuation: threw: {ex}");
-            }
-        }, TaskContinuationOptions.ExecuteSynchronously);
+            AppLogger.Trace("App.BeginSplashSequence: intro blank start");
+            await Task.Delay(TimeSpan.FromSeconds(1));
+            await bootstrapPage.FadeInAsync();
+            splashShownAt = DateTimeOffset.UtcNow;
+            AppLogger.Trace("App.BeginSplashSequence: fade-in done, starting init");
+
+            await shellViewModel.initialize();
+            lifecycle.advanceTo(AppLifecyclePhase.dataReady);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Fatal($"App.BeginSplashSequence: initialize failed: {ex}");
+            DetachSplashPhaseHandler();
+            bootstrapPage.ShowInitializationError();
+        }
     }
 
     // スプラッシュをフェードアウトし、メインの ShellPage を Window へ差し替える。
@@ -317,11 +311,20 @@ public partial class App : Application
         catch (Exception ex)
         {
             AppLogger.Fatal($"App.SwapToShell: failed: {ex}");
+            try
+            {
+                win.SetRoot(bootstrapPage);
+                bootstrapPage.ShowInitializationError();
+            }
+            catch (Exception fallbackEx)
+            {
+                AppLogger.Fatal($"App.SwapToShell: failure screen setup failed: {fallbackEx}");
+            }
         }
         AppLogger.Trace("App.SwapToShell: exit");
     }
 
-    /// <summary>シェル切替後にスプラッシュ画面と進捗タイマーが保持されないよう購読を解除する。</summary>
+    /// <summary>シェル切替後にスプラッシュ画面が保持されないようライフサイクル購読を解除する。</summary>
     private void DetachSplashPhaseHandler()
     {
         if (splashLifecycle is not null && splashPhaseHandler is not null)

@@ -9,11 +9,18 @@ using Windows.Foundation;
 
 namespace Alpheratz.Shared.Controls;
 
-/// <summary>青い進捗バーへ水色のハイライトを周期的に流す共通コントロール。</summary>
+/// <summary>
+/// 既知の進捗は滑らかに伸びる塗り、未確定の進捗は単色セグメントの移動で示す共通直線バー。
+/// 既存 XAML との互換性を保つためコントロール名は維持している。
+/// </summary>
 [ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public sealed partial class WaveProgressBar : UserControl
 {
-    private Storyboard? waveStoryboard;
+    private const int FillAnimationDurationMilliseconds = 180;
+    private const int IndeterminateAnimationDurationMilliseconds = 1100;
+    private Storyboard? fillStoryboard;
+    private Storyboard? indeterminateStoryboard;
+    private bool isLoaded;
 
     public WaveProgressBar()
     {
@@ -76,20 +83,22 @@ public sealed partial class WaveProgressBar : UserControl
 
     private void WaveProgressBar_Loaded(object sender, RoutedEventArgs e)
     {
+        isLoaded = true;
         UpdateFill();
-        StartWave();
     }
 
     private void WaveProgressBar_Unloaded(object sender, RoutedEventArgs e)
     {
-        waveStoryboard?.Stop();
-        waveStoryboard = null;
+        isLoaded = false;
+        fillStoryboard?.Stop();
+        indeterminateStoryboard?.Stop();
+        fillStoryboard = null;
+        indeterminateStoryboard = null;
     }
 
     private void WaveProgressBar_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         UpdateFill();
-        StartWave();
     }
 
     private void UpdateFill()
@@ -100,15 +109,25 @@ public sealed partial class WaveProgressBar : UserControl
             var rawHeight = ActualHeight > 0 ? ActualHeight : Height;
             var height = double.IsFinite(rawHeight) && rawHeight > 0
                 ? rawHeight
-                : Math.Max(6, MinHeight);
-            var fillWidth = IsIndeterminate
-                ? width
-                : WaveProgressBarLogic.FillWidth(width, Minimum, Maximum, Value);
-
-            FillBorder.Width = fillWidth;
-            FillBorder.Opacity = fillWidth > 0 ? 1.0 : 0.0;
-            FillBorder.Clip = new RectangleGeometry { Rect = new Rect(0, 0, fillWidth, height) };
+                : Math.Max(3, MinHeight);
             TrackRoot.Clip = new RectangleGeometry { Rect = new Rect(0, 0, width, height) };
+
+            if (IsIndeterminate)
+            {
+                fillStoryboard?.Stop();
+                FillBorder.Opacity = 0;
+                StartIndeterminate(width);
+                return;
+            }
+
+            indeterminateStoryboard?.Stop();
+            indeterminateStoryboard = null;
+            IndeterminateSegment.Opacity = 0;
+
+            var targetWidth = WaveProgressBarLogic.FillWidth(width, Minimum, Maximum, Value);
+            var currentWidth = Math.Clamp(FillBorder.ActualWidth, 0, width);
+            FillBorder.Opacity = targetWidth > 0 ? 1.0 : 0.0;
+            AnimateFill(currentWidth, targetWidth);
         }
         catch (Exception ex)
         {
@@ -116,51 +135,61 @@ public sealed partial class WaveProgressBar : UserControl
         }
     }
 
-    private void StartWave()
+    private void AnimateFill(double currentWidth, double targetWidth)
+    {
+        fillStoryboard?.Stop();
+        fillStoryboard = null;
+        FillBorder.Width = currentWidth;
+
+        if (!isLoaded || Math.Abs(targetWidth - currentWidth) < 0.5)
+        {
+            FillBorder.Width = targetWidth;
+            return;
+        }
+
+        var animation = new DoubleAnimation
+        {
+            From = currentWidth,
+            To = targetWidth,
+            Duration = TimeSpan.FromMilliseconds(FillAnimationDurationMilliseconds),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            EnableDependentAnimation = true,
+        };
+        Storyboard.SetTarget(animation, FillBorder);
+        Storyboard.SetTargetProperty(animation, "Width");
+        fillStoryboard = new Storyboard();
+        fillStoryboard.Children.Add(animation);
+        fillStoryboard.Begin();
+    }
+
+    private void StartIndeterminate(double width)
     {
         try
         {
-            var width = TrackRoot.ActualWidth;
             if (width <= 0) return;
 
-            waveStoryboard?.Stop();
-            var highlightWidth = HighlightBand.Width;
-            HighlightTransform.X = -highlightWidth;
+            indeterminateStoryboard?.Stop();
+            var segmentWidth = Math.Min(width, Math.Clamp(width * 0.28, 32, 120));
+            IndeterminateSegment.Width = segmentWidth;
+            IndeterminateSegment.Opacity = 1;
+            IndeterminateTransform.X = -segmentWidth;
 
-            var animation = new DoubleAnimationUsingKeyFrames
+            var animation = new DoubleAnimation
             {
+                From = -segmentWidth,
+                To = width,
+                Duration = TimeSpan.FromMilliseconds(IndeterminateAnimationDurationMilliseconds),
                 RepeatBehavior = RepeatBehavior.Forever,
             };
-            animation.KeyFrames.Add(new DiscreteDoubleKeyFrame
-            {
-                KeyTime = KeyTime.FromTimeSpan(TimeSpan.Zero),
-                Value = -highlightWidth,
-            });
-            animation.KeyFrames.Add(new SplineDoubleKeyFrame
-            {
-                KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromSeconds(1.6)),
-                Value = width + highlightWidth,
-                KeySpline = new KeySpline
-                {
-                    ControlPoint1 = new Point(0.4, 0),
-                    ControlPoint2 = new Point(0.6, 1),
-                },
-            });
-            animation.KeyFrames.Add(new DiscreteDoubleKeyFrame
-            {
-                KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromSeconds(2.4)),
-                Value = width + highlightWidth,
-            });
-
-            Storyboard.SetTarget(animation, HighlightTransform);
+            Storyboard.SetTarget(animation, IndeterminateTransform);
             Storyboard.SetTargetProperty(animation, "X");
-            waveStoryboard = new Storyboard();
-            waveStoryboard.Children.Add(animation);
-            waveStoryboard.Begin();
+            indeterminateStoryboard = new Storyboard();
+            indeterminateStoryboard.Children.Add(animation);
+            indeterminateStoryboard.Begin();
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"WaveProgressBar.StartWave: threw: {ex}");
+            AppLogger.Error($"WaveProgressBar.StartIndeterminate: threw: {ex}");
         }
     }
 }

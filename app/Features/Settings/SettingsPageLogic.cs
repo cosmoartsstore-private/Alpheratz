@@ -67,7 +67,7 @@ internal static class SettingsPageLogic
     /// <summary>現在テーマから次に保存する Dark 状態を返す。</summary>
     public static bool NextThemeIsDark(bool isDark) => !isDark;
 
-    /// <summary>ワールド名の推測が使用可能になるまでの PDQ 解析進捗表示を返す。</summary>
+    /// <summary>ワールド名補完が使用可能になるまでの PDQ 解析進捗表示を返す。</summary>
     public static WorldAnalysisProgressDisplay WorldAnalysisProgress(
         int done,
         int total,
@@ -117,7 +117,7 @@ internal static class SettingsPageLogic
 
     /// <summary>設定ページで表示できるセクション ID かを返す。</summary>
     public static bool IsKnownSection(string? section)
-        => section is "general" or "tags" or "templates" or "credits";
+        => section is "general" or "similar" or "tags" or "templates" or "credits";
 
     /// <summary>StellaRecord 登録に必要な exe と icon のパスを返す。未導入なら null。</summary>
     public static StellaRecordRegistrationRequest? StellaRecordRegistration(
@@ -160,7 +160,7 @@ internal sealed record TemplateCardDisplay(
     string LabelForegroundKey,
     string BodyForegroundKey);
 
-/// <summary>ワールド名の推測を開始する前の PDQ 解析進捗表示。</summary>
+/// <summary>ワールド名補完を開始する前の PDQ 解析進捗表示。</summary>
 internal sealed record WorldAnalysisProgressDisplay(
     bool ProgressVisible,
     bool IsIndeterminate,

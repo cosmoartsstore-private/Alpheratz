@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:Alpheratz.Shared.Controls"
     xmlns:converters="using:Alpheratz.Shared.Converters"
+    xmlns:gallery="using:Alpheratz.Features.Gallery"
     xmlns:messages="using:Alpheratz.Messages">
     <UserControl.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
@@ -40,7 +41,7 @@
             </Style>
         </GridView.ItemContainerStyle>
         <GridView.ItemTemplate>
-            <DataTemplate>
+            <DataTemplate x:DataType="gallery:PhotoGridItem">
                 <Grid Margin="4,4,4,6"
                       HorizontalAlignment="Stretch"
                       VerticalAlignment="Stretch">
@@ -58,18 +59,12 @@
 
                             <Grid Grid.Row="0" x:Name="ThumbHost" Background="{ThemeResource ASurfaceSoft}">
                                 <!--
-                                    マソンリーと同等のロード演出。
-                                    画像ロード前は shimmer プレースホルダ(ASurfaceSoft の面 +
-                                    ASurfaceHover ハイライトの横スライド)を表示し、ImageOpened で
-                                    フェードインする。半透明ティントは使わず solid 面色 + Opacity/
-                                    Composition アニメで表現する。Highlight の幅はカード幅可変のため
-                                    code-behind で都度設定する。
+                                    画像ロード前はMaterial UI型のPulseを表示する。
+                                    ASurfaceSofterの面全体だけをゆっくり明滅させ、複数カードを横切る
+                                    ハイライト帯は作らない。ImageOpened後は写真へフェードインする。
                                 -->
-                                <Border x:Name="ShimmerBase"
-                                        Background="{ThemeResource ASurfaceSoft}"/>
-                                <Border x:Name="ShimmerHighlight"
-                                        HorizontalAlignment="Left"
-                                        Background="{ThemeResource ASurfaceHover}"/>
+                                <Border x:Name="SkeletonPlaceholder"
+                                        Background="{ThemeResource ASurfaceSofter}"/>
                                 <!--
                                     ロード前は Composition の Visual.Opacity を 0 にして隠し、
                                     ImageOpened で 1 へフェードインする (ResetCardLoadVisuals 参照)。

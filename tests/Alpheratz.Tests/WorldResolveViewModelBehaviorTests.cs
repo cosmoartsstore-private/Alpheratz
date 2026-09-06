@@ -135,10 +135,10 @@ public sealed class WorldResolveViewModelBehaviorTests : IDisposable
     }
 
     /// <summary>
-    /// OpenCandidatePickerAsync が候補を距離順に並べ、SelectCandidate が選択内容を対象 item へ反映して閉じることを確認する。
+    /// OpenCandidatePickerAsync が採用閾値内の候補を距離順に並べ、SelectCandidate が選択内容を対象 item へ反映して閉じることを確認する。
     ///
-    /// 「別ワールドを選ぶ」操作では、閾値外の候補も距離順の参考情報として表示する。
-    /// そのため CandidateList は近い候補から遠い候補まで全件を保持し、選択後は ActivePickerItem の
+    /// 「別ワールドを選ぶ」操作では、一致率 71% 未満の候補を誤選択させない。
+    /// CandidateList は採用可能な候補だけを保持し、選択後は ActivePickerItem の
     /// Match 系プロパティを候補の内容で置き換え、ピッカー状態を閉じる必要がある。
     /// </summary>
     [Fact]
@@ -158,7 +158,7 @@ public sealed class WorldResolveViewModelBehaviorTests : IDisposable
         Assert.False(viewModel.IsCandidateLoading);
         Assert.False(viewModel.IsCandidatePickerOpen);
         Assert.Null(viewModel.ActivePickerItem);
-        Assert.Equal(["Exact World", "Near World", "Far World"], viewModel.CandidateList.Select(entry => entry.WorldName).ToArray());
+        Assert.Equal(["Exact World", "Near World"], viewModel.CandidateList.Select(entry => entry.WorldName).ToArray());
         Assert.Equal("Near World", item.MatchWorldName);
         Assert.Equal("wrld_near", item.MatchWorldId);
         Assert.Equal("/known/near.jpg", item.MatchPhotoPath);

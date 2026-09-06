@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Alpheratz.Core;
 using Alpheratz.Features.Gallery;
@@ -21,6 +24,19 @@ namespace Alpheratz.Features.Template;
 /// </summary>
 public partial class TemplatePageViewModel : UiThreadSafeObservableObject
 {
+    /// <summary>X の標準投稿で利用できる加重文字数。</summary>
+    public const int StandardPostCharacterLimit = 280;
+    /// <summary>置換後の超過へ注意を促す残り文字数。</summary>
+    public const int PlaceholderWarningRemainingCharacters = 20;
+    private const int ShortenedUrlLength = 23;
+    private static readonly Regex PostUrlPattern = new(
+        @"\b(?:https?://|www\.)\S+",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+    private static readonly char[] UrlTrailingPunctuation =
+        ['.', ',', '!', '?', ';', ':', ')', ']', '}', '。', '、', '！', '？', '）', '］', '｝', '】', '」', '』'];
+    private static readonly string[] SupportedPostTemplateTokens =
+        ["{world}", "{world-name}", "{world_name}", "{world_id}", "{date}", "{timestamp}", "{file}", "{memo}", "{tags}"];
+
     private readonly SettingsService settingsService;
     private readonly WorldService worldService;
     private readonly ToastService toastService;
@@ -71,6 +87,93 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
     {
         return template.Replace(token, value, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// X の標準投稿と同じ考え方で本文の加重文字数を返す。
+    /// NFC 正規化後、一般的な文字を 1、日本語など既定範囲外の文字と絵文字を 2、URL を 23 と数える。
+    /// </summary>
+    public static int countPostCharacters(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return 0;
+
+        var normalized = text.Normalize(NormalizationForm.FormC);
+        var total = 0;
+        var cursor = 0;
+        foreach (Match match in PostUrlPattern.Matches(normalized))
+        {
+            total += countWeightedText(normalized[cursor..match.Index]);
+
+            var url = match.Value.TrimEnd(UrlTrailingPunctuation);
+            if (url.Length == 0)
+            {
+                total += countWeightedText(match.Value);
+            }
+            else
+            {
+                total += ShortenedUrlLength;
+                total += countWeightedText(match.Value[url.Length..]);
+            }
+            cursor = match.Index + match.Length;
+        }
+
+        total += countWeightedText(normalized[cursor..]);
+        return total;
+    }
+
+    /// <summary>入力欄へ保持できる文字列かを、実文字数と X の加重文字数の両方で判定する。</summary>
+    public static bool isTemplateInputWithinLimit(string? text)
+        => (text?.Length ?? 0) <= StandardPostCharacterLimit
+            && countPostCharacters(text) <= StandardPostCharacterLimit;
+
+    /// <summary>投稿時に内容が展開されるプレースホルダーを含むかを返す。</summary>
+    public static bool containsPostPlaceholder(string? text)
+        => !string.IsNullOrEmpty(text)
+            && SupportedPostTemplateTokens.Any(token => text.Contains(token, StringComparison.Ordinal));
+
+    private static int countWeightedText(string text)
+    {
+        var total = 0;
+        var elements = StringInfo.GetTextElementEnumerator(text);
+        while (elements.MoveNext())
+        {
+            var element = elements.GetTextElement();
+            if (isEmojiSequence(element))
+            {
+                total += 2;
+                continue;
+            }
+
+            foreach (var rune in element.EnumerateRunes())
+                total += weightedRuneLength(rune.Value);
+        }
+        return total;
+    }
+
+    private static bool isEmojiSequence(string element)
+    {
+        foreach (var rune in element.EnumerateRunes())
+        {
+            var value = rune.Value;
+            if (value == 0xFE0F
+                || value == 0x20E3
+                || value is >= 0x1F000 and <= 0x1FAFF
+                || value is >= 0x1F1E6 and <= 0x1F1FF
+                || value is >= 0xE0020 and <= 0xE007F)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int weightedRuneLength(int value)
+        => value is >= 0x0000 and <= 0x10FF
+            || value is >= 0x2000 and <= 0x200D
+            || value is >= 0x2010 and <= 0x201F
+            || value is >= 0x2032 and <= 0x2037
+                ? 1
+                : 2;
 
     /// <summary>
     /// 写真とテンプレートから最終的なツイート本文を組み立てる。
@@ -130,6 +233,19 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
             {
                 AppLogger.Trace("TemplatePageViewModel.openTweetIntent: skip (empty tweet text)");
                 toastService.addToast(getMsg("TemplatePageViewModel.postTextBuildFailed"), ToastType.error);
+                return false;
+            }
+
+            var postLength = countPostCharacters(tweetText);
+            if (postLength > StandardPostCharacterLimit)
+            {
+                AppLogger.Trace($"TemplatePageViewModel.openTweetIntent: skip (expanded text too long: {postLength})");
+                toastService.addToast(
+                    getMsg(
+                        "TemplatePageViewModel.postTextTooLong",
+                        ("count", postLength),
+                        ("max", StandardPostCharacterLimit)),
+                    ToastType.error);
                 return false;
             }
 
@@ -243,6 +359,12 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
                 return;
             }
 
+            if (!isTemplateInputWithinLimit(normalized))
+            {
+                AppLogger.Trace("TemplatePageViewModel.saveTemplateDraft: skip (too long)");
+                return;
+            }
+
             if (EditingTweetTemplate is not null)
             {
                 AppLogger.Trace("TemplatePageViewModel.saveTemplateDraft: branch=update existing");
@@ -286,6 +408,18 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
         {
             AppLogger.Trace("TemplatePageViewModel.saveTemplate: skip (empty)");
             toastService.addToast(getMsg("TemplatePageViewModel.templateRequired"), ToastType.error);
+            return;
+        }
+        var weightedLength = countPostCharacters(normalized);
+        if (!isTemplateInputWithinLimit(normalized))
+        {
+            AppLogger.Trace("TemplatePageViewModel.saveTemplate: skip (too long)");
+            toastService.addToast(
+                getMsg(
+                    "TemplatePageViewModel.templateTooLong",
+                    ("count", weightedLength),
+                    ("max", StandardPostCharacterLimit)),
+                ToastType.error);
             return;
         }
         var changesToExistingTemplate = EditingTweetTemplate is not null

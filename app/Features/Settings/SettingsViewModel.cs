@@ -104,7 +104,9 @@ public partial class SettingsViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("SettingsViewModel.handleChooseFolderPathOnly: enter");
         try
         {
-            var path = await dialogService.openDirectoryAsync().ConfigureAwait(false);
+            // フォルダ選択は UI 操作の一部であり、呼出側が続けて確認画面を開く。
+            // ここでは UI コンテキストを維持し、選択後の処理を worker thread へ移さない。
+            var path = await dialogService.openDirectoryAsync();
             AppLogger.Trace($"SettingsViewModel.handleChooseFolderPathOnly: exit path={path ?? "(null)"}");
             return path;
         }

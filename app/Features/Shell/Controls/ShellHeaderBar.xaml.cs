@@ -22,10 +22,9 @@ namespace Alpheratz.Features.Shell.Controls;
 /// <summary>
 /// 画面上部のヘッダーバー。
 /// 構成：
-///   [検索条件] [検索 TextBox] [ビューモード] [グループ化] [複数選択] [設定]
-/// 3 つの切替ボタン (ビューモード / グループ化 / 複数選択) は
-/// アクティブ時にアクセント色 (APrimarySoft 背景 + ABorderStrong 枠 + APrimary 前景) に
-/// 切り替わる。masonry (ViewMode.gallery) 表示中はグループ化が無効化される。
+///   [検索条件] [検索 TextBox] [ギャラリーモード] [写真をまとめる] [複数選択] [設定]
+/// 表示モードとグループ化は文言付きスイッチで示し、複数選択はアイコンボタンで切り替える。
+/// masonry (ViewMode.gallery) 表示中はグループ化を無効化する。
 /// </summary>
 [ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public sealed partial class ShellHeaderBar : UserControl
@@ -58,6 +57,7 @@ public sealed partial class ShellHeaderBar : UserControl
     private string pendingSuggestionQuery = string.Empty;
     private bool isSearchTextBoxFocused;
     private bool suppressSearchTextChange;
+    private bool suppressDisplayToggleEvents;
     private bool controlsInteractive = true;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? searchSuggestionTimer;
     private Windows.Foundation.TypedEventHandler<Microsoft.UI.Dispatching.DispatcherQueueTimer, object>? searchSuggestionTimerTickHandler;
@@ -89,7 +89,7 @@ public sealed partial class ShellHeaderBar : UserControl
         AppLogger.Trace("ShellHeaderBar.ctor: exit");
     }
 
-    /// <summary>テーマ切替時に code-behind で塗ったトグルボタンを再着色する。</summary>
+    /// <summary>テーマ切替時に code-behind で塗った複数選択ボタンと検索欄を再着色する。</summary>
     private void OnActualThemeChanged(FrameworkElement sender, object args)
     {
         try
@@ -158,9 +158,9 @@ public sealed partial class ShellHeaderBar : UserControl
             FilterPillBtn.IsEnabled = interactive;
             SearchTextBox.IsEnabled = interactive;
             SearchSuggestionListView.IsEnabled = interactive;
-            ViewModeBtn.IsEnabled = interactive;
             MultiSelectBtn.IsEnabled = interactive;
             SettingsGearBtn.IsEnabled = interactive;
+            SyncViewModeStyle();
             SyncGroupingStyle();
         }
         catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.SetControlsInteractive: threw: {ex}"); }
@@ -235,28 +235,42 @@ public sealed partial class ShellHeaderBar : UserControl
         catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.MultiSelectBtn_Click: threw: {ex}"); }
     }
 
-    // グループ化ボタンを none/world のトグルとして処理する。
-    private async void GroupingBtn_Click(object sender, RoutedEventArgs e)
+    // 「写真をまとめる」スイッチを none/world の変更要求として上位へ渡す。
+    private async void GroupPhotosToggle_Toggled(object sender, RoutedEventArgs e)
     {
+        if (suppressDisplayToggleEvents) return;
         try
         {
-            // 現在 world なら none、none なら world に切り替える。
             if (OnGroupingChange is not null)
-                await OnGroupingChange(ShellHeaderBarLogic.NextGroupingMode(currentGroupingMode)).ConfigureAwait(false);
+            {
+                var mode = GroupPhotosToggle.IsOn ? GroupingMode.world : GroupingMode.none;
+                await OnGroupingChange(mode).ConfigureAwait(false);
+            }
         }
-        catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.GroupingBtn_Click: threw: {ex}"); }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"ShellHeaderBar.GroupPhotosToggle_Toggled: threw: {ex}");
+            DispatcherQueue?.TryEnqueue(SyncGroupingStyle);
+        }
     }
 
-    // 表示モードボタンを standard/gallery のトグルとして処理する。
-    private async void ViewModeBtn_Click(object sender, RoutedEventArgs e)
+    // 「ギャラリーモード」スイッチを standard/gallery の変更要求として上位へ渡す。
+    private async void GalleryModeToggle_Toggled(object sender, RoutedEventArgs e)
     {
+        if (suppressDisplayToggleEvents) return;
         try
         {
-            // 現在 standard なら gallery、gallery なら standard に切り替える。
             if (OnViewModeChange is not null)
-                await OnViewModeChange(ShellHeaderBarLogic.NextViewModeName(currentViewMode)).ConfigureAwait(false);
+            {
+                var mode = GalleryModeToggle.IsOn ? "gallery" : "standard";
+                await OnViewModeChange(mode).ConfigureAwait(false);
+            }
         }
-        catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.ViewModeBtn_Click: threw: {ex}"); }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"ShellHeaderBar.GalleryModeToggle_Toggled: threw: {ex}");
+            DispatcherQueue?.TryEnqueue(SyncViewModeStyle);
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -271,41 +285,40 @@ public sealed partial class ShellHeaderBar : UserControl
             getMsg(isMultiSelectActive ? "ShellHeaderBar.multiSelectEnd" : "ShellHeaderBar.multiSelectStart"));
     }
 
-    // グループ化ボタンのアクティブ色と、masonry 中の無効状態を同期する。
+    // グループ化スイッチの状態と、masonry 中の無効状態を同期する。
     private void SyncGroupingStyle()
     {
         var state = ShellHeaderBarLogic.GroupingToggleState(currentGroupingMode, currentViewMode);
-        ApplyActiveStyle(GroupingBtn, GroupingIcon, state.Active);
-        // masonry 表示中はグループ化を無効化 (UI 側の制約)
-        GroupingBtn.IsEnabled = controlsInteractive && state.Enabled;
-        GroupingBtn.Opacity = state.Opacity;
+        suppressDisplayToggleEvents = true;
+        try { GroupPhotosToggle.IsOn = state.Active; }
+        finally { suppressDisplayToggleEvents = false; }
+        GroupPhotosToggle.IsEnabled = controlsInteractive && state.Enabled;
+        GroupPhotosControl.Opacity = state.Opacity;
         var nameKey = !state.Enabled
             ? "ShellHeaderBar.groupingUnavailable"
             : state.Active
                 ? "ShellHeaderBar.groupingDisable"
                 : "ShellHeaderBar.groupingEnable";
-        AutomationProperties.SetName(GroupingBtn, getMsg(nameKey));
+        AutomationProperties.SetName(GroupPhotosToggle, getMsg(nameKey));
     }
 
-    // 表示モードボタンのアイコンとアクティブ色を現在モードへ同期する。
+    // ギャラリーモードスイッチを現在の表示モードへ同期する。
     private void SyncViewModeStyle()
     {
         var state = ShellHeaderBarLogic.ViewModeToggleState(currentViewMode);
-        // 現状のモードを示すアイコン: standard → "grid"、gallery → "gallery"
-        ViewModeIcon.IconName = state.IconName ?? "grid";
-        ApplyActiveStyle(ViewModeBtn, ViewModeIcon, state.Active);
+        suppressDisplayToggleEvents = true;
+        try { GalleryModeToggle.IsOn = state.Active; }
+        finally { suppressDisplayToggleEvents = false; }
+        GalleryModeToggle.IsEnabled = controlsInteractive;
         AutomationProperties.SetName(
-            ViewModeBtn,
+            GalleryModeToggle,
             getMsg(currentViewMode == ViewMode.gallery
                 ? "ShellHeaderBar.viewModeToGrid"
                 : "ShellHeaderBar.viewModeToGallery"));
     }
 
     /// <summary>
-    /// トグルボタンを「アクティブ配色」または「通常配色」に切り替える。
-    /// アクティブ: APrimarySoft 背景 + ABorderStrong 枠 + APrimary 前景。
-    /// 通常:        Transparent 背景 + Transparent 枠 + ATextDim 前景 (HeaderIconButtonStyle 既定)。
-    /// アイコン色も合わせて更新する。
+    /// 複数選択ボタンのアイコン色を、選択中はヘッダー用アクセント、通常時は弱い文字色へ戻す。
     /// </summary>
     private void ApplyActiveStyle(Button button, Shared.Controls.AppIcon icon, bool active)
     {

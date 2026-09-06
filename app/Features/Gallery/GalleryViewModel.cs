@@ -22,7 +22,7 @@ namespace Alpheratz.Features.Gallery;
 /// </summary>
 public partial class GalleryViewModel : UiThreadSafeObservableObject
 {
-    private const int MAX_TAG_LENGTH = 40;
+    private const int MAX_TAG_LENGTH = 25;
 
     private readonly PhotoService photoService;
     private readonly WorldService worldService;

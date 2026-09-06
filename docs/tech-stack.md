@@ -1,293 +1,263 @@
 # Tech Stack and Architecture Decisions
 
-> Alpheratz で採用した技術の詳細リファレンスと、主要な技術選定の意思決定記録 (ADR: Architecture Decision Record)。
+この文書は、現行 source と build scripts が採用している技術、version、配布契約、設計判断を記録する。過去実装の作業手順や未採用の将来案は含めない。
 
-## Table of Contents
+## Stack Reference
 
-- [Tech Stack Reference](#tech-stack-reference)
-  - [Frontend](#frontend)
-  - [Backend](#backend)
-  - [Build and Distribution](#build-and-distribution)
-  - [Quality and Tooling](#quality-and-tooling)
-  - [Testing and CI](#testing-and-ci)
-- [Architecture Decision Records](#architecture-decision-records)
-  - [ADR-001 Application Framework: WinUI 3](#adr-001-application-framework-winui-3)
-  - [ADR-002 State Management: MVVM](#adr-002-state-management-mvvm)
-  - [ADR-003 Database: SQLite via Microsoft.Data.Sqlite](#adr-003-database-sqlite-via-microsoftdatasqlite)
-  - [ADR-004 Imaging: Windows Imaging + custom PDQ](#adr-004-imaging-windows-imaging--custom-pdq)
-  - [ADR-005 Styling: XAML Resource Dictionaries](#adr-005-styling-xaml-resource-dictionaries)
-  - [ADR-006 Installer: NSIS unpackaged current-user install](#adr-006-installer-nsis-unpackaged-current-user-install)
-- [Rejected Technologies](#rejected-technologies)
+### Application
 
----
-
-## Tech Stack Reference
-
-### Frontend
-
-| Layer | Technology | Version | License |
-| --- | --- | --- | --- |
-| Language | C# | latest / .NET 8 | MIT |
-| UI Framework | WinUI 3 | Windows App SDK 1.6.250205002 | MIT |
-| XAML | WinUI XAML | - | - |
-| MVVM | CommunityToolkit.Mvvm | 8.4.0 | MIT |
-| Styling | XAML Resource Dictionaries | - | - |
-| UI messages | `MessageCatalog.getMsg` + UTF-8 properties | - | Project code |
-
-### Backend
-
-| Layer | Technology | Version | License |
-| --- | --- | --- | --- |
-| Runtime | .NET | 8.0 | MIT |
-| DI | Microsoft.Extensions.DependencyInjection | 8.0.1 | MIT |
-| Database | Microsoft.Data.Sqlite | 8.0.11 | MIT |
-| Imaging | Windows imaging APIs | Windows SDK | Microsoft |
-| PDQ | Custom C# port | - | Project code |
-| Registry I/O | Microsoft.Win32.Registry | .NET | MIT |
-
-### Build and Distribution
-
-| Layer | Technology | Configuration |
+| Area | Technology | Current version / setting |
 | --- | --- | --- |
-| App publish | `dotnet publish` | `Release`, `win-x64`, self-contained |
-| Windows App SDK | Self-contained AppLocal | `WindowsAppSDKSelfContained=true` |
-| Launcher | .NET single-file launcher | `Alpheratz.exe` |
-| Installer | NSIS | `BuildWorks/nsis/Installer.nsi` |
-| Install Mode | currentUser | `%LOCALAPPDATA%\CosmoArtsStore\Alpheratz` |
+| Language | C# | `LangVersion=latest`, nullable enabled |
+| Runtime | .NET | `net8.0-windows10.0.19041.0` |
+| UI | WinUI 3 | Windows App SDK `1.6.250205002` |
+| Architecture | MVVM | CommunityToolkit.Mvvm `8.4.0` |
+| Dependency injection | Microsoft.Extensions.DependencyInjection | `8.0.1` |
+| Database | SQLite | Microsoft.Data.Sqlite `8.0.11` |
+| Image metadata | Windows / local binary readers | PNG XMP/iTXt、画像 header、PDQ luma decode |
+| Perceptual hash | In-repository PDQ implementation | 256 bit、4 rotations |
+| Messages | Embedded UTF-8 properties | `MessageCatalog.getMsg` |
+| Platform | Windows | Build 19041以降、x64のみ |
 
-Frontend publish では XBF を publish root と assembly mirror へ同期し、Windows App SDK の Controls PRI を root の `resources.pri` として配置する。`App.xbf`, `MainWindow.xbf`, `resources.pri` が揃わない場合は release build を失敗させる。launcher は self-contained single-file として別途 publish する。
+`WindowsPackageType=None` の unpackaged app である。MSIX tooling と PRI generation は project設定で無効にする。
 
-NSIS の更新または再インストールでは launcher と `app` だけを入れ替え、既存の `Data` を保持する。アンインストールではアプリ管理下の `Data/db`, `Data/logs`, `Data/cache` も削除する。
+### Tests
 
-### Quality and Tooling
-
-| Layer | Technology | Version |
+| Area | Technology | Version / role |
 | --- | --- | --- |
-| C# compiler | Roslyn via .NET SDK | 8.x |
-| Nullable analysis | `<Nullable>enable</Nullable>` | - |
-| Text format | `.editorconfig` | UTF-8 / LF / 末尾改行 / 行末空白除去（NSIS は UTF-16LE / CRLF） |
-| Test runner | xUnit runner | 2.5.3 |
-| Coverage | coverlet | 6.0.0 |
+| Test framework | xUnit | `2.5.3` |
+| Test host | Microsoft.NET.Test.Sdk | `17.8.0` |
+| Coverage | coverlet collector / MSBuild | `6.0.0` |
+| UI boundary policy | `ExcludeFromCodeCoverage` allowlist | WinUI / OS glueだけを除外 |
 
-### Testing and CI
+テストは `tests/Alpheratz.Tests` から application project を直接参照する。ViewModel、state、database、scanner、PDQ、service、XAML/package契約を UI processなしで検証する。WinUI Page、UserControl、Composition、OS dialog、process entry pointは framework boundaryとして限定的に除外し、判断ロジックは通常の coverage対象に残す。
 
-- **単体テスト**: `tests/Alpheratz.Tests` の xUnit テスト。
-- **ローカル検証**: `dotnet test tests/Alpheratz.Tests/Alpheratz.Tests.csproj`。
-- **Release 検証**: `BuildWorks/scripts/build-release.ps1` で frontend、launcher、NSIS installer を順に生成し、`BuildWorks/Alpheratz-Installer.exe` を確認する。
-- **CI**: リポジトリ内の CI 定義に従う。公開 docs ではローカルで実行すべき検証コマンドを一次情報として扱う。
+`.github/workflows/ci.yml`はmainへのpushとmain宛PRをWindows runnerで検証する。全testの後にXBF/PRI、launcher、Microsoft Visual C++ Redistributable、NSISを含む最終installerまで生成し、途中のsoft-failは設けない。
 
----
+### Distribution
 
-## Architecture Decision Records
+| Component | Technology | Output |
+| --- | --- | --- |
+| Frontend publish | `dotnet publish`, self-contained | `BuildWorks/artifacts/publish/Alpheratz` |
+| Launcher | .NET 8 Windows Forms, single-file | `artifacts/publish/Launcher/Alpheratz.exe` |
+| Installer | NSIS, Unicode, per-monitor V2 | `BuildWorks/Alpheratz-Installer.exe` |
+| Native runtime | Microsoft Visual C++ Redistributable x64 | Microsoft署名を検証してinstallerへ内包 |
+| Install scope | current user | `%LOCALAPPDATA%\CosmoArtsStore\Alpheratz` by default |
 
-各意思決定は以下のテンプレートで記述する。
+launcher は `HKCU\Software\CosmoArtsStore\Alpheratz\RuntimeLocation` を読み、`app\Alpheratz.Frontend.exe` を起動する。値がない場合は既定 LocalAppData pathへフォールバックする。起動失敗時は `Data\logs\launcher_error.log` への記録を試みる。
 
-```
-- Status:    Accepted | Superseded | Deprecated
-- Date:      決定日
-- Context:   何を解決しようとしているか
-- Decision:  何を採用したか
-- Rationale: なぜそれを採用したか
-- Alternatives Considered: 検討した他の選択肢と却下理由
-- Consequences: 採用後に発生する影響
+## Source Layout
+
+```text
+app/
+├─ App.xaml(.cs), Program.cs        startup and DI composition
+├─ Features/
+│  └─ <Feature>/                   Page, ViewModel, state, local logic
+├─ Services/                       use-case and OS integration
+├─ Core/
+│  ├─ Database/                    SQLite gateway and query models
+│  ├─ Imaging/                     thumbnail and PDQ
+│  └─ Scanner/                     file and Polaris log scan
+├─ Models/                         cross-feature DTOs and events
+├─ Messages/                       Japanese message catalog
+├─ Shared/                         reusable controls, services, models
+└─ Themes/                         tokens, brushes, typography, controls
 ```
 
-### ADR-001 Application Framework: WinUI 3
+feature固有の状態と操作は同じ `Features/<Feature>` に置く。複数featureから使うI/Oやuse caseだけを `Services`、DB・filesystem・image algorithm等の基盤を `Core`、実際に再利用するUI部品を `Shared` に置く。
 
-- **Status**: Accepted
-- **Date**: 2026-04
+## Runtime Decisions
 
-**Context**
-
-写真ギャラリーは大量画像、メイソンリーレイアウト、サムネイル生成、バックグラウンド解析を扱う。旧 TypeScript + WebView2 構成ではメモリ使用量が大きくなりやすかった。
+### ADR-001: WinUI 3 Single-process Desktop App
 
 **Decision**
 
-.NET 8 + WinUI 3 の単一プロセス構成を採用する。依存性注入は `ServiceCollection` から直接構築し、Generic Host は使用しない。
+.NET 8 + WinUI 3 の単一 frontend processを使う。
 
-**Rationale**
+**Current reasons**
 
-- Windows デスクトップアプリとして画像表示と OS 統合を直接扱える
-- C# でバックグラウンド処理、SQLite、画像処理を同一プロセスに収められる
-- Tauri / Rust IPC 境界を廃止できる
+- Windows native window、Dispatcher、Composition、file picker、clipboard、Launcherを直接利用できる。
+- UI state、scanner、image analysis、SQLiteをC#内で接続でき、IPC schemaやsidecar processを必要としない。
+- standard gridとvirtualized masonryをWinUI controlsで実装できる。
 
-**Alternatives Considered**
+**Constraints**
 
-| Option | Rejected Reason |
-| --- | --- |
-| Tauri + React | 旧実装のメモリ問題と IPC 境界の複雑さが残る |
-| WPF | WinUI 3 の現行 Windows UI への追従を優先 |
-| Electron | 配布サイズとメモリ使用量が大きい |
+- UI objectの変更はDispatcher threadへ戻す。
+- WinUI XAML compilerとunpackaged resource layoutがbuild契約になる。
+- platformはWindows x64に限定される。
 
-**Consequences**
-
-- (+) 画像処理と UI 状態を C# で一貫して扱える
-- (+) self-contained 配布により .NET runtime 依存を減らせる
-- (-) Windows 専用になる
-- (-) WinUI 3 の unpackaged 配布制約を build script で扱う必要がある
-
-### ADR-002 State Management: MVVM
-
-- **Status**: Accepted
-- **Date**: 2026-04
-
-**Context**
-
-Gallery、PhotoModal、Settings、WorldResolve は画面状態と非同期処理を多く持つ。
+### ADR-002: Feature-local MVVM
 
 **Decision**
 
-CommunityToolkit.Mvvm による MVVM を採用する。
+Pageはevent wiringとframework interaction、ViewModel/stateは観察可能な状態とuse case呼出し、service/coreはI/Oとdomain logicを担当する。
 
-**Rationale**
+**Rules embodied in current code**
 
-- XAML binding と相性が良い
-- ViewModel 単位でテストしやすい
-- UI イベントと永続化処理を分離できる
+- `UiThreadSafeObservableObject` と `UiObservableCollection` は notification をmarshalするが、mutation自体のthread ownershipは保証しない。
+- background処理からUI-bound stateを変える場合は `DispatcherService.RunOnUiThread` を使う。
+- reusableな純粋判断がある場合だけ `*Logic.cs` へ分ける。表示から消えた機能のhelperは残さない。
+- shellはoverlay/modalの所有者で、feature pageを実行時に複数parent間で移動しない。
 
-**Alternatives Considered**
+CommunityToolkit の field-based `[ObservableProperty]` を使う箇所があり、`MVVMTK0045` は project全体で抑止している。現行 ReleaseはNativeAOTではなく、この設定はruntime要件ではない。
 
-| Option | Rejected Reason |
-| --- | --- |
-| code-behind 中心 | テスト対象が UI に寄りすぎる |
-| 独自 observable 実装 | CommunityToolkit で足りる |
-
-**Consequences**
-
-- (+) ViewModel の単体テストを増やせる
-- (-) Page と ViewModel のイベント接続が多い画面では接続解除の管理が必要
-
-### ADR-003 Database: SQLite via Microsoft.Data.Sqlite
-
-- **Status**: Accepted
-- **Date**: 2026-04
-
-**Context**
-
-写真メタデータ、タグ、ワールド訪問履歴をローカルで保持する必要がある。
+### ADR-003: SQLite as Local Metadata Index
 
 **Decision**
 
-SQLite を `Microsoft.Data.Sqlite` から利用する。
+写真原本とは別に、検索用metadata、tag、favorite、PDQ、Polaris visitをSQLiteへ保存する。
 
-**Rationale**
+**Current reasons**
 
-- 単一ファイルでバックアップしやすい
-- WAL により読み書き並行性を確保できる
-- 写真本体を DB に入れず、メタデータだけを保持する要件に合う
+- 全データが単一Windows userのローカル状態であり、server DBを必要としない。
+- WALによりbackground scan/writeとgallery readを共存させられる。
+- transactionでmulti-table tag操作、batch upsert、folder resetの整合性を守れる。
 
-**Alternatives Considered**
+DBは写真原本のbackupではない。原本を削除せず、scanで再構築可能なindexとして扱う。詳細は [Database Schema](database.md) を参照する。
 
-| Option | Rejected Reason |
-| --- | --- |
-| JSON ファイル | 検索・タグ関連・インデックスに向かない |
-| LiteDB | SQLite の検証済み運用とツール互換を優先 |
-
-**Consequences**
-
-- (+) 外部サーバなしで検索可能なデータを保持できる
-- (-) スキーマ変更は防御的マイグレーションで管理する必要がある
-
-### ADR-004 Imaging: Windows Imaging + custom PDQ
-
-- **Status**: Accepted
-- **Date**: 2026-04
-
-**Context**
-
-サムネイル生成、画像サイズ取得、PDQ ハッシュ計算をローカルで行う必要がある。
+### ADR-004: Custom PDQ Pipeline
 
 **Decision**
 
-Windows imaging APIs と C# 実装の PDQ を使う。
+repository内のPDQ実装で、各写真の0°、90°、180°、270° hashを計算する。保存値と比較値は32 byte / 256 bitを4つまで持つ。
 
-**Rationale**
+**Current implementation choices**
 
-- Windows 画像デコーダを利用できる
-- PDQ をアプリ内で完結できる
-- サムネイルキャッシュと解析結果を DB に分離して保持できる
+- DCT matrixをcacheする。
+- 一時bufferはpoolして大量解析時のallocationを抑える。
+- comparisonでは64 bit整数4個のpacked hashとpopcountを使う。
+- 保存経路では品質値を必要としないため、4方向hashだけを計算する。
+- PDQ workerは30写真を1 chunk、CPUの半分を基準に最大8並列、2 waveを1 batchとして処理する。
+- World Resolveのcandidate rankingは候補を先にparseし、大規模集合では最大12並列を使う。
 
-**Alternatives Considered**
+PDQの現行用途はワールド名補完候補である。一般的なduplicate cleanup UIは提供しない。
 
-| Option | Rejected Reason |
-| --- | --- |
-| 外部画像処理 CLI | 配布物と失敗要因が増える |
-| サーバ側解析 | ローカル完結要件に反する |
-
-**Consequences**
-
-- (+) 画像解析をオフラインで実行できる
-- (-) PDQ 実装の正しさをテストで保つ必要がある
-
-### ADR-005 Styling: XAML Resource Dictionaries
-
-- **Status**: Accepted
-- **Date**: 2026-04
-
-**Context**
-
-WinUI 3 の画面全体で色、余白、コントロールスタイルを統一する必要がある。
+### ADR-005: XAML Resource Dictionaries
 
 **Decision**
 
-`Themes/` 配下の XAML Resource Dictionary を採用する。
+視覚tokenとstyleは次の順でapplication resourcesへmergeする。
 
-**Rationale**
+1. `Themes/Tokens.xaml`
+2. `Themes/Brushes.xaml`
+3. `Themes/Typography.xaml`
+4. `Themes/Buttons.xaml`
+5. `Themes/Containers.xaml`
 
-- XAML の標準的なスタイル解決に乗せられる
-- テーマ切替を WinUI の resource 解決で扱える
+feature固有のlayoutとvisual stateはfeature XAML/code-behindに置き、複数画面で本当に共通のcontrolだけを `Shared/Controls` に置く。Light/Darkはtheme resourceで切り替え、利用者の選択を `setting.json` に保存する。
 
-**Alternatives Considered**
+`XamlControlsResources` は `App.xaml` の初期load中ではなく、`App.OnLaunched` で最初のWindow/Page XAMLより前に挿入する。これはself-contained unpackaged hostのresource resolution契約である。
 
-| Option | Rejected Reason |
-| --- | --- |
-| コントロールごとの inline style | 再利用性と一貫性が落ちる |
-| 独自 CSS 風テーマ | WinUI の仕組みと重複する |
-
-**Consequences**
-
-- (+) 画面間のスタイルを共通化できる
-- (-) Resource 名の変更は XAML 全体に影響する
-
-### ADR-006 Installer: NSIS unpackaged current-user install
-
-- **Status**: Accepted
-- **Date**: 2026-04
-
-**Context**
-
-管理者権限なしで配布し、データを `Data/` 配下にまとめる必要がある。
+### ADR-006: Enter-submit Search
 
 **Decision**
 
-NSIS による current-user install を採用し、WinUI 3 は unpackaged self-contained で配布する。
+headerのworld searchはplain textと候補表示だけを持ち、Enterで確定する。
 
-**Rationale**
+入力中のqueryを即時DB検索へ流さず、`SearchQuery` と確定済み `DebouncedQuery` を分ける。command paletteや特別なprefix parserは持たない。
 
-- `%LOCALAPPDATA%` 配下へ管理者権限なしでインストールできる
-- installer でレジストリ、ショートカット、アンインストールを制御できる
-- MSIX 固有の制約を避けられる
+### ADR-007: Confirmed World Resolution
 
-**Alternatives Considered**
+**Decision**
 
-| Option | Rejected Reason |
+Polaris archiveによる時間区間補完はpost-scanで自動適用する。PDQ候補はWorld Resolve画面で利用者が確認した項目だけを適用する。
+
+- 同じ source slot の既知写真だけを候補にする。
+- distance 75以下、表示一致率71%以上だけを自動候補として見せる。
+- 候補外は手動world name入力を許可する。
+- 確定済み候補は `phash_confirmed`、手入力は `manual` として由来を保持する。
+
+### ADR-008: Bounded Background Work
+
+**Decision**
+
+写真数に比例して無制限なtaskを作らず、normal useのUI応答性とmemoryを守る範囲で固定上限を使う。
+
+| Work | Bound |
 | --- | --- |
-| MSIX | 配布とランタイム制約が増える |
-| zip 配布 | レジストリとアンインストール情報を管理しづらい |
+| Scan image analysis | 1〜4 parallel、500-row DB batch、100 ms progress interval |
+| PDQ analysis | 1〜8 parallel chunks、30 rows/chunk、2 waves/batch |
+| World candidate search | 最大12 parallel、125 ms progress interval |
+| Thumbnail generation | shared workers 2本 |
+| Logger queue | 512 lines、message 8000 chars、file 1 MiB + `.1` |
 
-**Consequences**
+画面やfolderを切り替える処理は、cancellation tokenだけでなく、実行中taskの完了待ちとgeneration guardも使う。これによりstale UI update、削除後cacheの再作成、旧folderへの遅延DB writeを防ぐ。
 
-- (+) launcher と WinUI 本体の配置先をレジストリで共有できる
-- (+) 更新または再インストール時に既存の `Data` を保持できる
-- (-) アンインストールでは管理対象の `Data` も削除するため、必要に応じて事前バックアップが必要になる
-- (-) コード署名なしでは SmartScreen 警告が出る場合がある
+## Build and Packaging Contract
 
----
+### Debug
 
-## Rejected Technologies
+`Program.Main` が `WinRT.ComWrappersSupport.InitializeComWrappers()` を呼び、Windows App SDK bootstrap `1.6` を明示初期化する。Debugはsystem-installed Windows App Runtimeを使う。Release用reg-free初期化と同時に有効化しない。
 
-| Technology | Reason |
-| --- | --- |
-| Tauri + React | 旧実装でメモリ問題があり、画像ギャラリー用途では WinUI 3 に寄せる判断となった |
-| Electron | 配布サイズとメモリ使用量が要件に合わない |
-| JSON-only storage | タグ、検索、ワールド解決履歴に対する検索性能と整合性が不足する |
+```powershell
+dotnet build app/Alpheratz.Frontend.csproj
+dotnet run --project app/Alpheratz.Frontend.csproj
+```
+
+### Release Frontend
+
+Release project設定は次を有効にする。
+
+- `SelfContained=true`
+- `WindowsAppSDKSelfContained=true`
+- `WindowsAppSdkUndockedRegFreeWinRTInitialize=true`
+- `InvariantGlobalization=true`
+- `RuntimeIdentifier=win-x64`
+
+通常の `dotnet publish` だけではこのunpackaged WinUI appに必要なXBF layoutが完成しない。`BuildWorks/scripts/publish-app-release.ps1` は次を追加する。
+
+1. build objの全 `*.xbf` を相対pathを保ってpublish rootへcopyする。
+2. older generated URIとの互換用に `Alpheratz.Frontend/` 以下にもmirrorする。
+3. `Microsoft.UI.Xaml.Controls.pri` をroot `resources.pri` としてcopyする。
+4. root `App.xbf`, `MainWindow.xbf`, `resources.pri` の存在を検証する。
+
+XBF source pathは現在のRelease build layoutに依存するため、package scriptとproject output pathを別々に変更しない。
+
+### Launcher and Installer
+
+launcherはself-contained、single-fileのWindows Forms `WinExe`。installerは次を行う。
+
+- `$INSTDIR\app` にfrontend publishを配置する。
+- `$INSTDIR` にlauncherとuninstallerを配置する。
+- `$INSTDIR\Data` を作成する。
+- 同梱したMicrosoft Visual C++ Redistributableのversionをmachine-wide registryと比較し、不足時はappを置換する前に導入する。
+- HKCUへ`InstallLocation`と`RuntimeLocation`を保存する。
+- Start Menu shortcutを作成し、finish pageで任意のDesktop shortcutを作成する。
+- update時はapp binariesだけを入れ替え、Dataを保持する。
+- uninstall時はapp、shortcuts、Data、Run key、製品registry keyを削除する。
+
+App本体はcurrent-user installで、Program Files配下はinstaller validationで拒否する。Microsoft Visual C++ Redistributableの導入または更新時だけUAC承認が必要である。Release build全体の入口は次だけである。
+
+```powershell
+.\BuildWorks\scripts\build-release.ps1
+```
+
+## Verification
+
+### Source and Tests
+
+```powershell
+dotnet test tests/Alpheratz.Tests/Alpheratz.Tests.csproj
+```
+
+coverageを取得する場合は `tests/coverlet.runsettings` または生成物だけを除外する `tests/coverlet.generated-only.runsettings` を使う。coverage除外fileと理由は `CoveragePolicyTests` のallowlistで固定する。
+
+### Release Artifact
+
+Release/XAML変更では少なくとも次を確認する。
+
+1. `build-release.ps1` が成功する。
+2. `BuildWorks/runtime/vc_redist.x64.exe`にMicrosoftの有効なAuthenticode署名がある。
+3. publish rootに `App.xbf`, `MainWindow.xbf`, `resources.pri` がある。
+4. NSIS installerからcurrent-user installできる。
+5. launcher経由でfrontendが起動し、splashからShellへ遷移する。
+6. install後のApplication event logに新しいstartup crashがない。
+
+詳細な障害原因と変更禁止点はagent専用の `.claude/xaml-packaging-notes.md` に置き、公開文書には現行契約だけを記載する。
+
+## Current Distribution Constraints
+
+- x64のみ。
+- code signingなし。
+- MSIX packageなし。
+- frontendとlauncherはself-containedのため配布サイズが増える。

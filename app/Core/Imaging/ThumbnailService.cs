@@ -81,6 +81,50 @@ public sealed class ThumbnailService
     }
 
     /// <summary>
+    /// 指定写真から生成されたサムネイルをすべて削除する。
+    /// 呼び出し側は先に ThumbnailWorker の処理を停止し、生成中ファイルとの競合を避ける。
+    /// キャッシュ削除の失敗は元写真の削除結果へ影響させず、警告だけを記録する。
+    /// </summary>
+    public int DeleteCachedThumbnails(string photoPath, long sourceSlot)
+    {
+        try
+        {
+            var imgCacheDir = AppPaths.GetImgCacheDir(sourceSlot);
+            if (imgCacheDir is null || !Directory.Exists(imgCacheDir))
+                return 0;
+
+            var nativePhotoPath = photoPath.Replace('/', Path.DirectorySeparatorChar);
+            var filename = Path.GetFileName(nativePhotoPath);
+            if (string.IsNullOrWhiteSpace(filename))
+                return 0;
+
+            var cachePrefix = $"{filename}.{BuildCacheKey(photoPath)}.thumb.";
+            var deleted = 0;
+            foreach (var cachePath in Directory.EnumerateFiles(imgCacheDir, $"{cachePrefix}*", SearchOption.TopDirectoryOnly))
+            {
+                if (!Path.GetFileName(cachePath).StartsWith(cachePrefix, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                try
+                {
+                    File.Delete(cachePath);
+                    deleted++;
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Warn($"ThumbnailService.DeleteCachedThumbnails: failed path={cachePath}: {ex.Message}");
+                }
+            }
+            return deleted;
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Warn($"ThumbnailService.DeleteCachedThumbnails: threw path={photoPath}: {ex.Message}");
+            return 0;
+        }
+    }
+
+    /// <summary>
     /// キャッシュ存在チェック → 必要なら一時ファイルへ生成 → 最終ファイルを置換、を per-path セマフォの排他下で行う。
     /// 並列で同一パスのサムネイルを生成しようとすると File.Create が衝突するため、
     /// パス単位の SemaphoreSlim で 1 つに絞る。別パスは並列のまま。

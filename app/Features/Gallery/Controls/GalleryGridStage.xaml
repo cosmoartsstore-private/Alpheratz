@@ -22,18 +22,18 @@
                                                 HorizontalAlignment="Stretch" Visibility="Collapsed"/>
             <shared:EmptyState x:Name="EmptyStateControl" Visibility="Collapsed"/>
 
-            <!-- 半透明のレイヤーで写真一覧を覆い、読み込み中であることを示す。 -->
+            <!-- 上端の直線バーと状態文言で、写真一覧の読み込み中であることを示す。 -->
             <Grid x:Name="LoadingVeil" Visibility="Collapsed"
                   Background="{ThemeResource ASurfaceVeil}"
                   IsHitTestVisible="False">
-                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
-                    <ProgressRing Width="36" Height="36" IsActive="True"
-                                  Foreground="{ThemeResource APrimary}"/>
-                    <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('GalleryGridStage.loadingPhotos')}"
-                               Style="{StaticResource CaptionTextStyle}"
-                               Foreground="{ThemeResource ATextDim}"
-                               HorizontalAlignment="Center"/>
-                </StackPanel>
+                <shared:WaveProgressBar Height="3"
+                                        VerticalAlignment="Top"
+                                        IsIndeterminate="True"/>
+                <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('GalleryGridStage.loadingPhotos')}"
+                           Style="{StaticResource CaptionTextStyle}"
+                           Foreground="{ThemeResource ATextDim}"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"/>
             </Grid>
         </Grid>
 

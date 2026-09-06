@@ -12,6 +12,118 @@
     <Page.Resources>
         <converters:ThumbnailSourceConverter x:Key="ThumbConverter" DecodePixelWidth="120"/>
         <converters:ThumbnailSourceConverter x:Key="PickerThumbConverter" DecodePixelWidth="160"/>
+        <converters:MatchPercentConverter x:Key="MatchPercentConverter"/>
+
+        <Style x:Key="PreviewImageButtonStyle"
+               TargetType="Button"
+               BasedOn="{StaticResource GhostButtonStyle}">
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="CornerRadius" Value="{StaticResource ARadiusSm}"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+        </Style>
+
+        <!-- WinUI の OS アクセント色ではなく、アプリの青系アクセントで適用状態を示す。 -->
+        <Style x:Key="WorldResolveApplyToggleStyle" TargetType="ToggleButton">
+            <Setter Property="MinWidth" Value="64"/>
+            <Setter Property="MinHeight" Value="32"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="CornerRadius" Value="{StaticResource ARadiusMd}"/>
+            <Setter Property="Background" Value="{ThemeResource ASurfaceSoft}"/>
+            <Setter Property="BorderBrush" Value="{ThemeResource ABorder}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="{ThemeResource ATextDim}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="RootBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{TemplateBinding CornerRadius}">
+                            <Grid>
+                                <ContentPresenter x:Name="ContentPresenter"
+                                                  Content="{TemplateBinding Content}"
+                                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                  Foreground="{TemplateBinding Foreground}"
+                                                  Padding="{TemplateBinding Padding}"
+                                                  HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                                <Border x:Name="FocusRing"
+                                        BorderBrush="{ThemeResource APrimary}"
+                                        BorderThickness="1"
+                                        CornerRadius="{TemplateBinding CornerRadius}"
+                                        Visibility="Collapsed"
+                                        IsHitTestVisible="False"/>
+                            </Grid>
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal"/>
+                                    <VisualState x:Name="PointerOver">
+                                        <VisualState.Setters>
+                                            <Setter Target="RootBorder.Background" Value="{ThemeResource ASurfaceHover}"/>
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <VisualState.Setters>
+                                            <Setter Target="RootBorder.Background" Value="{ThemeResource ASurfacePressed}"/>
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled">
+                                        <VisualState.Setters>
+                                            <Setter Target="ContentPresenter.Opacity" Value="0.5"/>
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Checked">
+                                        <VisualState.Setters>
+                                            <Setter Target="RootBorder.Background" Value="{ThemeResource APrimary}"/>
+                                            <Setter Target="RootBorder.BorderBrush" Value="{ThemeResource APrimary}"/>
+                                            <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource ATextOnPrimary}"/>
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="CheckedPointerOver">
+                                        <VisualState.Setters>
+                                            <Setter Target="RootBorder.Background" Value="{ThemeResource APrimaryHover}"/>
+                                            <Setter Target="RootBorder.BorderBrush" Value="{ThemeResource APrimaryHover}"/>
+                                            <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource ATextOnPrimary}"/>
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="CheckedPressed">
+                                        <VisualState.Setters>
+                                            <Setter Target="RootBorder.Background" Value="{ThemeResource APrimaryPressed}"/>
+                                            <Setter Target="RootBorder.BorderBrush" Value="{ThemeResource APrimaryPressed}"/>
+                                            <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource ATextOnPrimary}"/>
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="CheckedDisabled">
+                                        <VisualState.Setters>
+                                            <Setter Target="RootBorder.Background" Value="{ThemeResource APrimarySoft}"/>
+                                            <Setter Target="RootBorder.BorderBrush" Value="{ThemeResource ABorderStrong}"/>
+                                            <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource ATextDim}"/>
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                </VisualStateGroup>
+                                <VisualStateGroup x:Name="FocusStates">
+                                    <VisualState x:Name="Unfocused"/>
+                                    <VisualState x:Name="PointerFocused"/>
+                                    <VisualState x:Name="Focused">
+                                        <VisualState.Setters>
+                                            <Setter Target="FocusRing.Visibility" Value="Visible"/>
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Page.Resources>
 
     <Grid Background="Transparent" Tapped="Backdrop_Tapped">
@@ -48,7 +160,7 @@
                         </StackPanel>
                     </Grid>
 
-                    <!-- 推測結果 -->
+                    <!-- 補完候補 -->
                     <ListView Grid.Row="1" x:Name="ItemsListView"
                               SelectionMode="None" Padding="16,0,16,0">
                         <ListView.ItemContainerStyle>
@@ -73,17 +185,24 @@
 
                                         <!-- ワールド名不明の写真 -->
                                         <StackPanel Grid.Column="0" Spacing="4">
-                                            <Border Height="80" CornerRadius="{StaticResource ARadiusSm}" Background="{ThemeResource ABorder}">
-                                                <Image Source="{x:Bind TargetThumbPath, Mode=OneWay, Converter={StaticResource ThumbConverter}}"
-                                                       Stretch="UniformToFill"/>
-                                            </Border>
+                                            <Button Style="{StaticResource PreviewImageButtonStyle}"
+                                                    Click="OpenImagePreview_Click"
+                                                    Tag="{x:Bind TargetPhotoPath}"
+                                                    AutomationProperties.Name="{x:Bind TargetPhotoFilename}"
+                                                    AutomationProperties.HelpText="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.previewPhotoHelp')}"
+                                                    ToolTipService.ToolTip="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.previewPhotoHelp')}">
+                                                <Border Height="80" CornerRadius="{StaticResource ARadiusSm}" Background="{ThemeResource ABorder}">
+                                                    <Image Source="{x:Bind TargetThumbPath, Mode=OneWay, Converter={StaticResource ThumbConverter}}"
+                                                           Stretch="UniformToFill"/>
+                                                </Border>
+                                            </Button>
                                             <TextBlock Text="{x:Bind TargetPhotoFilename}" FontSize="10"
                                                        Foreground="{ThemeResource ATextFaint}"
                                                        TextTrimming="CharacterEllipsis" MaxLines="1"
                                                        HorizontalAlignment="Center"/>
                                         </StackPanel>
 
-                                        <!-- 推測したワールド -->
+                                        <!-- 補完するワールド -->
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4" Padding="8,0">
                                             <TextBlock Text="→" FontSize="{StaticResource AFontSizeXl}" HorizontalAlignment="Center"
                                                        Foreground="{ThemeResource ATextFaint}"/>
@@ -91,22 +210,27 @@
                                                        FontWeight="SemiBold" Foreground="{ThemeResource AText}"
                                                        TextTrimming="CharacterEllipsis" MaxLines="1"
                                                        HorizontalAlignment="Center"/>
-                                            <Border Padding="8,3" CornerRadius="{StaticResource ARadiusSm}" HorizontalAlignment="Center"
-                                                    Background="{ThemeResource APrimarySoft}">
-                                                <TextBlock FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource APrimary}"
-                                                           HorizontalAlignment="Center">
-                                                    <Run Text="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.imageDifferenceLabel')}"/>
-                                                    <Run Text="{x:Bind MatchDistance, Mode=OneWay}"/>
-                                                </TextBlock>
-                                            </Border>
+                                            <TextBlock Text="{x:Bind MatchDistance, Mode=OneWay, Converter={StaticResource MatchPercentConverter}}"
+                                                       FontSize="{StaticResource AFontSizeXs}"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{ThemeResource ATextDim}"
+                                                       HorizontalAlignment="Center"/>
                                         </StackPanel>
 
                                         <!-- 比較元の写真と候補選択 -->
                                         <StackPanel Grid.Column="2" Spacing="4">
-                                            <Border Height="80" CornerRadius="{StaticResource ARadiusSm}" Background="{ThemeResource ABorder}">
-                                                <Image Source="{x:Bind MatchThumbPath, Mode=OneWay, Converter={StaticResource ThumbConverter}}"
-                                                       Stretch="UniformToFill"/>
-                                            </Border>
+                                            <Button Style="{StaticResource PreviewImageButtonStyle}"
+                                                    Click="OpenImagePreview_Click"
+                                                    Tag="{x:Bind MatchPhotoPath, Mode=OneWay}"
+                                                    IsEnabled="{x:Bind HasMatchPhoto, Mode=OneWay}"
+                                                    AutomationProperties.Name="{x:Bind MatchPhotoFilename, Mode=OneWay}"
+                                                    AutomationProperties.HelpText="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.previewPhotoHelp')}"
+                                                    ToolTipService.ToolTip="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.previewPhotoHelp')}">
+                                                <Border Height="80" CornerRadius="{StaticResource ARadiusSm}" Background="{ThemeResource ABorder}">
+                                                    <Image Source="{x:Bind MatchThumbPath, Mode=OneWay, Converter={StaticResource ThumbConverter}}"
+                                                           Stretch="UniformToFill"/>
+                                                </Border>
+                                            </Button>
                                             <HyperlinkButton Content="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.chooseAnotherCandidate')}" FontSize="10" Padding="0"
                                                              HorizontalAlignment="Center"
                                                              Click="OpenCandidatePicker_Click"
@@ -115,9 +239,10 @@
 
                                         <!-- 適用対象の切替 -->
                                         <ToggleButton Grid.Column="3" VerticalAlignment="Center"
+                                                      Style="{StaticResource WorldResolveApplyToggleStyle}"
                                                       IsChecked="{x:Bind IsApplied, Mode=OneWay}"
-                                                      Click="ToggleApply_Click" Tag="{x:Bind}"
-                                                      MinWidth="64" MinHeight="32">
+                                                      IsEnabled="{x:Bind CanApply, Mode=OneWay}"
+                                                      Click="ToggleApply_Click" Tag="{x:Bind}">
                                             <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('common.apply')}" FontSize="{StaticResource AFontSizeSm}"/>
                                         </ToggleButton>
                                     </Grid>
@@ -149,20 +274,20 @@
                                 Click="Close_Click"/>
                     </Grid>
 
-                    <!-- 推測処理中 -->
+                    <!-- 補完候補の検索中 -->
                     <Grid Grid.RowSpan="3" x:Name="LoadingOverlay"
                           Background="{ThemeResource ASurface}" Visibility="Collapsed">
-                        <StackPanel Width="360" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
-                            <ProgressRing IsActive="True" Width="40" Height="40" Foreground="{ThemeResource APrimary}"/>
+                        <StackPanel Width="380" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="10">
                             <TextBlock x:Name="LoadingProgressTitle"
                                        Text="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.searchingCandidates')}"
-                                       FontSize="{StaticResource AFontSizeMd}"
+                                       FontSize="{StaticResource AFontSizeLg}"
                                        FontWeight="SemiBold"
                                        Foreground="{ThemeResource AText}"
                                        HorizontalAlignment="Center"/>
                             <shared:WaveProgressBar x:Name="LoadingProgressBar"
                                                     Minimum="0"
-                                                    Height="8"/>
+                                                    Height="4"
+                                                    Margin="0,4,0,0"/>
                             <TextBlock x:Name="LoadingProgressText"
                                        FontSize="{StaticResource AFontSizeSm}"
                                        Foreground="{ThemeResource ATextFaint}"
@@ -176,6 +301,7 @@
                 <Grid x:Name="CandidatePickerView" Visibility="Collapsed" Background="{ThemeResource ASurface}">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
@@ -188,10 +314,19 @@
                         </Grid.ColumnDefinitions>
                         <Button Content="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.backButton')}" Style="{StaticResource GhostButtonStyle}"
                                 Click="BackFromPicker_Click" VerticalAlignment="Center"/>
-                        <Border Grid.Column="1" Width="80" Height="60" CornerRadius="{StaticResource ARadiusSm}"
-                                Background="{ThemeResource ABorder}" Margin="16,0,16,0">
-                            <Image x:Name="PickerTargetImage" Stretch="UniformToFill"/>
-                        </Border>
+                        <Button x:Name="PickerTargetPreviewButton"
+                                Grid.Column="1"
+                                Style="{StaticResource PreviewImageButtonStyle}"
+                                Margin="16,0,16,0"
+                                Click="OpenImagePreview_Click"
+                                AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.previewTargetPhotoAutomation')}"
+                                AutomationProperties.HelpText="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.previewPhotoHelp')}"
+                                ToolTipService.ToolTip="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.previewPhotoHelp')}">
+                            <Border Width="80" Height="60" CornerRadius="{StaticResource ARadiusSm}"
+                                    Background="{ThemeResource ABorder}">
+                                <Image x:Name="PickerTargetImage" Stretch="UniformToFill"/>
+                            </Border>
+                        </Button>
                         <StackPanel Grid.Column="2" VerticalAlignment="Center">
                             <TextBlock x:Name="PickerTargetFilename" FontSize="{StaticResource AFontSizeMd}" FontWeight="SemiBold"
                                        Foreground="{ThemeResource AText}" TextTrimming="CharacterEllipsis"/>
@@ -200,8 +335,45 @@
                         </StackPanel>
                     </Grid>
 
+                    <!-- 候補にないワールド名の手動入力 -->
+                    <Border Grid.Row="1"
+                            Margin="28,0,28,16"
+                            Padding="14"
+                            CornerRadius="{StaticResource ARadiusLg}"
+                            Background="{ThemeResource ASurfaceSoft}"
+                            BorderBrush="{ThemeResource ABorder}"
+                            BorderThickness="1">
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Width="180" VerticalAlignment="Center">
+                                <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.manualCompletionHeading')}"
+                                           FontSize="{StaticResource AFontSizeMd}"
+                                           FontWeight="SemiBold"
+                                           Foreground="{ThemeResource AText}"/>
+                                <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.manualCompletionDescription')}"
+                                           FontSize="{StaticResource AFontSizeXs}"
+                                           Foreground="{ThemeResource ATextFaint}"
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <TextBox x:Name="ManualWorldNameBox"
+                                     Grid.Column="1"
+                                     PlaceholderText="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.manualWorldNamePlaceholder')}"
+                                     TextChanged="ManualWorldName_TextChanged"/>
+                            <Button x:Name="UseManualWorldNameButton"
+                                    Grid.Column="2"
+                                    Content="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.useManualWorldName')}"
+                                    Style="{StaticResource PrimaryButtonStyle}"
+                                    IsEnabled="False"
+                                    Click="UseManualWorldName_Click"/>
+                        </Grid>
+                    </Border>
+
                     <!-- 候補一覧 -->
-                    <ListView Grid.Row="1" x:Name="CandidateListView"
+                    <ListView Grid.Row="2" x:Name="CandidateListView"
                               SelectionMode="None" Padding="16,0,16,16">
                         <ListView.ItemContainerStyle>
                             <Style TargetType="ListViewItem">
@@ -238,27 +410,97 @@
                                                        TextTrimming="CharacterEllipsis" MaxLines="1"/>
                                         </StackPanel>
 
-                                        <Border Grid.Column="2" Padding="8,3" CornerRadius="{StaticResource ARadiusSm}"
-                                                Background="{ThemeResource APrimarySoft}" VerticalAlignment="Center">
-                                            <TextBlock FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource APrimary}">
-                                                <Run Text="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.imageDifferenceLabel')}"/>
-                                                <Run Text="{x:Bind Distance}"/>
-                                            </TextBlock>
-                                        </Border>
+                                        <TextBlock Grid.Column="2"
+                                                   Text="{x:Bind Distance, Converter={StaticResource MatchPercentConverter}}"
+                                                   FontSize="{StaticResource AFontSizeXs}"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{ThemeResource ATextDim}"
+                                                   VerticalAlignment="Center"/>
                                     </Grid>
                                 </Border>
                             </DataTemplate>
                         </ListView.ItemTemplate>
                     </ListView>
 
+                    <!-- 71%以上の自動候補がない場合は、手動補完へ明示的に案内する。 -->
+                    <StackPanel Grid.Row="2"
+                                x:Name="CandidateEmptyState"
+                                Visibility="Collapsed"
+                                MaxWidth="520"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Center"
+                                Spacing="6">
+                        <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.noAutomaticCandidates')}"
+                                   FontSize="{StaticResource AFontSizeLg}"
+                                   FontWeight="SemiBold"
+                                   Foreground="{ThemeResource AText}"
+                                   TextAlignment="Center"
+                                   TextWrapping="Wrap"/>
+                        <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.manualCompletionRequired')}"
+                                   FontSize="{StaticResource AFontSizeSm}"
+                                   Foreground="{ThemeResource ATextFaint}"
+                                   TextAlignment="Center"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+
                     <!-- 候補読込中 -->
-                    <Grid Grid.RowSpan="2" x:Name="CandidateLoadingOverlay" Visibility="Collapsed"
+                    <Grid Grid.Row="2" x:Name="CandidateLoadingOverlay" Visibility="Collapsed"
                           Background="{ThemeResource ASurface}">
-                        <ProgressRing IsActive="True" Width="40" Height="40"
-                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <shared:WaveProgressBar Width="240"
+                                                Height="4"
+                                                IsIndeterminate="True"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"/>
                     </Grid>
                 </Grid>
             </Grid>
         </Border>
+
+        <!-- 元写真と比較写真を、画面内で判断できる大きさに表示する。 -->
+        <Grid x:Name="ImagePreviewView"
+              Canvas.ZIndex="20"
+              Visibility="Collapsed"
+              Background="{ThemeResource AOverlay}"
+              Tapped="ImagePreviewBackdrop_Tapped">
+            <Border MaxWidth="1200"
+                    MaxHeight="840"
+                    Margin="48"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    CornerRadius="{StaticResource ARadiusModal}"
+                    Background="{ThemeResource ASurface}"
+                    BorderBrush="{ThemeResource ABorder}"
+                    BorderThickness="1"
+                    Tapped="PreviewContent_Tapped">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Grid Padding="20,16" BorderBrush="{ThemeResource ABorder}" BorderThickness="0,0,0,1">
+                        <TextBlock x:Name="PreviewFilename"
+                                   Margin="0,0,48,0"
+                                   FontSize="{StaticResource AFontSizeMd}"
+                                   FontWeight="SemiBold"
+                                   Foreground="{ThemeResource AText}"
+                                   TextTrimming="CharacterEllipsis"
+                                   VerticalAlignment="Center"/>
+                        <Button x:Name="PreviewCloseButton"
+                                Style="{StaticResource HeaderIconButtonStyle}"
+                                HorizontalAlignment="Right"
+                                Click="CloseImagePreview_Click"
+                                AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('WorldResolvePage.closePreviewAutomation')}">
+                            <shared:AppIcon IconName="close" IconSize="14"/>
+                        </Button>
+                    </Grid>
+                    <Grid Grid.Row="1" Background="{ThemeResource ABg}" Padding="20">
+                        <Image x:Name="PreviewImage"
+                               Stretch="Uniform"
+                               HorizontalAlignment="Stretch"
+                               VerticalAlignment="Stretch"/>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
     </Grid>
 </Page>

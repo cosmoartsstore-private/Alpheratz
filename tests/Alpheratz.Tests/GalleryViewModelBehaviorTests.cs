@@ -178,14 +178,14 @@ public sealed class GalleryViewModelBehaviorTests : IDisposable
         viewModel.photosState.setPhotos([item], autoGenerateThumbnails: false);
 
         await viewModel.addTag("/photo/a.jpg", "   ");
-        await viewModel.addTag("/photo/a.jpg", new string('x', 41));
+        await viewModel.addTag("/photo/a.jpg", new string('x', 26));
         await viewModel.addTag("/photo/a.jpg", "exists");
         await viewModel.addTag("/photo/a.jpg", "EXISTS");
         var tags = await db.GetPhotoTagsAsync("/photo/a.jpg");
 
         Assert.Empty(tags);
         Assert.Equal(["exists"], item.Tags);
-        Assert.Contains(toastService.toasts, toast => toast.Msg.Contains("40文字以内"));
+        Assert.Contains(toastService.toasts, toast => toast.Msg.Contains("25文字以内"));
     }
 
     /// <summary>
@@ -330,11 +330,11 @@ public sealed class GalleryViewModelBehaviorTests : IDisposable
     public async Task BulkAddTag_RejectsInvalidInputAndNoSelection()
     {
         await viewModel.bulkAddTag("   ");
-        await viewModel.bulkAddTag(new string('x', 41));
+        await viewModel.bulkAddTag(new string('x', 26));
         await viewModel.bulkAddTag("valid-but-no-selection");
 
         Assert.Empty(viewModel.selectionState.selectedPhotoRefs);
-        Assert.Contains(toastService.toasts, toast => toast.Msg.Contains("40文字以内"));
+        Assert.Contains(toastService.toasts, toast => toast.Msg.Contains("25文字以内"));
     }
 
     /// <summary>

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -485,18 +486,40 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
 
         if (groupingMode == GroupingMode.world)
         {
-            var groups = photosRef
-                .GroupBy(p => GalleryPhotosStateLogic.BuildWorldGroupKey(p.WorldName))
-                .OrderByDescending(g => g.First().Timestamp)
+            var groupedPhotos = photosRef
+                .GroupBy(p => GalleryPhotosStateLogic.BuildWorldGroupKey(p.WorldName));
+            IEnumerable<IGrouping<string, PhotoThumbnailItem>> orderedGroups;
+            if (filters.sortMode == SortMode.worldAsc)
+            {
+                // DB の world_name 昇順と同様に、未解決を先頭、その後を名前順にする。
+                // ローカルでワールド名を更新した直後も、DB 再読込なしで正しい順序へ戻す。
+                orderedGroups = groupedPhotos
+                    .OrderBy(group => group.Key == GalleryPhotosStateLogic.UnknownWorldGroupKey ? 0 : 1)
+                    .ThenBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(group => group.Key, StringComparer.Ordinal);
+            }
+            else
+            {
+                orderedGroups = groupedPhotos
+                    .OrderByDescending(group => group.First().Timestamp)
+                    .ThenBy(group => group.Key, StringComparer.OrdinalIgnoreCase);
+            }
+
+            var groups = orderedGroups
                 .Select(g =>
                 {
-                    var representative = g.First();
+                    var groupPhotos = filters.sortMode == SortMode.worldAsc
+                        ? g.OrderByDescending(photo => photo.Timestamp)
+                            .ThenBy(photo => photo.PhotoPath, StringComparer.Ordinal)
+                            .ToArray()
+                        : g.ToArray();
+                    var representative = groupPhotos[0];
                     return new PhotoGridItem
                     {
                         Photo = representative,
-                        GroupCount = g.Count(),
+                        GroupCount = groupPhotos.Length,
                         GroupKey = g.Key,
-                        GroupPhotos = g.ToArray(),
+                        GroupPhotos = groupPhotos,
                     };
                 })
                 .ToArray();
@@ -523,7 +546,7 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
     ///   transitionToken が変わっていたら「自分は古い世代」と判断して破棄する。
     ///
     /// フロー：
-    ///   1. transitionToken++ → 全サムネイル生成をキャンセル・完了待ち → IsLoading = true
+    ///   1. transitionToken++ → IsLoading = true → 全サムネイル生成をキャンセル・完了待ち
     ///   2. fetchAllPhotos と loadMonthSummary を Task.WhenAll で並列取得
     ///   3. トークン整合性チェック → photosRef / photos / displayItems を更新
     ///   4. 新しい photoMap でサムネイル生成をキック
@@ -531,6 +554,7 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
     public async Task loadPhotos(int page = 0)
     {
         AppLogger.Trace("GalleryPhotosState.loadPhotos: enter");
+        var loadStartedAt = Stopwatch.GetTimestamp();
         long token;
         ThumbnailSuspension thumbnailSuspension;
         lock (thumbnailGenerationGate)
@@ -543,6 +567,14 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
             token = Interlocked.Increment(ref transitionToken);
             thumbnailSuspension = beginThumbnailSuspensionLocked();
         }
+
+        // 旧サムネイルの停止完了を待つ間も、選択操作へ即座に読み込み状態を返す。
+        await dispatcherService.RunOnUiThread(() =>
+        {
+            if (Volatile.Read(ref transitionToken) == token)
+                IsLoading = true;
+        }).ConfigureAwait(false);
+
         await waitThumbnailSuspension(thumbnailSuspension).ConfigureAwait(false);
         if (Volatile.Read(ref transitionToken) != token || isThumbnailStateDisposed())
         {
@@ -550,19 +582,16 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
             return;
         }
 
-        await dispatcherService.RunOnUiThread(() =>
-        {
-            if (Volatile.Read(ref transitionToken) == token)
-                IsLoading = true;
-        }).ConfigureAwait(false);
-
         try
         {
-            // 月集計と全件取得は独立した SQL なので、同じフィルタ snapshot で並行取得する。
+            // PhotoService が各同期 SQLite 読み取りを worker へ送るため、
+            // 独立した月集計と全件取得を同じフィルタ snapshot で並行取得できる。
             var filterSnapshot = filters;
+            var queryStartedAt = Stopwatch.GetTimestamp();
             var photosTask = fetchAllPhotos(filterSnapshot);
             var monthTask = fetchMonthSummary(filterSnapshot);
             await Task.WhenAll(photosTask, monthTask).ConfigureAwait(false);
+            var queryElapsed = Stopwatch.GetElapsedTime(queryStartedAt);
             var allPhotos = await photosTask.ConfigureAwait(false);
             var nextMonthGroups = await monthTask.ConfigureAwait(false);
             if (Volatile.Read(ref transitionToken) != token)
@@ -573,6 +602,8 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
 
             AppLogger.Trace($"GalleryPhotosState.loadPhotos: fetched {allPhotos.Count} photos, rebuilding UI");
 
+            var uiApplyMilliseconds = 0d;
+            var applied = false;
             await dispatcherService.RunOnUiThread(() =>
             {
                 // 世代確認から UI キュー実行までにも新しい読込が始まり得る。
@@ -580,6 +611,7 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
                 if (Volatile.Read(ref transitionToken) != token)
                     return;
 
+                var uiApplyStartedAt = Stopwatch.GetTimestamp();
                 monthGroups = nextMonthGroups;
                 OnMonthGroupsChanged?.Invoke(nextMonthGroups);
 
@@ -594,7 +626,18 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
                 var photoMap = GalleryPhotosStateLogic.BuildReplacementMap(allPhotos);
                 if (resumeThumbnailGeneration(thumbnailSuspension.Version))
                     kickThumbnailGeneration(photoMap);
+                uiApplyMilliseconds = Stopwatch.GetElapsedTime(uiApplyStartedAt).TotalMilliseconds;
+                applied = true;
             }).ConfigureAwait(false);
+
+            if (applied)
+            {
+                AppLogger.Info(
+                    $"Performance.Gallery.Reload photos={allPhotos.Count} " +
+                    $"world_filters={filterSnapshot.worldFilters.Count} tag_filters={filterSnapshot.tagFilters.Count} " +
+                    $"query_ms={queryElapsed.TotalMilliseconds:F3} ui_apply_ms={uiApplyMilliseconds:F3} " +
+                    $"total_ms={Stopwatch.GetElapsedTime(loadStartedAt).TotalMilliseconds:F3}");
+            }
         }
         catch (Exception err)
         {

@@ -38,13 +38,14 @@ public sealed class SettingsService
             lock (_writeGate)
             {
                 var s = _config.LoadSetting();
+                var startupPreference = _config.GetStartupPreference();
                 dto = new AlpheratzSettingDto
                 {
                     photoFolderPath = s.PhotoFolderPath,
                     secondaryPhotoFolderPath = s.SecondaryPhotoFolderPath,
                     themeMode = s.ThemeMode switch { "dark" => ThemeMode.dark, _ => ThemeMode.light },
                     viewMode = s.ViewMode switch { "gallery" => ViewMode.gallery, _ => ViewMode.standard },
-                    enableStartup = s.EnableStartup,
+                    enableStartup = startupPreference.enabled,
                     openWorldLinkOnPost = s.OpenWorldLinkOnPost,
                     // TweetTemplates はスナップショットコピーを返す（後続の Save が編集中の参照を踏まないように）。
                     tweetTemplates = s.TweetTemplates is null ? null : new System.Collections.Generic.List<string>(s.TweetTemplates),

@@ -26,14 +26,20 @@ public sealed record CandidateEntry(
 ///
 /// 処理手順：
 ///   1. InitializeAsync で「ワールド不明 + phash 持ち」写真を全件取得
-///   2. source_slot ごとに既知写真リスト (knownBySlot キャッシュ) を取り、PDQ 距離で最近隣を割り出す
+///   2. source_slot ごとに固定長へ変換済みの既知写真を保持し、PDQ 距離で最近隣を割り出す
 ///   3. Items に「対象写真 + 推奨ワールド + 距離」を詰めて UI に表示
 ///   4. 利用者が適用対象にした項目を ApplyConfirmedAsync で DB 更新
 /// </summary>
 public partial class WorldResolveViewModel : UiThreadSafeObservableObject
 {
-    private const long SearchProgressUpdateMinIntervalMs = 200;
-    private static int CandidateSearchParallelism => Math.Max(1, Environment.ProcessorCount);
+    private const long SearchProgressUpdateMinIntervalMs = 125;
+    // UI 用に論理 CPU の約20%を残しつつ、固定長整数の距離計算を最大16並列まで利用する。
+    // 20論理CPUの実測では12並列より16並列が速く、19並列では逆に遅くなった。
+    private static int CandidateSearchParallelism
+        => Math.Clamp(
+            Environment.ProcessorCount - Math.Max(1, Environment.ProcessorCount / 5),
+            1,
+            16);
 
     private readonly AlpheratzDb db;
     private readonly ThumbnailWorker thumbnailWorker;
@@ -53,7 +59,7 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
     public UiObservableCollection<WorldResolveItem> Items { get; } = [];
 
     private bool isLoading;
-    /// <summary>初期解析中フラグ。スピナー表示に使う。</summary>
+    /// <summary>初期解析中フラグ。解析オーバーレイと進捗表示に使う。</summary>
     public bool IsLoading { get => isLoading; set => SetProperty(ref isLoading, value); }
 
     private bool isApplying;
@@ -92,13 +98,9 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
     private int candidatePickerGeneration;
 
     /// <summary>
-    /// source_slot ごとの既知写真リストキャッシュ。スロット内の写真は同じ参照集合と
-    /// 比較するため、複数の WorldResolveItem 解析中に DB を何度も叩かないようキャッシュする。
-    /// 本 VM の生存期間中だけ有効（モーダルを閉じれば VM ごと破棄）。
+    /// source_slot ごとに PDQ 文字列を固定長整数へ変換済みにした既知写真候補キャッシュ。
+    /// 元の長いハッシュ文字列は保持せず、照合中の常駐メモリを抑える。
     /// </summary>
-    private Dictionary<long, IReadOnlyList<AlpheratzDb.KnownWorldRow>> knownBySlot = new();
-
-    /// <summary>source_slot ごとに PDQ 文字列をパース済みにした既知写真候補キャッシュ。</summary>
     private Dictionary<long, IReadOnlyList<WorldService.PreparedKnownWorldRow>> preparedKnownBySlot = new();
 
     // ワールド解決に必要な DB、サムネイル生成、通知サービスを受け取る。
@@ -124,6 +126,18 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
 
     private async Task InitializeCoreAsync(CancellationToken ct)
     {
+        var initializationStartedAt = Stopwatch.GetTimestamp();
+        var managedBytesBefore = GC.GetTotalMemory(forceFullCollection: false);
+        var workingSetBefore = Environment.WorkingSet;
+        var unknownQueryMilliseconds = 0d;
+        var knownQueryMilliseconds = 0d;
+        var prepareMilliseconds = 0d;
+        var matchMilliseconds = 0d;
+        var uiApplyMilliseconds = 0d;
+        var unknownCount = 0;
+        var knownCount = 0;
+        var uniqueUnknownCount = 0;
+        var completed = false;
         await dispatcherService.RunOnUiThread(() =>
         {
             SetSearchProgress(0, 0);
@@ -134,44 +148,70 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
             // DB 検索と PDQ 照合の前に UI スレッドを離す。一部の非同期処理は同期完了する場合がある。
             await Task.Run(static () => { }, ct).ConfigureAwait(false);
 
+            var phaseStartedAt = Stopwatch.GetTimestamp();
             var unknowns = await db.GetUnknownWorldPhotosWithPhashAsync(ct).ConfigureAwait(false);
+            unknownQueryMilliseconds = Stopwatch.GetElapsedTime(phaseStartedAt).TotalMilliseconds;
+            unknownCount = unknowns.Count;
             if (unknowns.Count == 0)
             {
+                completed = true;
                 return;
             }
             await UpdateSearchProgressAsync(0, unknowns.Count, ct).ConfigureAwait(false);
 
-            knownBySlot = new Dictionary<long, IReadOnlyList<AlpheratzDb.KnownWorldRow>>();
             preparedKnownBySlot = new Dictionary<long, IReadOnlyList<WorldService.PreparedKnownWorldRow>>();
             foreach (var slot in unknowns.Select(item => item.SourceSlot).Distinct())
             {
+                phaseStartedAt = Stopwatch.GetTimestamp();
                 var knownPhotos = await db.GetKnownWorldPhotosAsync(slot, null, ct).ConfigureAwait(false);
-                knownBySlot[slot] = knownPhotos;
-                preparedKnownBySlot[slot] = WorldService.PrepareKnownWorldRows(knownPhotos);
+                knownQueryMilliseconds += Stopwatch.GetElapsedTime(phaseStartedAt).TotalMilliseconds;
+                knownCount += knownPhotos.Count;
+
+                phaseStartedAt = Stopwatch.GetTimestamp();
+                preparedKnownBySlot[slot] = WorldService.PrepareKnownWorldRows(knownPhotos, ct);
+                prepareMilliseconds += Stopwatch.GetElapsedTime(phaseStartedAt).TotalMilliseconds;
             }
 
             var itemArray = new WorldResolveItem?[unknowns.Count];
+            // 同じ source_slot と PDQ を持つ写真は照合結果も同じになるため、総当たり計算を 1 回にまとめる。
+            var groupedUnknownIndexes = Enumerable.Range(0, unknowns.Count)
+                .GroupBy(index => (unknowns[index].SourceSlot, unknowns[index].Phash))
+                .Select(static group => group.ToArray())
+                .ToArray();
+            uniqueUnknownCount = groupedUnknownIndexes.Length;
             var progressWatch = Stopwatch.StartNew();
             var progressLock = new object();
             var progressUpdates = new ConcurrentBag<Task>();
             var processed = 0;
 
+            var matchStartedAt = Stopwatch.GetTimestamp();
             try
             {
                 await Task.Run(() =>
                 {
-                    Parallel.For(0, unknowns.Count, new ParallelOptions
+                    Parallel.For(0, groupedUnknownIndexes.Length, new ParallelOptions
                     {
                         CancellationToken = ct,
                         MaxDegreeOfParallelism = CandidateSearchParallelism,
-                    }, index =>
+                    }, groupIndex =>
                     {
-                        var unknown = unknowns[index];
-                        var item = new WorldResolveItem(unknown.PhotoPath, unknown.PhotoFilename, unknown.Phash, unknown.SourceSlot);
+                        var unknownIndexes = groupedUnknownIndexes[groupIndex];
+                        var representative = unknowns[unknownIndexes[0]];
+                        (AlpheratzDb.KnownWorldRow Row, int Distance)? match = null;
 
-                        if (preparedKnownBySlot.TryGetValue(unknown.SourceSlot, out var knownPhotos) && knownPhotos.Count > 0)
+                        if (preparedKnownBySlot.TryGetValue(representative.SourceSlot, out var knownPhotos) && knownPhotos.Count > 0)
                         {
-                            var match = WorldService.FindBestMatchWithDetails(unknown.Phash, knownPhotos);
+                            match = WorldService.FindBestMatchWithDetails(representative.Phash, knownPhotos, ct);
+                        }
+
+                        foreach (var unknownIndex in unknownIndexes)
+                        {
+                            var unknown = unknowns[unknownIndex];
+                            var item = new WorldResolveItem(
+                                unknown.PhotoPath,
+                                unknown.PhotoFilename,
+                                unknown.Phash,
+                                unknown.SourceSlot);
                             if (match is not null)
                             {
                                 item.MatchPhotoPath = match.Value.Row.PhotoPath;
@@ -180,10 +220,10 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
                                 item.MatchWorldId = match.Value.Row.WorldId;
                                 item.MatchDistance = match.Value.Distance;
                             }
+                            itemArray[unknownIndex] = item;
                         }
 
-                        itemArray[index] = item;
-                        var current = Interlocked.Increment(ref processed);
+                        var current = Interlocked.Add(ref processed, unknownIndexes.Length);
                         var shouldUpdate = false;
                         lock (progressLock)
                         {
@@ -205,17 +245,26 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
                     try { await Task.WhenAll(progressUpdates).ConfigureAwait(false); }
                     catch (OperationCanceledException) { }
                 }
+                matchMilliseconds = Stopwatch.GetElapsedTime(matchStartedAt).TotalMilliseconds;
             }
 
-            var items = itemArray.Where(static item => item is not null).Cast<WorldResolveItem>().ToList();
+            var items = itemArray
+                .Where(static item => item is not null)
+                .Cast<WorldResolveItem>()
+                .OrderBy(static item => item.MatchDistance ?? int.MaxValue)
+                .ThenBy(static item => item.TargetPhotoFilename, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
             await UpdateSearchProgressAsync(unknowns.Count, unknowns.Count, ct).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
 
             await dispatcherService.RunOnUiThread(() =>
             {
+                var uiApplyStartedAt = Stopwatch.GetTimestamp();
                 Items.ReplaceAll(items);
                 IsLoading = false;
+                uiApplyMilliseconds = Stopwatch.GetElapsedTime(uiApplyStartedAt).TotalMilliseconds;
             }).ConfigureAwait(false);
+            completed = true;
 
             var thumbTargets = new List<(string path, long slot)>();
             foreach (var item in items)
@@ -240,6 +289,15 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
         finally
         {
             await dispatcherService.RunOnUiThread(() => IsLoading = false).ConfigureAwait(false);
+            AppLogger.Info(
+                $"Performance.WorldResolve completed={completed} unknown={unknownCount} " +
+                $"unique_unknown={uniqueUnknownCount} known={knownCount} " +
+                $"unknown_query_ms={unknownQueryMilliseconds:F3} known_query_ms={knownQueryMilliseconds:F3} " +
+                $"prepare_ms={prepareMilliseconds:F3} match_ms={matchMilliseconds:F3} " +
+                $"ui_apply_ms={uiApplyMilliseconds:F3} " +
+                $"total_ms={Stopwatch.GetElapsedTime(initializationStartedAt).TotalMilliseconds:F3} " +
+                $"managed_delta_bytes={GC.GetTotalMemory(forceFullCollection: false) - managedBytesBefore} " +
+                $"working_set_delta_bytes={Environment.WorkingSet - workingSetBefore}");
         }
     }
 
@@ -249,18 +307,32 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
         CancellationToken ct)
     {
         var uiUpdates = new ConcurrentBag<Task>();
+        var itemsByPhotoPath = new Dictionary<string, List<WorldResolveItem>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in items)
+        {
+            AddThumbnailTarget(itemsByPhotoPath, item.TargetPhotoPath, item);
+            if (item.MatchPhotoPath is not null
+                && !string.Equals(item.MatchPhotoPath, item.TargetPhotoPath, StringComparison.OrdinalIgnoreCase))
+            {
+                AddThumbnailTarget(itemsByPhotoPath, item.MatchPhotoPath, item);
+            }
+        }
+        var uniqueTargets = targets
+            .DistinctBy(static target => target.path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
         try
         {
             // ThumbnailWorker は呼出時に全体停止ゲートへ同期登録する。
             // cleanup の登録境界を越えないよう、この呼出しより前に未完了 await を追加しない。
-            await thumbnailWorker.GenerateGridAsync(targets, result =>
+            await thumbnailWorker.GenerateGridAsync(uniqueTargets, result =>
             {
                 if (ct.IsCancellationRequested || IsGenerationStopping())
                     return;
+                if (!itemsByPhotoPath.TryGetValue(result.PhotoPath, out var matchingItems))
+                    return;
 
-                foreach (var item in items.Where(item =>
-                    string.Equals(item.TargetPhotoPath, result.PhotoPath, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(item.MatchPhotoPath, result.PhotoPath, StringComparison.OrdinalIgnoreCase)))
+                foreach (var item in matchingItems)
                 {
                     uiUpdates.Add(dispatcherService.RunOnUiThread(() =>
                     {
@@ -279,6 +351,19 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { AppLogger.Warn($"WorldResolve thumb generation: {ex.Message}"); }
+    }
+
+    private static void AddThumbnailTarget(
+        Dictionary<string, List<WorldResolveItem>> itemsByPhotoPath,
+        string photoPath,
+        WorldResolveItem item)
+    {
+        if (!itemsByPhotoPath.TryGetValue(photoPath, out var matchingItems))
+        {
+            matchingItems = [];
+            itemsByPhotoPath.Add(photoPath, matchingItems);
+        }
+        matchingItems.Add(item);
     }
 
     private static bool ShouldUpdateSearchProgress(int processed, int total, Stopwatch progressWatch)
@@ -310,13 +395,8 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
         if (preparedKnownBySlot.TryGetValue(sourceSlot, out var prepared))
             return prepared;
 
-        if (!knownBySlot.TryGetValue(sourceSlot, out var knownPhotos))
-        {
-            knownPhotos = await db.GetKnownWorldPhotosAsync(sourceSlot, null, ct).ConfigureAwait(false);
-            knownBySlot[sourceSlot] = knownPhotos;
-        }
-
-        prepared = WorldService.PrepareKnownWorldRows(knownPhotos);
+        var knownPhotos = await db.GetKnownWorldPhotosAsync(sourceSlot, null, ct).ConfigureAwait(false);
+        prepared = WorldService.PrepareKnownWorldRows(knownPhotos, ct);
         preparedKnownBySlot[sourceSlot] = prepared;
         return prepared;
     }
@@ -325,6 +405,12 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
     public void ToggleApply(WorldResolveItem item)
     {
         if (IsApplying) return;
+        if (!item.CanApply)
+        {
+            item.IsApplied = false;
+            RecountApply();
+            return;
+        }
         item.IsApplied = !item.IsApplied;
         RecountApply();
     }
@@ -334,7 +420,7 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
     {
         if (IsApplying) return;
         foreach (var item in Items)
-            if (item.HasMatch) item.IsApplied = true;
+            if (item.CanApply) item.IsApplied = true;
         RecountApply();
     }
 
@@ -349,7 +435,7 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
     // Items 内の適用予定件数を数え直し、ボタン表示へ反映する。
     private void RecountApply()
     {
-        ApplyCount = Items.Count(x => x.IsApplied);
+        ApplyCount = Items.Count(x => x.IsApplied && x.CanApply);
     }
 
     /// <summary>
@@ -364,25 +450,31 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
             return 0;
 
         var applied = 0;
-        List<(string PhotoPath, string WorldName, string? WorldId)> updates = [];
+        List<(string PhotoPath, string WorldName, string? WorldId, string MatchSource)> updates = [];
         try
         {
             await dispatcherService.RunOnUiThread(() =>
             {
                 IsApplying = true;
                 updates = Items
-                    .Where(item => item.IsApplied && item.MatchWorldName is not null)
+                    .Where(item => item.IsApplied && item.CanApply && item.MatchWorldName is not null)
                     .Select(item => (
                         PhotoPath: item.TargetPhotoPath,
                         WorldName: item.MatchWorldName!,
-                        WorldId: item.MatchWorldId))
+                        WorldId: item.MatchWorldId,
+                        MatchSource: item.IsManualMatch ? "manual" : "phash_confirmed"))
                     .ToList();
             }).ConfigureAwait(false);
 
             foreach (var update in updates)
             {
                 ct.ThrowIfCancellationRequested();
-                await db.UpdatePhotoWorldAsync(update.PhotoPath, update.WorldName, update.WorldId, "phash_confirmed", ct).ConfigureAwait(false);
+                await db.UpdatePhotoWorldAsync(
+                    update.PhotoPath,
+                    update.WorldName,
+                    update.WorldId,
+                    update.MatchSource,
+                    ct).ConfigureAwait(false);
                 applied++;
             }
         }
@@ -410,7 +502,7 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
 
     /// <summary>
     /// 「別ワールドを選ぶ」ピッカーを開く。
-    /// 既知写真リストを knownBySlot キャッシュから取り、距離順にランク付けして CandidateList に詰める。
+    /// 固定長へ変換済みの既知写真キャッシュから、距離順に CandidateList を組み立てる。
     /// 候補画像は XAML のコンバーターが元写真を表示用サイズで読み込む。
     /// </summary>
     public Task OpenCandidatePickerAsync(WorldResolveItem item, CancellationToken ct = default)
@@ -434,9 +526,22 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
             var ranked = await Task.Run(
                 () => WorldService.RankCandidatesByDistance(item.TargetPhash, knownPhotos, ct),
                 ct).ConfigureAwait(false);
-            var entries = ranked.Select(r => new CandidateEntry(
-                r.Row.PhotoPath, r.Row.PhotoFilename, r.Row.WorldName, r.Row.WorldId,
-                r.Distance, r.Row.SourceSlot)).ToList();
+            var entries = ranked
+                .Where(static result => WorldService.CanAutomaticallyComplete(result.Distance))
+                .GroupBy(
+                    static result => result.Row.WorldName,
+                    StringComparer.CurrentCultureIgnoreCase)
+                .Select(static group => group.First())
+                .OrderBy(static result => result.Distance)
+                .ThenBy(static result => result.Row.WorldName, StringComparer.CurrentCultureIgnoreCase)
+                .Select(result => new CandidateEntry(
+                    result.Row.PhotoPath,
+                    result.Row.PhotoFilename,
+                    result.Row.WorldName,
+                    result.Row.WorldId,
+                    result.Distance,
+                    result.Row.SourceSlot))
+                .ToList();
 
             await dispatcherService.RunOnUiThread(() =>
             {
@@ -481,13 +586,15 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
     /// </summary>
     public void SelectCandidate(CandidateEntry entry, CancellationToken ct = default)
     {
-        if (ActivePickerItem is not { } item) return;
+        if (ActivePickerItem is not { } item
+            || !WorldService.CanAutomaticallyComplete(entry.Distance)) return;
         item.MatchPhotoPath = entry.PhotoPath;
         item.MatchPhotoFilename = entry.PhotoFilename;
         item.MatchWorldName = entry.WorldName;
         item.MatchWorldId = entry.WorldId;
         item.MatchDistance = entry.Distance;
         item.MatchThumbPath = null;
+        item.IsManualMatch = false;
 
         var generation = Interlocked.Increment(ref candidateThumbnailGeneration);
         StartCandidateThumbnailOperation(
@@ -499,6 +606,28 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
             ct);
 
         CloseCandidatePicker();
+    }
+
+    /// <summary>自由入力したワールド名を現在の対象写真の補完候補として設定する。</summary>
+    public bool SelectManualWorldName(string worldName)
+    {
+        if (ActivePickerItem is not { } item)
+            return false;
+
+        var normalized = worldName.Trim();
+        if (normalized.Length == 0)
+            return false;
+
+        Interlocked.Increment(ref candidateThumbnailGeneration);
+        item.MatchPhotoPath = null;
+        item.MatchPhotoFilename = null;
+        item.MatchWorldName = normalized;
+        item.MatchWorldId = null;
+        item.MatchDistance = null;
+        item.MatchThumbPath = null;
+        item.IsManualMatch = true;
+        CloseCandidatePicker();
+        return true;
     }
 
     private async Task GenerateSelectedCandidateThumbnailAsync(
@@ -660,7 +789,6 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
             operation.Source.Dispose();
         generationLifetimeCts.Dispose();
 
-        knownBySlot.Clear();
         preparedKnownBySlot.Clear();
     }
 }

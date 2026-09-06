@@ -1,75 +1,18 @@
 # Database Schema
 
-> Alpheratz のメインデータベース (`Data/db/Alpheratz.db`) のスキーマリファレンス。
-> スキーマ定義の一次情報は `app/Core/Database/AlpheratzDb.cs`。
+この文書は、`app/Core/Database/AlpheratzDb.cs` が初期化する現行 SQLite schema と、その列を実際に使うクエリの契約を記録する。
 
-## Table of Contents
+## Storage
 
-- [Overview](#overview)
-- [Conventions](#conventions)
-- [ER Diagram](#er-diagram)
-- [Tables](#tables)
-  - [photos](#photos)
-  - [tags](#tags)
-  - [photo_tags](#photo_tags)
-  - [archive_world_visits](#archive_world_visits)
-- [Indexes](#indexes)
-- [Initialization and PRAGMA](#initialization-and-pragma)
-- [Transaction Boundaries](#transaction-boundaries)
-- [Migrations](#migrations)
-- [Backup and Restore](#backup-and-restore)
-- [Performance Notes](#performance-notes)
+- DB file: `<install>\Data\db\Alpheratz.db`
+- Settings file: `<install>\Data\db\setting.json`。SQLite の一部ではない。
+- DB paths: `photo_path` は Windows の `\` を `/` へ置き換えて保存する。
+- Date/time: SQLite の date type は使わず、比較可能な ISO 形式の `TEXT` として保存する。
+- Boolean: `INTEGER` の `0 / 1` を使う。
 
----
+テストは constructor へ別の DB path を渡し、利用者のデータ領域へ書き込まない。
 
-## Overview
-
-| Property | Value |
-| --- | --- |
-| Engine | SQLite 3 via `Microsoft.Data.Sqlite` |
-| Journal Mode | WAL |
-| Foreign Keys | Enforced (`PRAGMA foreign_keys = ON`) |
-| Busy Timeout | 5,000 ms |
-| Tables | 4 |
-| Views | 0 |
-| Indexes | 6 (UNIQUE 制約による自動生成を除く) |
-| Schema Definition | `app/Core/Database/AlpheratzDb.cs` |
-
-データベースは写真メタデータ、タグ、写真タグ関連、Polaris archive 由来のワールド訪問履歴で構成される。
-
----
-
-## Conventions
-
-### Naming
-
-| Element | Convention | Example |
-| --- | --- | --- |
-| Table name | snake_case | `archive_world_visits` |
-| Column name | snake_case | `photo_path` |
-| Primary key | 自然キーまたは `id INTEGER PRIMARY KEY AUTOINCREMENT` | `photos.photo_path`, `tags.id` |
-| Timestamp | `TEXT` 型、`YYYY-MM-DD HH:MM:SS` 形式 | `timestamp`, `join_time` |
-| Boolean | `INTEGER` 0/1 | `is_favorite`, `is_missing` |
-
-### Type Mapping
-
-| Declared Type | C# Type | Usage |
-| --- | --- | --- |
-| `TEXT` | `string` / `string?` | パス、ファイル名、時刻、ワールド名 |
-| `INTEGER` | `long` / `long?` / `bool` | ID、画像サイズ、フラグ |
-
-### Idempotency
-
-| Table | Idempotency Mechanism |
-| --- | --- |
-| `photos` | `photo_path PRIMARY KEY` に対する upsert |
-| `tags` | `name UNIQUE` |
-| `photo_tags` | `PRIMARY KEY(photo_path, tag_id)` |
-| `archive_world_visits` | ログ再読込時に対象データを投入し直す |
-
----
-
-## ER Diagram
+## Relationships
 
 ```mermaid
 erDiagram
@@ -82,16 +25,10 @@ erDiagram
         TEXT world_id
         TEXT world_name
         TEXT timestamp
-        TEXT last_modified_utc
         TEXT phash
-        INTEGER phash_version
-        TEXT orientation
-        INTEGER image_width
-        INTEGER image_height
         INTEGER source_slot
         INTEGER is_favorite
         TEXT match_source
-        INTEGER is_missing
     }
 
     tags {
@@ -100,8 +37,8 @@ erDiagram
     }
 
     photo_tags {
-        TEXT photo_path FK
-        INTEGER tag_id FK
+        TEXT photo_path PK,FK
+        INTEGER tag_id PK,FK
     }
 
     archive_world_visits {
@@ -113,179 +50,171 @@ erDiagram
     }
 ```
 
----
+`archive_world_visits` は写真と外部キーで結ばない。撮影時刻を訪問区間へ照合して `photos.world_name` を補完するための再構築可能な作業データである。
 
 ## Tables
 
-### photos
+### `photos`
 
-写真 1 ファイルを 1 行で表す主テーブル。
-
-| Column | Type | Nullable | Default | Description |
+| Column | SQLite type | Null | Default | Meaning |
 | --- | --- | --- | --- | --- |
-| `photo_path` | TEXT | NO | - | 正規化済みファイルパス。主キー |
-| `photo_filename` | TEXT | NO | - | ファイル名 |
-| `world_id` | TEXT | YES | NULL | 画像メタデータから取得したワールド ID |
-| `world_name` | TEXT | YES | NULL | ワールド表示名 |
-| `timestamp` | TEXT | NO | - | 撮影時刻 |
-| `last_modified_utc` | TEXT | YES | NULL | ファイル更新時刻 |
-| `phash` | TEXT | YES | NULL | PDQ ハッシュの hex 文字列 |
-| `phash_version` | INTEGER | YES | `0` | PDQ ハッシュ生成バージョン |
-| `orientation` | TEXT | YES | NULL | 画像向き |
-| `image_width` | INTEGER | YES | NULL | 画像幅 |
-| `image_height` | INTEGER | YES | NULL | 画像高さ |
-| `source_slot` | INTEGER | YES | `1` | 1st / 2nd 写真フォルダの識別 |
-| `is_favorite` | INTEGER | YES | `0` | お気に入りフラグ |
-| `match_source` | TEXT | YES | NULL | ワールド名解決元 |
-| `is_missing` | INTEGER | YES | `0` | 互換用の欠損状態。現行スキャンは列挙完了時に欠損行を削除する |
+| `photo_path` | `TEXT` | No | — | 正規化済み絶対パス。primary key |
+| `photo_filename` | `TEXT` | No | — | 表示用ファイル名 |
+| `world_id` | `TEXT` | Yes | `NULL` | VRChat の `wrld_...` ID |
+| `world_name` | `TEXT` | Yes | `NULL` | ワールド名 |
+| `timestamp` | `TEXT` | No | — | 撮影日時。並べ替えと archive 照合に使用 |
+| `last_modified_utc` | `TEXT` | Yes | `NULL` | 内容変更検出用の更新時刻 |
+| `phash` | `TEXT` | Yes | `NULL` | 64 hex文字×最大4方向を `|` で連結した PDQ |
+| `phash_version` | `INTEGER` | Yes | `0` | 互換用列。現行の PDQ 保存処理は値を更新せず、内容変更時に0へ戻す |
+| `orientation` | `TEXT` | Yes | `NULL` | `landscape`, `portrait`, `unknown`, `unreadable` |
+| `image_width` | `INTEGER` | Yes | `NULL` | pixel width |
+| `image_height` | `INTEGER` | Yes | `NULL` | pixel height |
+| `source_slot` | `INTEGER` | Yes | `1` | `1` または `2` |
+| `is_favorite` | `INTEGER` | Yes | `0` | お気に入り状態 |
+| `match_source` | `TEXT` | Yes | `NULL` | ワールド情報の由来 |
+| `is_missing` | `INTEGER` | Yes | `0` | 互換用の可視性フラグ。現行 scan は欠落行を物理削除するが、すべての一覧 query は0だけを読む |
 
-**Constraints**
+`source_slot`、boolean、`match_source` には DB の `CHECK` constraint を置いていない。現行アプリケーションが有効値を渡す。
 
-- `PRIMARY KEY (photo_path)`
+確認できる `match_source` 値:
 
-### tags
+| Value | Meaning |
+| --- | --- |
+| `metadata` | PNG metadata から取得 |
+| `title` | 既存のワールド情報を保持した scan |
+| `unresolved` | scan 時点でワールドを取得できない |
+| `polaris_archive` | Polaris の訪問区間から補完 |
+| `phash` | サービス API で類似写真からコピー |
+| `phash_confirmed` | World Resolve で候補を利用者が確定 |
+| `manual` | World Resolve でワールド名を手入力 |
 
-タグマスタ。
+未知ワールドの query 条件は次の組合せである。
 
-| Column | Type | Nullable | Default | Description |
+```sql
+(world_name IS NULL OR TRIM(world_name) = '')
+AND world_id IS NULL
+AND is_missing = 0
+```
+
+`UpdatePhotoWorldAsync` へ `worldId = null` を渡した場合は、`COALESCE` により既存の `world_id` を保持する。
+
+### `tags`
+
+| Column | SQLite type | Null | Default | Meaning |
 | --- | --- | --- | --- | --- |
-| `id` | INTEGER | NO | AUTOINCREMENT | 主キー |
-| `name` | TEXT | NO | - | タグ名 |
+| `id` | `INTEGER` | No | auto | primary key |
+| `name` | `TEXT` | No | — | unique tag name |
 
-**Constraints**
+DB の `UNIQUE` は既定 collation に従う。現行 UI と ViewModel は前後空白を除去し、大文字小文字を無視した重複を登録前に拒否する。表示時も大文字小文字を無視して重複排除・昇順整列する。
 
-- `PRIMARY KEY (id)`
-- `UNIQUE (name)`
+### `photo_tags`
 
-### photo_tags
+| Column | SQLite type | Null | Meaning |
+| --- | --- | --- | --- |
+| `photo_path` | `TEXT` | No | `photos.photo_path` への foreign key |
+| `tag_id` | `INTEGER` | No | `tags.id` への foreign key |
 
-写真とタグの多対多テーブル。
+primary key は `(photo_path, tag_id)`。新規 DB では両方の foreign key に `ON DELETE CASCADE` を付ける。
 
-| Column | Type | Nullable | Default | Description |
-| --- | --- | --- | --- | --- |
-| `photo_path` | TEXT | YES | NULL | `photos.photo_path` を参照 |
-| `tag_id` | INTEGER | YES | NULL | `tags.id` を参照 |
+既存 DB へ CASCADE を追加する table rebuild は行わない。そのため、タグマスタ削除と source slot reset は関連行を明示削除し、reset の最後に orphan も削除する。
 
-**Constraints**
+### `archive_world_visits`
 
-- `PRIMARY KEY (photo_path, tag_id)`
-- 新規 DB では `photos` / `tags` への `ON DELETE CASCADE` を付与する。
+| Column | SQLite type | Null | Meaning |
+| --- | --- | --- | --- |
+| `id` | `INTEGER` | No | auto increment primary key |
+| `source_log_name` | `TEXT` | No | 元の `output_log_*.txt` |
+| `world_name` | `TEXT` | No | `Entering Room` から取得した名前 |
+| `join_time` | `TEXT` | No | 入室時刻 |
+| `leave_time` | `TEXT` | Yes | 退室時刻。ログ末尾で未退室なら null |
 
-**Notes**
-
-- 既存 DB の `photo_tags` は SQLite の制約上、外部キーへ CASCADE を後付けしない。キャッシュリセット時に孤児行削除を併用する。
-
-### archive_world_visits
-
-Polaris archive の VRChat ログから読み取ったワールド訪問履歴。
-
-| Column | Type | Nullable | Default | Description |
-| --- | --- | --- | --- | --- |
-| `id` | INTEGER | NO | AUTOINCREMENT | 主キー |
-| `source_log_name` | TEXT | NO | - | 元ログファイル名 |
-| `world_name` | TEXT | NO | - | 入室したワールド名 |
-| `join_time` | TEXT | NO | - | 入室時刻 |
-| `leave_time` | TEXT | YES | NULL | 退室時刻。確定できない場合は NULL |
-
----
+archive を読み込むたびに、全行を1 transaction内で `DELETE` してから200行単位で再挿入する。撮影時刻に対する検索は `join_time <= timestamp` かつ `leave_time IS NULL OR leave_time >= timestamp` を満たす最新の訪問を1件返す。
 
 ## Indexes
 
-| Index | Table | Columns | Purpose |
-| --- | --- | --- | --- |
-| `idx_photos_timestamp` | `photos` | `timestamp` | 日付フィルタ、月別表示 |
-| `idx_photos_world_name` | `photos` | `world_name` | ワールド検索 |
-| `idx_photos_is_favorite` | `photos` | `is_favorite` | お気に入り抽出 |
-| `idx_photos_is_missing` | `photos` | `is_missing` | 欠損ファイル抽出 |
-| `idx_archive_world_visits_join_time` | `archive_world_visits` | `join_time` | 撮影時刻からの訪問履歴照合 |
-| `idx_archive_world_visits_source_log_name` | `archive_world_visits` | `source_log_name` | ログ単位の参照 |
-
----
-
-## Initialization and PRAGMA
-
-`AlpheratzDb.Initialize` が起動時に `EnsureSchema` を呼び出す。接続作成時は毎回以下の PRAGMA を設定する。
-
-### Active PRAGMAs
-
-| PRAGMA | Value | Reason |
+| Index | Columns | Used for |
 | --- | --- | --- |
-| `journal_mode` | `WAL` | スキャン書き込み中の UI 読み取りを阻害しにくくする |
-| `synchronous` | `NORMAL` | WAL と組み合わせて書き込み性能を確保する |
-| `foreign_keys` | `ON` | 新規 DB の `photo_tags` CASCADE を有効化する |
-| `busy_timeout` | `5000` | 一時的なロック競合を 5 秒まで待機する |
+| `idx_photos_timestamp` | `photos(timestamp)` | 撮影日時の範囲と並べ替え |
+| `idx_photos_world_name` | `photos(world_name)` | ワールド検索・集計 |
+| `idx_photos_is_favorite` | `photos(is_favorite)` | お気に入り絞り込み |
+| `idx_photos_is_missing` | `photos(is_missing)` | 可視行の共通条件 |
+| `idx_archive_world_visits_join_time` | `archive_world_visits(join_time)` | 撮影時刻の訪問区間検索 |
+| `idx_archive_world_visits_source_log_name` | `archive_world_visits(source_log_name)` | 元ログ単位の参照 |
 
----
+`photo_tags` は複合 primary key、`tags.name` は unique indexを利用する。
 
-## Transaction Boundaries
+## Connection Configuration
 
-| Operation | Boundary |
+接続を開くたびに次を設定する。
+
+```sql
+PRAGMA journal_mode = WAL;
+PRAGMA synchronous = NORMAL;
+PRAGMA foreign_keys = ON;
+PRAGMA busy_timeout = 5000;
+```
+
+- WAL は gallery read と background write の共存を可能にする。
+- `synchronous=NORMAL` はローカル写真インデックスの write cost を抑える。
+- foreign key は接続単位で有効化する。
+- `busy_timeout=5000` は短い write overlap を即時エラーにしない。
+
+接続 object は操作ごとに破棄し、`Microsoft.Data.Sqlite` の connection pooling に物理接続の再利用を任せる。
+
+## Query Semantics
+
+写真一覧の共通条件は `photos.is_missing = 0`。値は parameter bind し、可変条件だけ SQL fragment を組み立てる。
+
+- `WorldQuery`: `LIKE '%value%'`
+- `WorldExacts`: `TRIM(world_name) = value` の OR。不明値は null・空・空白をまとめる。
+- `TagFilters`: tagごとに `EXISTS` を追加するため、指定した全タグを持つ写真だけが一致する。
+- Date: start は `>=`、end は指定日を含む end timestamp へ正規化して `<=`。
+- Sort `dateDesc`: `timestamp DESC, photo_path ASC`
+- Sort `worldAsc`: `world_name COLLATE NOCASE ASC, timestamp DESC, photo_path ASC`
+
+写真ページでは、count、page本体、返却写真のtag一括取得を同じ deferred read transactionで行い、scan writeが途中に入って total と items がずれないようにする。`IncludePhash=false` では `phash` を `NULL` として射影し、通常 gallery へ大きな文字列を転送しない。
+
+## Write Transactions
+
+| Operation | Transaction boundary |
 | --- | --- |
-| Gallery page read | 件数、ページ本体、対象写真のタグを 1 つの deferred read transaction で読み、同じ WAL snapshot に固定する |
-| Photo scan upsert | スキャン結果をバッチ単位で upsert する |
-| Missing photo cleanup | 対象写真の `photo_tags` と `photos` を同じ transaction で削除する。フォルダを最後まで列挙できない場合は実行しない |
-| Tag update | タグ追加と関連追加、またはタグ関連とタグマスタの削除をそれぞれ原子的に行う |
-| Archive / PDQ update | ワールド訪問履歴の入れ替えと PDQ ハッシュのバッチ更新をそれぞれ transaction 内で行う |
-| Slot cache reset | 対象スロットの `photo_tags`、`photos`、孤児関連を transaction で削除し、commit 後に対応する `imgCache` を初期化する |
+| Scan upsert | 最大500写真を1 transaction |
+| Missing photo delete | `photo_tags` と `photos` を最大500 pathずつ、全体を1 transaction |
+| Add multiple tags | tag master追加と1写真への関連付けを1 transaction |
+| Delete tag master | 関連 `photo_tags` と `tags` を1 transaction |
+| Bulk favorite / tag | service側で写真ごとの結果を保持し、DB helperは対象単位で更新 |
+| PDQ update | 30写真を1 transaction |
+| Archive visits | 全置換を1 transaction、insertは200行 chunk |
+| Source slot reset | slotの関連行と写真行を1 transaction。cache削除はcommit後 |
 
-物理キャッシュの削除は DB transaction の対象外である。削除に失敗しても DB を巻き戻さず警告を記録し、キャッシュは以後の表示要求で再生成する。
+source slot reset で cache の削除だけが失敗した場合、DB reset は取り消さない。cache は再生成可能であり、次の gallery load と scan を妨げないためである。
 
----
+## Initialization and Compatibility
 
-## Migrations
+`Initialize()` は idempotent に table と index を作成する。`photos` の次の列がない既存 DB には `ALTER TABLE ... ADD COLUMN` を実行する。
 
-`EnsureSchema` は `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` と列存在確認による `ALTER TABLE ADD COLUMN` で構成される。
+- `orientation`
+- `image_width`
+- `image_height`
+- `source_slot`
+- `is_favorite`
+- `match_source`
+- `is_missing`
+- `phash_version`
+- `last_modified_utc`
 
-| Operation | Purpose |
-| --- | --- |
-| `CREATE TABLE IF NOT EXISTS` | 現行テーブル群を作成 |
-| `CREATE INDEX IF NOT EXISTS` | 検索用インデックスを作成 |
-| `AddColumnIfMissing` | 既存 DB に不足列を追加 |
-| `DROP TABLE IF EXISTS photo_embeddings` | 現行で使わない旧テーブルを削除 |
+現行 schema で使わない `photo_embeddings` table が存在すれば削除する。schema version table や `PRAGMA user_version` は使わない。
 
-追加列として扱う列は `orientation`, `image_width`, `image_height`, `source_slot`, `is_favorite`, `match_source`, `is_missing`, `phash_version`, `last_modified_utc`。
-
----
+この互換処理は現行コードに存在する動作の記録であり、新しい migration framework を導入する契約ではない。
 
 ## Backup and Restore
 
-### Backup
+整合した手動 backup を作る場合はアプリを終了し、`Data\db` をディレクトリ単位でコピーする。WAL mode のため、実行中に `Alpheratz.db` 本体だけをコピーしない。
 
-アプリ終了後、以下をコピーする。
+完全な利用状態には次も必要である。
 
-```
-<install>\Data\db\Alpheratz.db
-<install>\Data\db\setting.json
-```
+- `setting.json`: folder、theme、view、startup、post、template
+- `Data\cache`: 再生成可能。backup必須ではない。
+- 写真原本: Alpheratz の管理外。DB backupには含まれない。
 
-サムネイルキャッシュは再生成可能なため必須ではない。
-
-更新または再インストールでは `Data` が保持される。アンインストールでは管理対象の `Data/db`, `Data/logs`, `Data/cache` が削除されるため、必要なデータは事前にバックアップする。
-
-### Restore
-
-アプリ終了後、同じパスへバックアップファイルを戻す。DB と設定の不整合を避けるため、復元後にアプリを起動して再スキャンする。
-
-### External Tools
-
-SQLite Browser 等で DB を開く場合は、アプリ終了中に読み取り専用で確認する。
-
----
-
-## Performance Notes
-
-### Write Performance
-
-- WAL + `synchronous=NORMAL` を採用する。
-- スキャン結果は 500 件単位で upsert し、タグ、archive visits、PDQ 更新を含む複数行操作はトランザクション化する。
-
-### Read Performance
-
-- 日付、ワールド、お気に入り、欠損、訪問履歴照合にインデックスを張る。
-- 一覧表示で PDQ ハッシュが不要な場合は `phash` を射影しない。
-- 一覧の件数、ページ本体、タグを同じ読み取りスナップショットから取得する。
-
-### Storage
-
-- DB は写真本体を保持しない。
-- サムネイルは `Data/cache` 配下に保存し、削除されても再生成できる。
+restore 後に写真原本の path が変わっている場合、DB path と一致しないため再scanが必要になる。

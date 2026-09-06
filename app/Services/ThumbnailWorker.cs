@@ -124,7 +124,8 @@ public sealed class ThumbnailWorker
     }
 
     /// <summary>
-    /// SemaphoreSlim で同時実行数を制限しつつ全ターゲットを並列処理する。
+    /// 固定数の worker で全ターゲットを並列処理する。
+    /// 対象数と同数の待機 Task を作らず、大規模一覧のキャンセル待ちと GC 負荷を抑える。
     /// 個別の失敗はログに記録してスキップし、バッチ全体をキャンセルしない。
     /// </summary>
     private async Task RunAsync(
@@ -143,34 +144,42 @@ public sealed class ThumbnailWorker
 
         try
         {
-            using var sem = new SemaphoreSlim(MaxConcurrency);
-            var tasks = targets.Select(async target =>
+            var nextIndex = -1;
+            var workerCount = Math.Min(MaxConcurrency, targets.Count);
+            var workers = new Task[workerCount];
+            for (var workerIndex = 0; workerIndex < workerCount; workerIndex++)
             {
-                await sem.WaitAsync(ct).ConfigureAwait(false);
-                try
+                workers[workerIndex] = Task.Run(async () =>
                 {
-                    if (ct.IsCancellationRequested) return;
-                    var thumbPath = await ensure(target.path, target.slot, ct).ConfigureAwait(false);
-                    try
+                    while (true)
                     {
-                        onReady(new ThumbnailResult(target.path, target.slot, thumbPath));
+                        ct.ThrowIfCancellationRequested();
+                        var targetIndex = Interlocked.Increment(ref nextIndex);
+                        if (targetIndex >= targets.Count)
+                            return;
+
+                        var target = targets[targetIndex];
+                        try
+                        {
+                            var thumbPath = await ensure(target.path, target.slot, ct).ConfigureAwait(false);
+                            try
+                            {
+                                onReady(new ThumbnailResult(target.path, target.slot, thumbPath));
+                            }
+                            catch (Exception cbEx)
+                            {
+                                AppLogger.Warn($"ThumbnailWorker.onReady threw: {cbEx.Message}");
+                            }
+                        }
+                        catch (OperationCanceledException) { throw; }
+                        catch (Exception ex)
+                        {
+                            AppLogger.Warn($"{kindLabel} thumb skip [{target.path}]: {ex.Message}");
+                        }
                     }
-                    catch (Exception cbEx)
-                    {
-                        AppLogger.Warn($"ThumbnailWorker.onReady threw: {cbEx.Message}");
-                    }
-                }
-                catch (OperationCanceledException) { throw; }
-                catch (Exception ex)
-                {
-                    AppLogger.Warn($"{kindLabel} thumb skip [{target.path}]: {ex.Message}");
-                }
-                finally
-                {
-                    sem.Release();
-                }
-            });
-            await Task.WhenAll(tasks).ConfigureAwait(false);
+                }, CancellationToken.None);
+            }
+            await Task.WhenAll(workers).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {

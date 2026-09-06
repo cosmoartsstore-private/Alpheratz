@@ -12,18 +12,19 @@
           PointerReleased="Track_PointerReleased"
           PointerCanceled="Track_PointerCanceled"
           PointerCaptureLost="Track_PointerCaptureLost">
-        <!-- Track rail (subtle rounded background behind the thumb) -->
+        <!-- WinUI の細いインジケーターを基準にした直線的なスクロールレール。 -->
         <Border x:Name="TrackRail"
-                Margin="4,0"
-                CornerRadius="{StaticResource ARadiusPill}"
+                Width="8"
+                HorizontalAlignment="Center"
+                CornerRadius="1"
                 Background="{ThemeResource AScrollbarTrack}"
                 Opacity="0"/>
-        <!-- Thumb (rounded, animated to thicker on hover) -->
+        <!-- 通常時は 2px、操作時だけ 6px に広がる。端を半円にはしない。 -->
         <Border x:Name="Thumb"
-                Width="4"
+                Width="2"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Top"
-                CornerRadius="{StaticResource ARadiusPill}"
+                CornerRadius="1"
                 Background="{ThemeResource AScrollbarThumb}">
             <Border.RenderTransform>
                 <TranslateTransform x:Name="ThumbTransform"/>

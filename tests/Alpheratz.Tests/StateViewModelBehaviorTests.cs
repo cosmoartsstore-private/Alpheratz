@@ -434,6 +434,24 @@ public sealed class StateViewModelBehaviorTests : IDisposable
         Assert.Equal("Alpha|wrld_123|2026-06-05 12:34|2026-06-05T12:34:56|a.jpg||#bluesky #夜", text);
     }
 
+    /// <summary>
+    /// 投稿テンプレートの加重文字数が、ASCII、日本語、絵文字、URL と NFC 正規化を区別し、
+    /// 実文字数または加重文字数が 280 を超える入力を拒否することを確認する。
+    /// </summary>
+    [Fact]
+    public void TemplatePageViewModel_CountsPostCharactersAndEnforcesInputLimit()
+    {
+        Assert.Equal(3, TemplatePageViewModel.countPostCharacters("abc"));
+        Assert.Equal(4, TemplatePageViewModel.countPostCharacters("世界"));
+        Assert.Equal(2, TemplatePageViewModel.countPostCharacters("👨‍👩‍👧‍👦"));
+        Assert.Equal(25, TemplatePageViewModel.countPostCharacters("A https://example.com/path"));
+        Assert.Equal(1, TemplatePageViewModel.countPostCharacters("e\u0301"));
+        Assert.True(TemplatePageViewModel.isTemplateInputWithinLimit(new string('界', 140)));
+        Assert.False(TemplatePageViewModel.isTemplateInputWithinLimit(new string('界', 141)));
+        Assert.True(TemplatePageViewModel.containsPostPlaceholder("World: {world-name}"));
+        Assert.False(TemplatePageViewModel.containsPostPlaceholder("World: Alpha"));
+    }
+
     /// <summary>投稿テンプレートが未選択の場合は外部処理を開始せず、失敗結果を返すことを確認する。</summary>
     [Fact]
     public async Task TemplatePageViewModel_OpenTweetIntentReturnsFalseWithoutActiveTemplate()
@@ -507,7 +525,7 @@ public sealed class StateViewModelBehaviorTests : IDisposable
 
         viewModel.TagDraft = "   ";
         await viewModel.createTag();
-        viewModel.TagDraft = new string('x', 41);
+        viewModel.TagDraft = new string('x', TagMasterViewModel.MaxTagLength + 1);
         await viewModel.createTag();
         viewModel.TagDraft = "  night  ";
         await viewModel.createTag();
@@ -517,7 +535,9 @@ public sealed class StateViewModelBehaviorTests : IDisposable
         Assert.Equal("", viewModel.TagDraft);
         Assert.Empty(viewModel.masterTags);
         Assert.Empty(await db.GetAllTagsAsync());
-        Assert.Contains(toastService.toasts, toast => toast.Msg.Contains("40文字以内"));
+        Assert.Contains(
+            toastService.toasts,
+            toast => toast.Msg.Contains($"{TagMasterViewModel.MaxTagLength}文字以内"));
         Assert.Contains(
             toastService.toasts,
             toast => toast.Msg == MessageCatalog.getMsg("TagMasterViewModel.tagSaved"));

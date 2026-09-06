@@ -41,7 +41,12 @@ public partial class MainWindow : Window
         var hwnd = WindowNative.GetWindowHandle(this);
         var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
         var appWindow = AppWindow.GetFromWindowId(windowId);
-        appWindow.SetIcon("Assets\\icon.ico");
+        var iconPath = System.IO.Path.GetFullPath(
+            System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "icon.ico"));
+        if (System.IO.File.Exists(iconPath))
+            appWindow.SetIcon(iconPath);
+        else
+            AppLogger.Warn($"MainWindow.ctor: window icon not found: {iconPath}");
         if (appWindow.Presenter is OverlappedPresenter presenter)
             presenter.Maximize();
 

@@ -197,7 +197,7 @@
                                             </ItemsPanelTemplate>
                                         </ItemsControl.ItemsPanel>
                                         <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
+                                            <DataTemplate x:DataType="x:String">
                                                 <Button Tag="{Binding}" Click="RemoveTag_Click" Style="{StaticResource ChipButtonStyle}"
                                                         AutomationProperties.Name="{Binding}"
                                                         AutomationProperties.HelpText="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.removeTagHelp')}"
@@ -219,11 +219,16 @@
                                     Style="{StaticResource PrimaryButtonStyle}"
                                     HorizontalAlignment="Stretch"
                                     Padding="14,10"
-                                    CornerRadius="{StaticResource ARadius}"
+                                    CornerRadius="{StaticResource ARadiusMd}"
                                     FontWeight="ExtraBold"
                                     Click="OpenTagAddModal_Click"/>
                             <TextBlock x:Name="EmptyTagNote" Visibility="Collapsed" Text="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.noAvailableTags')}" FontSize="{StaticResource AFontSizeMd}" Foreground="{ThemeResource ATextFaint}" Margin="0,4,0,0"/>
-                            <Button x:Name="OpenTagMasterButton" Content="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.openTagMaster')}" Style="{StaticResource GhostButtonStyle}" HorizontalAlignment="Left" Click="OpenTagMaster_Click"/>
+                            <Button x:Name="OpenTagMasterButton"
+                                    Content="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.openTagMaster')}"
+                                    Style="{StaticResource GhostButtonStyle}"
+                                    HorizontalAlignment="Stretch"
+                                    Padding="14,10"
+                                    Click="OpenTagMaster_Click"/>
                         </StackPanel>
                     </ScrollViewer>
                     <Grid Grid.Row="3" BorderBrush="{ThemeResource ABorder}" BorderThickness="0,1,0,0">
@@ -267,7 +272,7 @@
                             </Grid>
                         </Button>
                         <Border Grid.Column="1" HorizontalAlignment="Left" Width="1" Background="{ThemeResource ABorder}"/>
-                        <Button Grid.Column="1" MinHeight="66" Background="Transparent" BorderThickness="0" CornerRadius="0" Padding="4,8"
+                        <Button x:Name="TweetButton" Grid.Column="1" MinHeight="66" Background="Transparent" BorderThickness="0" CornerRadius="0" Padding="4,8"
                                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Center"
                                 AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.postAutomation')}"
                                 ToolTipService.ToolTip="{x:Bind messages:MessageCatalog.getMsg('PhotoModalPage.postHelp')}" Click="Tweet_Click"

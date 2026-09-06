@@ -4,16 +4,19 @@ namespace Alpheratz.Tests;
 public sealed class ReleasePackagingTests
 {
     [Fact]
-    public void BuildRelease_RemovesStaleInstallerAndChecksMakensisResult()
+    public void BuildRelease_RemovesStaleInstaller_PreparesRuntime_AndChecksMakensisResult()
     {
         var source = ReadRepositoryText("BuildWorks", "scripts", "build-release.ps1");
         var staleOutputRemoval = source.IndexOf(
             "Remove-Item -LiteralPath $InstallerOutputPath -Force",
             StringComparison.Ordinal);
-        var makensisInvocation = source.IndexOf("& $MakensisPath $InstallerScriptPath", StringComparison.Ordinal);
+        var runtimePreparation = source.IndexOf("prepare-vc-redist.ps1", StringComparison.Ordinal);
+        var makensisInvocation = source.IndexOf("& $MakensisPath", StringComparison.Ordinal);
 
         Assert.True(staleOutputRemoval >= 0);
-        Assert.True(makensisInvocation > staleOutputRemoval);
+        Assert.True(runtimePreparation > staleOutputRemoval);
+        Assert.True(makensisInvocation > runtimePreparation);
+        Assert.Contains("/DVC_REDIST_VERSION=$VcRedistVersion", source, StringComparison.Ordinal);
         Assert.Contains("if ($LASTEXITCODE -ne 0)", source, StringComparison.Ordinal);
         Assert.Contains("if (!(Test-Path $InstallerOutputPath))", source, StringComparison.Ordinal);
     }

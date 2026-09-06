@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,6 +11,20 @@ using Alpheratz.Shared.Models;
 using Microsoft.Data.Sqlite;
 
 namespace Alpheratz.Core.Database;
+
+/// <summary>写真ファイル名をキーにした利用者付与情報のバックアップ結果。</summary>
+public sealed record PhotoUserDataBackupResult(int SourcePhotoCount, int BackupEntryCount)
+{
+    /// <summary>同名ファイルとして1件へ統合された写真数。</summary>
+    public int ConsolidatedPhotoCount => Math.Max(0, SourcePhotoCount - BackupEntryCount);
+}
+
+/// <summary>写真ファイル名をキーにした利用者付与情報の復元結果。</summary>
+public sealed record PhotoUserDataRestoreResult(
+    int BackupEntryCount,
+    int MatchedPhotoCount,
+    int CreatedTagCount,
+    int AddedPhotoTagCount);
 
 // AlpheratzDb のトレース規約（プロジェクト方針）：
 // public メソッドは必ず enter/exit を AppLogger.Trace で出し、本体は
@@ -154,6 +169,15 @@ CREATE TABLE IF NOT EXISTS photo_tags (
     PRIMARY KEY (photo_path, tag_id)
 );
 
+-- 写真フォルダの再読込後に、利用者が付けたお気に入りとタグだけを復元するための保存領域。
+-- photos への外部キーを持たせないことで、スロットの写真情報を削除してもバックアップを残す。
+-- photo_filename は Windows のファイル名比較に合わせて大文字小文字を区別しない。
+CREATE TABLE IF NOT EXISTS photo_user_data_backup (
+    photo_filename TEXT PRIMARY KEY COLLATE NOCASE,
+    is_favorite    INTEGER NOT NULL CHECK (is_favorite IN (0, 1)),
+    tags           TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(tags))
+);
+
 CREATE TABLE IF NOT EXISTS archive_world_visits (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     source_log_name  TEXT NOT NULL,
@@ -164,6 +188,10 @@ CREATE TABLE IF NOT EXISTS archive_world_visits (
 
 CREATE INDEX IF NOT EXISTS idx_photos_timestamp      ON photos(timestamp);
 CREATE INDEX IF NOT EXISTS idx_photos_world_name     ON photos(world_name);
+-- ワールド条件は空白正規化後の名前で照合する。is_missing と正規化式を同じ索引へ含め、
+-- COUNT・一覧・月集計のいずれも全写真走査へ戻らないようにする。
+CREATE INDEX IF NOT EXISTS idx_photos_world_filter
+    ON photos(is_missing, TRIM(world_name), timestamp DESC, photo_path);
 CREATE INDEX IF NOT EXISTS idx_photos_is_favorite    ON photos(is_favorite);
 CREATE INDEX IF NOT EXISTS idx_photos_is_missing     ON photos(is_missing);
 CREATE INDEX IF NOT EXISTS idx_archive_world_visits_join_time       ON archive_world_visits(join_time);
@@ -379,8 +407,10 @@ WHERE pt.photo_path IN (");
         }
         if (q.WorldQuery is not null)
         {
-            sb.Append($" AND {tableAlias}.world_name LIKE @worldQuery");
-            cmd.Parameters.AddWithValue("@worldQuery", $"%{q.WorldQuery}%");
+            // 利用者が入力した % と _ は検索命令ではなく通常文字として扱う。
+            // backslash 自体も先に escape し、SQLite LIKE の ESCAPE 文字を明示する。
+            sb.Append($" AND {tableAlias}.world_name LIKE @worldQuery ESCAPE '\\'");
+            cmd.Parameters.AddWithValue("@worldQuery", $"%{EscapeLikePattern(q.WorldQuery)}%");
         }
         if (q.WorldExacts is { Count: > 0 } exacts)
         {
@@ -449,6 +479,12 @@ WHERE pt.photo_path = {tableAlias}.photo_path
 
         return sb.ToString();
     }
+
+    private static string EscapeLikePattern(string value)
+        => value
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("%", "\\%", StringComparison.Ordinal)
+            .Replace("_", "\\_", StringComparison.Ordinal);
 
     /// <summary>
     /// フィルタ条件に応じて photos テーブルから 1 ページ分を取得し、タグも結合して返す。
@@ -645,6 +681,53 @@ WHERE photo_path = @p";
         catch (Exception ex)
         {
             AppLogger.Error($"AlpheratzDb.GetPhotoRecordAsync: threw: {ex}");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// 重複写真の比較に必要な写真情報と、既存の類似分析結果を全件返す。
+    /// 通常の一覧取得と異なりタグを結合せず、ファイル内容の比較に不要な列も読み込まない。
+    /// </summary>
+    public Task<IReadOnlyList<PhotoRecordDto>> GetPhotosForDuplicateDetectionAsync(
+        CancellationToken ct = default)
+    {
+        AppLogger.Trace("AlpheratzDb.GetPhotosForDuplicateDetectionAsync: enter");
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            using var conn = OpenConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+SELECT photo_filename, photo_path, timestamp, phash, source_slot
+FROM photos
+WHERE is_missing = 0
+ORDER BY photo_path ASC";
+
+            var photos = new List<PhotoRecordDto>();
+            using var reader = cmd.ExecuteReader();
+            var rowIndex = 0;
+            while (reader.Read())
+            {
+                if ((rowIndex++ & 0x3FF) == 0)
+                    ct.ThrowIfCancellationRequested();
+
+                photos.Add(new PhotoRecordDto
+                {
+                    photo_filename = reader.GetString(0),
+                    photo_path = reader.GetString(1),
+                    timestamp = reader.GetString(2),
+                    phash = reader.IsDBNull(3) ? null : reader.GetString(3),
+                    source_slot = reader.IsDBNull(4) ? 1L : reader.GetInt64(4),
+                });
+            }
+
+            AppLogger.Trace($"AlpheratzDb.GetPhotosForDuplicateDetectionAsync: exit count={photos.Count}");
+            return Task.FromResult<IReadOnlyList<PhotoRecordDto>>(photos);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"AlpheratzDb.GetPhotosForDuplicateDetectionAsync: threw: {ex}");
             throw;
         }
     }
@@ -944,6 +1027,246 @@ WHERE photo_path = @p
     }
 
     /// <summary>
+    /// 現在読み込まれている全写真のお気に入りとタグを、実ファイル名単位で置き換え保存する。
+    /// 同名ファイルが複数ある場合は、お気に入りを OR 結合し、タグを重複なく統合する。
+    /// 対象写真が0件の場合は、既存バックアップを消さずに結果だけ返す。
+    /// </summary>
+    public Task<PhotoUserDataBackupResult> CreatePhotoUserDataBackupAsync(CancellationToken ct = default)
+    {
+        AppLogger.Trace("AlpheratzDb.CreatePhotoUserDataBackupAsync: enter");
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            using var conn = OpenConnection();
+            // 最初に書込権を確保し、件数確認後の DELETE へ移る際の read→write 昇格競合を避ける。
+            using var tx = conn.BeginTransaction(deferred: false);
+
+            int sourcePhotoCount;
+            using (var countPhotos = conn.CreateCommand())
+            {
+                countPhotos.Transaction = tx;
+                countPhotos.CommandText = "SELECT COUNT(*) FROM photos WHERE is_missing = 0";
+                sourcePhotoCount = Convert.ToInt32(countPhotos.ExecuteScalar() ?? 0L, CultureInfo.InvariantCulture);
+            }
+
+            if (sourcePhotoCount == 0)
+            {
+                tx.Commit();
+                AppLogger.Trace("AlpheratzDb.CreatePhotoUserDataBackupAsync: exit source=0 (preserved existing backup)");
+                return Task.FromResult(new PhotoUserDataBackupResult(0, 0));
+            }
+
+            using (var clear = conn.CreateCommand())
+            {
+                clear.Transaction = tx;
+                clear.CommandText = "DELETE FROM photo_user_data_backup";
+                clear.ExecuteNonQuery();
+            }
+
+            ct.ThrowIfCancellationRequested();
+            using (var save = conn.CreateCommand())
+            {
+                save.Transaction = tx;
+                save.CommandText = @"
+WITH filename_states AS (
+    SELECT MIN(photo_filename) AS photo_filename,
+           MAX(CASE WHEN COALESCE(is_favorite, 0) <> 0 THEN 1 ELSE 0 END) AS is_favorite
+    FROM photos
+    WHERE is_missing = 0
+    GROUP BY photo_filename COLLATE NOCASE
+),
+distinct_tags AS (
+    SELECT MIN(p.photo_filename) AS photo_filename,
+           MIN(t.name) AS tag_name
+    FROM photos p
+    INNER JOIN photo_tags pt ON pt.photo_path = p.photo_path
+    INNER JOIN tags t ON t.id = pt.tag_id
+    WHERE p.is_missing = 0
+    GROUP BY p.photo_filename COLLATE NOCASE, t.name COLLATE NOCASE
+),
+filename_tags AS (
+    SELECT photo_filename, json_group_array(tag_name) AS tags
+    FROM (
+        SELECT photo_filename, tag_name
+        FROM distinct_tags
+        ORDER BY photo_filename COLLATE NOCASE, tag_name COLLATE NOCASE
+    )
+    GROUP BY photo_filename COLLATE NOCASE
+)
+INSERT INTO photo_user_data_backup (photo_filename, is_favorite, tags)
+SELECT state.photo_filename,
+       state.is_favorite,
+       COALESCE(filename_tags.tags, '[]')
+FROM filename_states state
+LEFT JOIN filename_tags
+  ON filename_tags.photo_filename = state.photo_filename COLLATE NOCASE";
+                save.ExecuteNonQuery();
+            }
+
+            ct.ThrowIfCancellationRequested();
+            int backupEntryCount;
+            using (var countBackup = conn.CreateCommand())
+            {
+                countBackup.Transaction = tx;
+                countBackup.CommandText = "SELECT COUNT(*) FROM photo_user_data_backup";
+                backupEntryCount = Convert.ToInt32(countBackup.ExecuteScalar() ?? 0L, CultureInfo.InvariantCulture);
+            }
+
+            tx.Commit();
+            var result = new PhotoUserDataBackupResult(sourcePhotoCount, backupEntryCount);
+            AppLogger.Trace(
+                $"AlpheratzDb.CreatePhotoUserDataBackupAsync: exit source={result.SourcePhotoCount} " +
+                $"entries={result.BackupEntryCount} consolidated={result.ConsolidatedPhotoCount}");
+            return Task.FromResult(result);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"AlpheratzDb.CreatePhotoUserDataBackupAsync: threw: {ex}");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// バックアップのファイル名と一致する全写真へ、お気に入り状態と保存済みタグを反映する。
+    /// お気に入りは保存値へ戻し、現在の写真タグは削除せず保存済みタグを追加する。
+    /// タグマスタに同名タグが無い場合は、大文字小文字を区別せず確認してから自動登録する。
+    /// </summary>
+    public Task<PhotoUserDataRestoreResult> RestorePhotoUserDataBackupAsync(CancellationToken ct = default)
+    {
+        AppLogger.Trace("AlpheratzDb.RestorePhotoUserDataBackupAsync: enter");
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            using var conn = OpenConnection();
+            // 件数確認から復元完了まで同じ書込トランザクションに固定する。
+            using var tx = conn.BeginTransaction(deferred: false);
+
+            int backupEntryCount;
+            using (var countBackup = conn.CreateCommand())
+            {
+                countBackup.Transaction = tx;
+                countBackup.CommandText = "SELECT COUNT(*) FROM photo_user_data_backup";
+                backupEntryCount = Convert.ToInt32(countBackup.ExecuteScalar() ?? 0L, CultureInfo.InvariantCulture);
+            }
+
+            int matchedPhotoCount;
+            using (var countMatches = conn.CreateCommand())
+            {
+                countMatches.Transaction = tx;
+                countMatches.CommandText = @"
+SELECT COUNT(*)
+FROM photos p
+WHERE p.is_missing = 0
+  AND EXISTS (
+      SELECT 1
+      FROM photo_user_data_backup backup
+      WHERE backup.photo_filename = p.photo_filename COLLATE NOCASE
+  )";
+                matchedPhotoCount = Convert.ToInt32(countMatches.ExecuteScalar() ?? 0L, CultureInfo.InvariantCulture);
+            }
+
+            if (backupEntryCount == 0 || matchedPhotoCount == 0)
+            {
+                tx.Commit();
+                var emptyResult = new PhotoUserDataRestoreResult(backupEntryCount, matchedPhotoCount, 0, 0);
+                AppLogger.Trace(
+                    $"AlpheratzDb.RestorePhotoUserDataBackupAsync: exit entries={backupEntryCount} matched={matchedPhotoCount}");
+                return Task.FromResult(emptyResult);
+            }
+
+            ct.ThrowIfCancellationRequested();
+            using (var restoreFavorites = conn.CreateCommand())
+            {
+                restoreFavorites.Transaction = tx;
+                restoreFavorites.CommandText = @"
+UPDATE photos
+SET is_favorite = (
+    SELECT backup.is_favorite
+    FROM photo_user_data_backup backup
+    WHERE backup.photo_filename = photos.photo_filename COLLATE NOCASE
+    LIMIT 1
+)
+WHERE is_missing = 0
+  AND EXISTS (
+      SELECT 1
+      FROM photo_user_data_backup backup
+      WHERE backup.photo_filename = photos.photo_filename COLLATE NOCASE
+  )";
+                restoreFavorites.ExecuteNonQuery();
+            }
+
+            ct.ThrowIfCancellationRequested();
+            int createdTagCount;
+            using (var createTags = conn.CreateCommand())
+            {
+                createTags.Transaction = tx;
+                createTags.CommandText = @"
+WITH matched_tag_names AS (
+    SELECT MIN(CAST(json_tag.value AS TEXT)) AS tag_name
+    FROM photo_user_data_backup backup
+    JOIN json_each(backup.tags) json_tag ON json_tag.type = 'text'
+    WHERE TRIM(CAST(json_tag.value AS TEXT)) <> ''
+      AND EXISTS (
+          SELECT 1
+          FROM photos p
+          WHERE p.is_missing = 0
+            AND p.photo_filename = backup.photo_filename COLLATE NOCASE
+      )
+    GROUP BY CAST(json_tag.value AS TEXT) COLLATE NOCASE
+)
+INSERT INTO tags (name)
+SELECT matched.tag_name
+FROM matched_tag_names matched
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM tags existing
+    WHERE existing.name = matched.tag_name COLLATE NOCASE
+)
+ON CONFLICT(name) DO NOTHING";
+                createdTagCount = createTags.ExecuteNonQuery();
+            }
+
+            ct.ThrowIfCancellationRequested();
+            int addedPhotoTagCount;
+            using (var restoreTags = conn.CreateCommand())
+            {
+                restoreTags.Transaction = tx;
+                restoreTags.CommandText = @"
+INSERT INTO photo_tags (photo_path, tag_id)
+SELECT p.photo_path, tag_master.id
+FROM photos p
+INNER JOIN photo_user_data_backup backup
+        ON backup.photo_filename = p.photo_filename COLLATE NOCASE
+JOIN json_each(backup.tags) json_tag ON json_tag.type = 'text'
+INNER JOIN tags tag_master
+        ON tag_master.name = CAST(json_tag.value AS TEXT) COLLATE NOCASE
+WHERE p.is_missing = 0
+  AND TRIM(CAST(json_tag.value AS TEXT)) <> ''
+GROUP BY p.photo_path, tag_master.id
+ON CONFLICT(photo_path, tag_id) DO NOTHING";
+                addedPhotoTagCount = restoreTags.ExecuteNonQuery();
+            }
+
+            tx.Commit();
+            var result = new PhotoUserDataRestoreResult(
+                backupEntryCount,
+                matchedPhotoCount,
+                createdTagCount,
+                addedPhotoTagCount);
+            AppLogger.Trace(
+                $"AlpheratzDb.RestorePhotoUserDataBackupAsync: exit entries={result.BackupEntryCount} " +
+                $"matched={result.MatchedPhotoCount} createdTags={result.CreatedTagCount} " +
+                $"addedPhotoTags={result.AddedPhotoTagCount}");
+            return Task.FromResult(result);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"AlpheratzDb.RestorePhotoUserDataBackupAsync: threw: {ex}");
+            throw;
+        }
+    }
+
+    /// <summary>
     /// 指定 source_slot の photos と photo_tags、imgCache ディレクトリをすべてリセットする。
     /// 順序：photo_tags → photos → 孤児 photo_tags の最終掃除 → imgCache 物理削除。
     /// imgCache 削除失敗は警告のみで例外は出さない（DB はクリーンなのに UI で再スキャン可能なため）。
@@ -1112,6 +1435,44 @@ WHERE photo_path = @p
     }
 
     /// <summary>
+    /// 指定された写真パスと関連するタグ設定を、単一トランザクションで削除する。
+    /// 既存 DB では photo_tags に ON DELETE CASCADE がない場合があるため、中間行を先に削除する。
+    /// </summary>
+    public Task<int> DeletePhotosByPathsAsync(
+        IReadOnlyCollection<string> photoPaths,
+        CancellationToken ct = default)
+    {
+        AppLogger.Trace($"AlpheratzDb.DeletePhotosByPathsAsync: enter count={photoPaths.Count}");
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            var paths = photoPaths
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (paths.Count == 0)
+            {
+                AppLogger.Trace("AlpheratzDb.DeletePhotosByPathsAsync: exit (empty)");
+                return Task.FromResult(0);
+            }
+
+            using var conn = OpenConnection();
+            using var tx = conn.BeginTransaction();
+            BulkDeleteByPaths(conn, tx, paths, "DELETE FROM photo_tags", ct);
+            var deleted = BulkDeleteByPaths(conn, tx, paths, "DELETE FROM photos", ct);
+            tx.Commit();
+
+            AppLogger.Trace($"AlpheratzDb.DeletePhotosByPathsAsync: exit deleted={deleted}");
+            return Task.FromResult(deleted);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"AlpheratzDb.DeletePhotosByPathsAsync: threw: {ex}");
+            throw;
+        }
+    }
+
+    /// <summary>
     /// foundPaths に含まれないレコードを DB から物理削除する（ファイル消失検知）。
     /// 一回の SELECT で全パスを列挙し、HashSet 差分で missing を出してから 500 件単位で
     /// IN (...) 削除する。SQLite のパラメータ上限 (999) を超えないようにチャンク化。
@@ -1184,11 +1545,12 @@ WHERE photo_path = @p
     /// 大量パスを 500 件チャンクで IN (...) DELETE に分割発行する。
     /// SQLite のパラメータ上限は標準で 999 / クエリ。一括 SQL のパース時間も削減できる。
     /// </summary>
-    private static void BulkDeleteByPaths(
+    private static int BulkDeleteByPaths(
         SqliteConnection conn, SqliteTransaction tx,
         List<string> paths, string deletePrefix, CancellationToken ct)
     {
         const int ChunkSize = 500;
+        var affectedRows = 0;
         for (int i = 0; i < paths.Count; i += ChunkSize)
         {
             ct.ThrowIfCancellationRequested();
@@ -1202,8 +1564,9 @@ WHERE photo_path = @p
                 cmd.Parameters.AddWithValue(paramNames[j], chunk[j]);
             }
             cmd.CommandText = $"{deletePrefix} WHERE photo_path IN ({string.Join(',', paramNames)})";
-            cmd.ExecuteNonQuery();
+            affectedRows += cmd.ExecuteNonQuery();
         }
+        return affectedRows;
     }
 
     /// <summary>
@@ -1433,6 +1796,53 @@ LIMIT 1";
         catch (Exception ex)
         {
             AppLogger.Error($"AlpheratzDb.LookupWorldNameFromArchiveAsync: threw: {ex}");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// 未解決写真を archive_world_visits の直近訪問区間で一括補完する。
+    /// 写真ごとに接続・検索・更新を繰り返さず、同じ SQL 文の中で従来と同じ
+    /// join_time 降順の1件を選ぶことで、通常件数に比例する接続初期化を除去する。
+    /// </summary>
+    public Task<int> ResolveUnknownWorldsFromArchiveAsync(CancellationToken ct = default)
+    {
+        AppLogger.Trace("AlpheratzDb.ResolveUnknownWorldsFromArchiveAsync: enter");
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            using var conn = OpenConnection();
+            using var transaction = conn.BeginTransaction();
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = transaction;
+            cmd.CommandText = @"
+UPDATE photos
+SET world_name = (
+        SELECT visit.world_name
+        FROM archive_world_visits AS visit
+        WHERE visit.join_time <= photos.timestamp
+          AND (visit.leave_time IS NULL OR visit.leave_time >= photos.timestamp)
+        ORDER BY visit.join_time DESC
+        LIMIT 1
+    ),
+    match_source = 'polaris_archive'
+WHERE photos.is_missing = 0
+  AND (photos.world_name IS NULL OR TRIM(photos.world_name) = '')
+  AND photos.world_id IS NULL
+  AND EXISTS (
+        SELECT 1
+        FROM archive_world_visits AS visit
+        WHERE visit.join_time <= photos.timestamp
+          AND (visit.leave_time IS NULL OR visit.leave_time >= photos.timestamp)
+    )";
+            var resolved = cmd.ExecuteNonQuery();
+            transaction.Commit();
+            AppLogger.Trace($"AlpheratzDb.ResolveUnknownWorldsFromArchiveAsync: exit resolved={resolved}");
+            return Task.FromResult(resolved);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"AlpheratzDb.ResolveUnknownWorldsFromArchiveAsync: threw: {ex}");
             throw;
         }
     }

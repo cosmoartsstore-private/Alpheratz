@@ -50,7 +50,7 @@
             </Button>
 
             <!-- 中央: 検索ボックス -->
-            <Grid Grid.Column="1" HorizontalAlignment="Center" Width="640" MaxWidth="640">
+            <Grid Grid.Column="1" HorizontalAlignment="Stretch" MaxWidth="640">
                 <Border x:Name="SearchBoxBorder"
                         HorizontalAlignment="Stretch"
                         MinHeight="34"
@@ -84,7 +84,6 @@
                                   IsLightDismissEnabled="True"
                                   Closed="SearchSuggestionPopup_Closed">
                     <Border x:Name="SearchSuggestionSurface"
-                            Width="640"
                             MaxHeight="260"
                             Padding="4"
                             CornerRadius="{StaticResource ARadius}"
@@ -95,12 +94,13 @@
                                   ItemsSource="{x:Bind WorldNameSuggestions, Mode=OneWay}"
                                   Background="Transparent"
                                   BorderThickness="0"
+                                  HorizontalContentAlignment="Stretch"
                                   IsItemClickEnabled="True"
                                   SelectionMode="Single"
                                   ItemClick="SearchSuggestionListView_ItemClick">
                             <ListView.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid MinWidth="560" Padding="8,6" ColumnSpacing="10">
+                                    <Grid Padding="8,6" ColumnSpacing="10">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
@@ -124,33 +124,46 @@
                 </primitives:Popup>
             </Grid>
 
-            <!--
-                右側: ギャラリー表示操作と設定。
-                3 つの切替ボタン (ビューモード / グループ化 / 複数選択) を、
-                設定ボタンの直前に並べる。各ボタンは 2 状態切替で、アクティブ時に
-                背景・枠線・前景色が APrimarySoft / ABorderStrong / APrimary に切り替わる
-                (UpdateActiveStyle ヘルパで code-behind から付与)。
-            -->
+            <!-- ギャラリーモード切替。状態を表す文言とスイッチを常時表示する。 -->
+            <StackPanel Grid.Column="2"
+                        Orientation="Horizontal"
+                        Spacing="8"
+                        VerticalAlignment="Center">
+                <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('ShellHeaderBar.galleryModeLabel')}"
+                           FontSize="{StaticResource AFontSizeSm}"
+                           FontWeight="SemiBold"
+                           Foreground="{ThemeResource ATextDim}"
+                           VerticalAlignment="Center"/>
+                <ToggleSwitch x:Name="GalleryModeToggle"
+                              MinWidth="0"
+                              Width="48"
+                              OnContent=""
+                              OffContent=""
+                              AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('ShellHeaderBar.galleryModeLabel')}"
+                              ToolTipService.ToolTip="{x:Bind messages:MessageCatalog.getMsg('ShellHeaderBar.viewModeTooltip')}"
+                              Toggled="GalleryModeToggle_Toggled"/>
+            </StackPanel>
 
-            <!-- 表示モード切替 (標準グリッド / マソンリー) -->
-            <Button x:Name="ViewModeBtn" Grid.Column="2"
-                    Style="{StaticResource HeaderIconButtonStyle}"
-                    AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('ShellHeaderBar.viewModeAutomation')}"
-                    ToolTipService.ToolTip="{x:Bind messages:MessageCatalog.getMsg('ShellHeaderBar.viewModeTooltip')}"
-                    Click="ViewModeBtn_Click"
-                    VerticalAlignment="Center">
-                <shared:AppIcon x:Name="ViewModeIcon" IconName="grid" IconSize="16" Foreground="{ThemeResource ATextDim}"/>
-            </Button>
-
-            <!-- グループ化切替 (なし / ワールド)。Masonry 表示中は無効化される。 -->
-            <Button x:Name="GroupingBtn" Grid.Column="3"
-                    Style="{StaticResource HeaderIconButtonStyle}"
-                    AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('ShellHeaderBar.groupingAutomation')}"
-                    ToolTipService.ToolTip="{x:Bind messages:MessageCatalog.getMsg('ShellHeaderBar.groupingTooltip')}"
-                    Click="GroupingBtn_Click"
-                    VerticalAlignment="Center">
-                <shared:AppIcon x:Name="GroupingIcon" IconName="group" IconSize="16" Foreground="{ThemeResource ATextDim}"/>
-            </Button>
+            <!-- ワールド単位のグループ化。ギャラリーモード中は利用できない。 -->
+            <StackPanel x:Name="GroupPhotosControl"
+                        Grid.Column="3"
+                        Orientation="Horizontal"
+                        Spacing="8"
+                        VerticalAlignment="Center">
+                <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('ShellHeaderBar.groupPhotosLabel')}"
+                           FontSize="{StaticResource AFontSizeSm}"
+                           FontWeight="SemiBold"
+                           Foreground="{ThemeResource ATextDim}"
+                           VerticalAlignment="Center"/>
+                <ToggleSwitch x:Name="GroupPhotosToggle"
+                              MinWidth="0"
+                              Width="48"
+                              OnContent=""
+                              OffContent=""
+                              AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('ShellHeaderBar.groupPhotosLabel')}"
+                              ToolTipService.ToolTip="{x:Bind messages:MessageCatalog.getMsg('ShellHeaderBar.groupingTooltip')}"
+                              Toggled="GroupPhotosToggle_Toggled"/>
+            </StackPanel>
 
             <!-- 複数選択モード切替 -->
             <Button x:Name="MultiSelectBtn" Grid.Column="4"

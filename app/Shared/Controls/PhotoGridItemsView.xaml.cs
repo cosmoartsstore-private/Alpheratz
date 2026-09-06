@@ -130,7 +130,7 @@ public sealed partial class PhotoGridItemsView : UserControl
             {
                 sub.Photo.PropertyChanged -= sub.Handler;
                 img.Tag = null;
-                StopShimmer(img);
+                StopSkeletonPulse(img);
                 img.Source = null;
             }
             var count = VisualTreeHelper.GetChildrenCount(node);
@@ -217,24 +217,16 @@ public sealed partial class PhotoGridItemsView : UserControl
         }
     }
 
-    /// <summary>
-    /// 直近に算出した画像領域の幅。shimmer ハイライト幅をカード幅へ追従させるために使う。
-    /// </summary>
-    private double currentImageWidth;
-
     // 利用可能幅から通常 6 列のカード寸法を再計算する。
     private void RecalculateCardSize(double availableWidth)
     {
         if (availableWidth <= 0 || wrapGrid is null) return;
         var layout = PhotoGridItemsLayoutLogic.CalculateCardLayout(availableWidth);
         if (layout is null) return;
-        currentImageWidth = layout.ImageWidth;
         wrapGrid.ItemWidth = layout.ItemWidth;
         wrapGrid.ItemHeight = layout.ItemHeight;
         wrapGrid.MaximumRowsOrColumns = layout.Columns;
         PhotoItems.Opacity = 1;
-        // 既に実体化済みのカードの shimmer ハイライト幅も新カード幅に合わせて更新する。
-        RefreshActiveShimmerSizes(PhotoItems);
     }
 
     // ItemsWrapGrid の実体化後に参照を保持し、初期カード寸法を反映する。
@@ -485,7 +477,7 @@ public sealed partial class PhotoGridItemsView : UserControl
                 }
 
                 // サムネイル生成完了でパスが差し替わった場合も再ロード扱いにし、
-                // shimmer→フェードインの演出を改めて適用する。
+                // Pulse→フェードインの演出を改めて適用する。
                 ResetCardLoadVisuals(img);
                 SetImageSource(img, item.Photo);
             });
@@ -513,7 +505,7 @@ public sealed partial class PhotoGridItemsView : UserControl
     }
 
     /// <summary>
-    /// 画像ロード完了。マソンリーと同じく 200ms でフェードインし shimmer を止める。
+    /// 画像ロード完了。マソンリーと同じく 200ms でフェードインしPulseを止める。
     /// </summary>
     private void ThumbImage_Opened(object sender, RoutedEventArgs e)
     {
@@ -533,7 +525,7 @@ public sealed partial class PhotoGridItemsView : UserControl
         catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.ThumbImage_Opened: {ex}"); }
     }
 
-    // 画像ロード失敗時は shimmer を止め、フォールバック面とエラー表示を残す。
+    // 画像ロード失敗時はPulseを止め、フォールバック面とエラー表示を残す。
     private void ThumbImage_Failed(object sender, ExceptionRoutedEventArgs e)
     {
         AppLogger.Error($"PhotoGridItemsView.ThumbImage_Failed: {e.ErrorMessage}");
@@ -546,7 +538,7 @@ public sealed partial class PhotoGridItemsView : UserControl
     }
 
     /// <summary>
-    /// ロード演出を初期状態へ戻す。画像 Opacity=0、エラーアイコン非表示、shimmer 再開。
+    /// ロード演出を初期状態へ戻す。画像Opacity=0、エラーアイコン非表示、Pulse再開。
     /// recycle / サムネイルパス差し替えの双方から呼ぶ。
     /// </summary>
     private void ResetCardLoadVisuals(Image img)
@@ -554,82 +546,35 @@ public sealed partial class PhotoGridItemsView : UserControl
         ApplyImageLoadVisual(img, GridImageLoadState.Reset);
     }
 
-    /// <summary>画像ロード状態に応じて shimmer とエラー表示を反映する。</summary>
+    /// <summary>画像ロード状態に応じてPulseとエラー表示を反映する。</summary>
     private void ApplyImageLoadVisual(Image img, GridImageLoadState state, bool applyImageOpacity = true)
     {
         var visual = PhotoGridItemsLayoutLogic.ImageLoadVisual(state);
         if (applyImageOpacity)
             ElementCompositionPreview.GetElementVisual(img).Opacity = (float)visual.ImageOpacity;
-        if (visual.StopShimmer) StopShimmer(img);
-        if (visual.StartShimmer) StartShimmer(img);
-        if (FindSibling(img, "ShimmerBase") is Border shimmerBase)
-            shimmerBase.Opacity = visual.ShimmerBaseOpacity;
-        if (FindSibling(img, "ShimmerHighlight") is Border shimmerHighlight)
-            shimmerHighlight.Opacity = visual.ShimmerHighlightOpacity;
+        if (FindSibling(img, "SkeletonPlaceholder") is Border skeleton)
+        {
+            if (visual.StopShimmer) StopSkeletonPulse(img);
+            skeleton.Opacity = visual.ShimmerBaseOpacity;
+            if (visual.StartShimmer) StartSkeletonPulse(img);
+        }
         if (FindSibling(img, "ErrorIcon") is TextBlock errorIcon)
             errorIcon.Visibility = visual.ErrorVisible ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    /// <summary>
-    /// shimmer プレースホルダを表示・アニメ開始する。ハイライト(ASurfaceHover の solid 面)を
-    /// カード幅の 40% 幅で左から右へ 1500ms ループでスライドさせる。半透明ティントは使わない。
-    /// </summary>
-    private void StartShimmer(Image img)
+    /// <summary>写真領域全体を1.5秒周期で明滅させるMaterial UI型のPulseを開始する。</summary>
+    private static void StartSkeletonPulse(Image img)
     {
-        var shimmerBase = FindSibling(img, "ShimmerBase") as Border;
-        var shimmerHighlight = FindSibling(img, "ShimmerHighlight") as Border;
-        if (shimmerBase is null || shimmerHighlight is null) return;
-
-        var cardW = PhotoGridItemsLayoutLogic.ResolveShimmerCardWidth(currentImageWidth, img.ActualWidth);
-
-        shimmerBase.Opacity = 1;
-        shimmerHighlight.Opacity = 1;
-        // 幅のみ明示指定し、高さは縦ストレッチ(均一セル高に追従)に任せる。
-        var metrics = PhotoGridItemsLayoutLogic.CalculateShimmerMetrics(cardW);
-        shimmerHighlight.Width = metrics.HighlightWidth;
-
-        var shimmerVisual = ElementCompositionPreview.GetElementVisual(shimmerHighlight);
-        var compositor = shimmerVisual.Compositor;
-        var shimmerAnim = compositor.CreateScalarKeyFrameAnimation();
-        shimmerAnim.InsertKeyFrame(0f, (float)metrics.StartOffset);
-        shimmerAnim.InsertKeyFrame(1f, (float)metrics.EndOffset);
-        shimmerAnim.Duration = TimeSpan.FromMilliseconds(PhotoGridItemsLayoutLogic.ShimmerDurationMilliseconds);
-        shimmerAnim.IterationBehavior = AnimationIterationBehavior.Forever;
-        shimmerVisual.StartAnimation("Offset.X", shimmerAnim);
+        if (FindSibling(img, "SkeletonPlaceholder") is Border skeleton)
+            SkeletonPulseAnimation.Start(skeleton);
     }
 
-    /// <summary>shimmer アニメを止め、ベース・ハイライトを消す。</summary>
-    private void StopShimmer(Image img)
+    /// <summary>Pulseを停止し、読み込み面を隠す。</summary>
+    private static void StopSkeletonPulse(Image img)
     {
-        if (FindSibling(img, "ShimmerHighlight") is Border shimmerHighlight)
-        {
-            try { ElementCompositionPreview.GetElementVisual(shimmerHighlight).StopAnimation("Offset.X"); }
-            catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.StopShimmer: {ex}"); }
-            shimmerHighlight.Opacity = 0;
-        }
-        if (FindSibling(img, "ShimmerBase") is Border shimmerBase)
-            shimmerBase.Opacity = 0;
-    }
-
-    /// <summary>
-    /// カード幅変更時に、表示中カードの shimmer ハイライトの寸法を再計算する。
-    /// アニメ実行中(ロード前)のカードのみ対象。ロード済みカードは Opacity=0 で見えないので影響なし。
-    /// </summary>
-    private void RefreshActiveShimmerSizes(DependencyObject root)
-    {
-        var stack = new Stack<DependencyObject>();
-        stack.Push(root);
-        while (stack.Count > 0)
-        {
-            var node = stack.Pop();
-            if (node is Border b && PhotoGridItemsLayoutLogic.ShouldRefreshShimmerWidth(b.Name, b.Opacity))
-            {
-                var cardW = PhotoGridItemsLayoutLogic.ResolveShimmerCardWidth(currentImageWidth, b.ActualWidth);
-                b.Width = PhotoGridItemsLayoutLogic.CalculateShimmerHighlightWidth(cardW);
-            }
-            var count = VisualTreeHelper.GetChildrenCount(node);
-            for (int i = 0; i < count; i++) stack.Push(VisualTreeHelper.GetChild(node, i));
-        }
+        if (FindSibling(img, "SkeletonPlaceholder") is not Border skeleton) return;
+        try { SkeletonPulseAnimation.Stop(skeleton); }
+        catch (Exception ex) { AppLogger.Error($"PhotoGridItemsView.StopSkeletonPulse: {ex}"); }
     }
 
     /// <summary>

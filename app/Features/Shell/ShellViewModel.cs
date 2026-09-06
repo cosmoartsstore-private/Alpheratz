@@ -39,6 +39,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     private readonly PhotoModalState photoModalState;
     private readonly DispatcherService dispatcherService;
     private readonly ThumbnailWorker thumbnailWorker;
+    private readonly PhotoService photoService;
 
     private bool isScanningRef;
     private readonly object activeScanGate = new();
@@ -66,6 +67,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     public SettingsViewModel settingsViewModel { get; }
     public TagMasterViewModel tagMasterViewModel { get; }
     public TemplatePageViewModel templatePageViewModel { get; }
+    public DuplicatePhotosViewModel duplicatePhotosViewModel { get; }
 
     private string scanStatus = "idle";
     private ScanProgressDto scanProgress = new() { processed = 0, total = 0, current_world = "", phase = "scan" };
@@ -108,7 +110,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         LocalEventBus eventBus, ToastService toastService, GalleryViewModel galleryViewModel,
         SettingsViewModel settingsViewModel, TagMasterViewModel tagMasterViewModel,
         TemplatePageViewModel templatePageViewModel, PhotoModalState photoModalState, DispatcherService dispatcherService,
-        ThumbnailWorker thumbnailWorker)
+        ThumbnailWorker thumbnailWorker, PhotoService? photoService = null)
     {
         AppLogger.Trace("ShellViewModel.ctor: enter");
         this.settingsService = settingsService; this.db = db;
@@ -118,6 +120,8 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         this.tagMasterViewModel = tagMasterViewModel; this.templatePageViewModel = templatePageViewModel;
         this.photoModalState = photoModalState; this.dispatcherService = dispatcherService;
         this.thumbnailWorker = thumbnailWorker;
+        this.photoService = photoService ?? new PhotoService(db);
+        duplicatePhotosViewModel = new DuplicatePhotosViewModel(this.photoService, dispatcherService, toastService);
         AppLogger.Trace("ShellViewModel.ctor: exit");
     }
 
@@ -431,6 +435,149 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         AppLogger.Trace("ShellViewModel.deleteTagAndRefreshGallery: exit");
     }
 
+    /// <summary>現在の全写真から、ファイル名をキーにお気に入りとタグのバックアップを作成する。</summary>
+    public async Task createPhotoUserDataBackup()
+    {
+        AppLogger.Trace("ShellViewModel.createPhotoUserDataBackup: enter");
+        try
+        {
+            var result = await photoService.CreatePhotoUserDataBackupAsync().ConfigureAwait(false);
+            if (result.SourcePhotoCount == 0)
+            {
+                toastService.addToast(getMsg("ShellViewModel.photoUserDataBackupNoPhotos"), ToastType.info);
+                AppLogger.Trace("ShellViewModel.createPhotoUserDataBackup: exit (no photos)");
+                return;
+            }
+
+            toastService.addToast(getMsg(
+                "ShellViewModel.photoUserDataBackupCreated",
+                ("photoCount", result.SourcePhotoCount),
+                ("fileCount", result.BackupEntryCount)));
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"ShellViewModel.createPhotoUserDataBackup: threw: {ex}");
+            toastService.addToast(getMsg("ShellViewModel.photoUserDataBackupFailed"), ToastType.error);
+        }
+        AppLogger.Trace("ShellViewModel.createPhotoUserDataBackup: exit");
+    }
+
+    /// <summary>
+    /// バックアップとファイル名が一致する全写真へお気に入りとタグを復元し、表示中データを再読込する。
+    /// DB 更新後の画面再読込だけが失敗した場合は、保存済み変更を失敗扱いにせず再起動を案内する。
+    /// </summary>
+    public async Task restorePhotoUserDataBackup()
+    {
+        AppLogger.Trace("ShellViewModel.restorePhotoUserDataBackup: enter");
+        try
+        {
+            var result = await photoService.RestorePhotoUserDataBackupAsync().ConfigureAwait(false);
+            if (result.BackupEntryCount == 0)
+            {
+                toastService.addToast(getMsg("ShellViewModel.photoUserDataBackupMissing"), ToastType.info);
+                AppLogger.Trace("ShellViewModel.restorePhotoUserDataBackup: exit (backup missing)");
+                return;
+            }
+            if (result.MatchedPhotoCount == 0)
+            {
+                toastService.addToast(getMsg("ShellViewModel.photoUserDataRestoreNoMatches"), ToastType.info);
+                AppLogger.Trace("ShellViewModel.restorePhotoUserDataBackup: exit (no matches)");
+                return;
+            }
+
+            try
+            {
+                await Task.WhenAll(
+                    tagMasterViewModel.loadTags(),
+                    galleryViewModel.loadTagFilterCounts(),
+                    galleryViewModel.photosState.loadPhotos()).ConfigureAwait(false);
+            }
+            catch (Exception refreshError)
+            {
+                AppLogger.Error($"ShellViewModel.restorePhotoUserDataBackup: refresh failed after restore: {refreshError}");
+                toastService.addToast(getMsg("ShellViewModel.photoUserDataRestoreRefreshFailed"), ToastType.error);
+                AppLogger.Trace("ShellViewModel.restorePhotoUserDataBackup: exit (refresh failed)");
+                return;
+            }
+
+            toastService.addToast(getMsg(
+                "ShellViewModel.photoUserDataRestored",
+                ("photoCount", result.MatchedPhotoCount),
+                ("tagCount", result.CreatedTagCount)));
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"ShellViewModel.restorePhotoUserDataBackup: threw: {ex}");
+            toastService.addToast(getMsg("ShellViewModel.photoUserDataRestoreFailed"), ToastType.error);
+        }
+        AppLogger.Trace("ShellViewModel.restorePhotoUserDataBackup: exit");
+    }
+
+    /// <summary>
+    /// 重複写真の削除中はスキャンとサムネイル生成を停止し、元ファイル・DB・表示一覧の順に同期する。
+    /// フォルダ変更と同じ gate を使い、対象フォルダの差し替えと同時に実行されないようにする。
+    /// </summary>
+    public async Task<DuplicatePhotoDeleteResult> deleteDuplicatePhotos(
+        IReadOnlyList<DuplicatePhotoDeleteTarget> targets)
+    {
+        AppLogger.Trace($"ShellViewModel.deleteDuplicatePhotos: enter count={targets.Count}");
+        if (targets.Count == 0)
+            return new DuplicatePhotoDeleteResult([], [], DatabaseUpdated: true);
+
+        await folderMutationGate.WaitAsync().ConfigureAwait(false);
+        var galleryThumbnailsSuspended = false;
+        var sharedThumbnailsSuspended = false;
+        try
+        {
+            await StopActiveScanAsync().ConfigureAwait(false);
+
+            galleryThumbnailsSuspended = true;
+            await galleryViewModel.photosState.suspendThumbnailGenerationAndWait().ConfigureAwait(false);
+            sharedThumbnailsSuspended = true;
+            await thumbnailWorker.SuspendOperationsAndWaitAsync().ConfigureAwait(false);
+
+            var result = await photoService.DeleteDuplicatePhotosAsync(targets).ConfigureAwait(false);
+            await dispatcherService.RunOnUiThread(() =>
+                galleryViewModel.selectionState.clearSelectedPhotos()).ConfigureAwait(false);
+
+            thumbnailWorker.ResumeOperations();
+            sharedThumbnailsSuspended = false;
+            galleryViewModel.photosState.allowThumbnailReloadAfterFolderCleanup();
+            galleryThumbnailsSuspended = false;
+
+            try
+            {
+                await Task.WhenAll(
+                    galleryViewModel.photosState.loadPhotos(),
+                    refreshGalleryFilterMetadata()).ConfigureAwait(false);
+            }
+            catch (Exception refreshError)
+            {
+                AppLogger.Error($"ShellViewModel.deleteDuplicatePhotos: refresh failed after delete: {refreshError}");
+                toastService.addToast(
+                    getMsg("DuplicatePhotosViewModel.galleryRefreshFailed"),
+                    ToastType.error);
+            }
+
+            AppLogger.Trace(
+                $"ShellViewModel.deleteDuplicatePhotos: exit deleted={result.DeletedPhotos.Count} failed={result.FailedPhotos.Count}");
+            return result;
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"ShellViewModel.deleteDuplicatePhotos: threw: {ex}");
+            throw;
+        }
+        finally
+        {
+            if (sharedThumbnailsSuspended)
+                thumbnailWorker.ResumeOperations();
+            if (galleryThumbnailsSuspended)
+                galleryViewModel.photosState.allowThumbnailReloadAfterFolderCleanup();
+            folderMutationGate.Release();
+        }
+    }
+
     /// <summary>
     /// scan:completed 後の archive 解決 / orientation 計算 / phash 計算を順番に走らせる。
     /// この 3 つはすべて DB 書き込みを伴うため、同時実行せず postScanGate で直列化する。
@@ -521,6 +668,22 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
                     toastService.addToast(payload, ToastType.info, duration: 7000));
                 return Task.CompletedTask;
             }));
+            scanUnlistenFns.Add(eventBus.Subscribe<string>(EventNames.ScanCancelled, payload =>
+            {
+                try
+                {
+                    var suppressNotice = IsApplyingFolderChange;
+                    dispatcherService.requestAnimationFrame(() =>
+                    {
+                        isScanningRef = false;
+                        ScanStatus = "idle";
+                        if (!suppressNotice)
+                            toastService.addToast(payload, ToastType.info);
+                    });
+                }
+                catch (Exception ex) { AppLogger.Error($"ShellViewModel.scan:cancelled: threw: {ex}"); }
+                return Task.CompletedTask;
+            }));
             scanUnlistenFns.Add(eventBus.Subscribe(EventNames.ScanCompleted, async () =>
             {
                 try
@@ -536,15 +699,11 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
             {
                 try
                 {
-                    var expectedFolderChangeCancellation =
-                        IsApplyingFolderChange
-                        && string.Equals(payload, getMsg("PhotoScanner.cancelled"), StringComparison.Ordinal);
                     dispatcherService.requestAnimationFrame(() =>
                     {
                         isScanningRef = false;
-                        ScanStatus = expectedFolderChangeCancellation ? "idle" : "error";
-                        if (!expectedFolderChangeCancellation)
-                            toastService.addToast(string.IsNullOrWhiteSpace(payload) ? getMsg("PhotoScanner.failed") : payload, ToastType.error);
+                        ScanStatus = "error";
+                        toastService.addToast(string.IsNullOrWhiteSpace(payload) ? getMsg("PhotoScanner.failed") : payload, ToastType.error);
                     });
                 }
                 catch (Exception ex) { AppLogger.Error($"ShellViewModel.scan:error: threw: {ex}"); }
@@ -986,12 +1145,18 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         try
         {
             await settingsService.SaveStartupPreferenceAsync(enabled).ConfigureAwait(false);
-            StartupEnabled = enabled;
+            await dispatcherService.RunOnUiThread(() =>
+            {
+                StartupEnabled = enabled;
+                settingsViewModel.StartupEnabled = enabled;
+            }).ConfigureAwait(false);
             toastService.addToast(getMsg(enabled ? "ShellViewModel.startupEnabled" : "ShellViewModel.startupDisabled"));
         }
         catch (Exception err)
         {
             AppLogger.Error($"ShellViewModel.handleStartupPreference: threw: {err}");
+            await dispatcherService.RunOnUiThread(() =>
+                settingsViewModel.StartupEnabled = StartupEnabled).ConfigureAwait(false);
             toastService.addToast(getMsg("ShellViewModel.startupUpdateFailed"), ToastType.error);
         }
         AppLogger.Trace("ShellViewModel.handleStartupPreference: exit");

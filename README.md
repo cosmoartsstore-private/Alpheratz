@@ -1,230 +1,134 @@
 # Alpheratz
 
-写真ギャラリー＆管理アプリケーション。画像のワールド別タグ付け、メタデータ管理、知覚ハッシュ (PDQ) による重複検出を備えた Windows ネイティブデスクトップアプリケーション。
+Alpheratz は、VRChat の写真をローカルで閲覧・分類する Windows 向け写真管理アプリケーションです。設定した 1st / 2nd 写真フォルダを走査し、撮影時刻、ワールド情報、タグ、お気に入り、画像寸法、PDQ 知覚ハッシュを SQLite に保存します。
 
-アプリ本体はローカルで動作し、外部 API・認証・テレメトリ送信を使用しない。投稿やワールド表示など、ユーザーが選択した操作では既定のブラウザーを開く。
-
----
-
-## Table of Contents
-
-- [Overview](#overview)
-- [Features](#features)
-- [Tech Stack](#tech-stack)
-- [Architecture](#architecture)
-- [Requirements](#requirements)
-- [Installation](#installation)
-- [Build from Source](#build-from-source)
-- [Project Structure](#project-structure)
-- [Data and Privacy](#data-and-privacy)
-- [Security](#security)
-- [Documentation](#documentation)
-- [Acknowledgements](#acknowledgements)
-- [License](#license)
-
----
-
-## Overview
-
-Alpheratz は VRChat などの写真をローカルで閲覧・分類する Windows デスクトップアプリケーションである。設定した 1st / 2nd 写真フォルダをスキャンし、撮影時刻・ワールド情報・タグ・お気に入り・PDQ ハッシュを SQLite に保存する。
-
-旧 TypeScript + WebView2 実装ではメイソンリーレイアウト時のメモリ使用量が重くなったため、現行版は .NET 8 + WinUI 3 の単一プロセス構成に移行している。
-
----
+通常の利用で外部 API、認証、テレメトリ送信は行いません。投稿画面、VRChat ワールドページ、クレジットのリンクは、利用者が操作したときだけ既定のブラウザーで開きます。
 
 ## Features
 
-- **Gallery** — 標準グリッド / メイソンリーレイアウトで写真を表示し、日付・ワールド・タグ・お気に入りで絞り込む。
-- **Photo Modal** — 写真、タグ、お気に入り、ワールド名を表示・編集し、投稿やファイル表示を行う。
-- **Tag Master** — 写真に付与するタグを管理する。
-- **Template** — 投稿用テンプレートを保存し、選択中テンプレートを切り替える。
-- **Duplicate Detection** — PDQ 知覚ハッシュで類似写真を検出する。
-- **World Resolve** — Polaris archive と PDQ 類似度からワールド名不明写真の候補を提示する。
-- **Settings** — 写真フォルダ、テーマ、起動設定、投稿時の動作、タグ、投稿テンプレート、クレジットを管理する。
-- **Bootstrap** — 起動時の初期化状態をスプラッシュ画面に表示する。
+- **Gallery** — 標準グリッドまたはメイソンリーレイアウトで写真を表示します。撮影日、ワールド、向き、タグ、お気に入りで絞り込み、撮影日時の降順またはワールド名順で並べ替えられます。
+- **World search** — ワールド名候補を最大5件表示し、Enter で入力文字列を検索条件として確定します。入力中に自動検索は実行しません。
+- **Grouping** — 標準グリッドではワールド単位にグループ化し、グループ内の写真へドリルダウンできます。
+- **Photo details** — 写真の拡大表示、前後移動、お気に入り切替、複数タグの追加・削除、Explorer での選択表示、VRChat ワールドページの表示、投稿画面の起動を行えます。
+- **Bulk actions** — 複数写真のお気に入り切替、複数タグの追加、別の写真フォルダへのコピーを行います。部分失敗時は未完了の写真だけを選択状態に残します。
+- **Tag master** — 25文字以内のタグを登録・削除し、ギャラリーと写真詳細の候補として利用します。
+- **Post templates** — 複数の投稿テンプレートとアクティブテンプレートを保存します。X の加重文字数を基準に280文字まで入力でき、ワールド名、日時、ファイル名、タグなどを投稿時に展開します。
+- **World resolve** — Polaris archive の訪問履歴でワールド名を補完します。残った未判定写真は PDQ 距離から一致率71%以上の候補を提示し、利用者が候補または手入力のワールド名を確認してから保存します。
+- **Settings** — 写真フォルダ、自動起動、投稿時のワールドページ表示、テーマ、タグ、投稿テンプレート、クレジットを左ナビゲーションで切り替えて管理します。
+- **Bootstrap** — 起動中はロゴと著作権表示だけをフェード表示します。処理量と対応しない疑似進捗は表示しません。
 
----
+## Architecture
+
+```text
+Windows 10 / 11 (x64)
+└─ Alpheratz.exe                         launcher
+   └─ app/Alpheratz.Frontend.exe         .NET 8 + WinUI 3
+      ├─ Features                        Pages / ViewModels / UI state
+      ├─ Services                        use-case orchestration
+      ├─ Core                            scan / imaging / database / paths
+      └─ Data
+         ├─ db/Alpheratz.db              metadata and tags
+         ├─ db/setting.json              settings and templates
+         ├─ cache/{1st,2nd}-cache        thumbnails
+         └─ logs/info.log                application log
+```
+
+Tauri、WebView2、Rust IPC は現行アプリでは使用しません。UI、写真走査、画像解析、DB 更新は同じ .NET プロセス内で動作します。
 
 ## Tech Stack
 
 | Layer | Technology |
 | --- | --- |
-| UI | .NET 8.0 + WinUI 3 / Windows App SDK 1.6 |
-| Architecture | MVVM (`CommunityToolkit.Mvvm`) |
-| DI | `Microsoft.Extensions.DependencyInjection` |
-| Database | SQLite (`Microsoft.Data.Sqlite`) |
-| Imaging | Windows imaging APIs, custom PDQ implementation |
-| UI Messages | `getMsg` + UTF-8 properties |
-| Testing | xUnit + coverlet |
-| Distribution | NSIS installer, unpackaged Windows app |
-
-技術選定の詳細と意思決定記録は [docs/tech-stack.md](docs/tech-stack.md) を参照。
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                  Windows 10 / 11 (x64)                      │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │              Alpheratz.exe (Launcher)               │    │
-│  │                       │                             │    │
-│  │                       ▼                             │    │
-│  │        Alpheratz.Frontend.exe (WinUI 3)             │    │
-│  │                                                     │    │
-│  │   Features/* Pages + ViewModels                     │    │
-│  │              │                                      │    │
-│  │              ▼                                      │    │
-│  │   Services / Core / AlpheratzDb                     │    │
-│  └──────────────┬──────────────────────────────────────┘    │
-│                 ▼                                           │
-│        SQLite: Data/db/Alpheratz.db                         │
-│        Cache : Data/cache/*/imgCache                        │
-│        Logs  : Data/logs                                    │
-└─────────────────────────────────────────────────────────────┘
-```
-
-Tauri / Rust IPC は使用しない。UI、スキャン、画像解析、DB 更新は .NET プロセス内で完結する。詳細は [docs/spec.md](docs/spec.md) を参照。
-
----
+| Runtime / UI | .NET 8、WinUI 3、Windows App SDK `1.6.250205002` |
+| State | MVVM、`CommunityToolkit.Mvvm 8.4.0` |
+| DI | `Microsoft.Extensions.DependencyInjection 8.0.1` |
+| Database | SQLite、`Microsoft.Data.Sqlite 8.0.11` |
+| Imaging | Windows imaging APIs、独自 PDQ 実装 |
+| Messages | UTF-8 `messages.ja.properties`、`MessageCatalog.getMsg` |
+| Tests | xUnit `2.5.3`、coverlet `6.0.0` |
+| Distribution | x64 self-contained publish、unpackaged NSIS current-user installer |
 
 ## Requirements
 
 ### Runtime
 
-- Windows 10 Build 19041 以降 / Windows 11 (x64)
-- VC++ Redistributable（未導入時は起動時に DLL 不足として失敗する）
+- Windows 10 Build 19041 以降、または Windows 11
+- x64
 
-### Build
+Release 配布物には .NET、Windows App SDK、Microsoft Visual C++ Redistributable（x64）を同梱します。利用者がこれらを事前に導入する必要はありません。
 
-- [.NET 8.0 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
-- Windows App SDK 1.6
-- Visual Studio 2022 または VS Code + C# Dev Kit
-- NSIS（インストーラ生成時）
+### Development
 
----
+- .NET 8 SDK
+- Windows 10 SDK を利用できる Windows 開発環境
+- Debug 実行時に対応する Windows App Runtime 1.6
+- NSIS（インストーラを作成する場合）
 
 ## Installation
 
-### From Installer
+`Alpheratz-Installer.exe` を実行します。既定のインストール先は `%LOCALAPPDATA%\CosmoArtsStore\Alpheratz` で、Program Files 配下は選択できません。Microsoft Visual C++ Redistributableの導入または更新が必要な場合だけ、WindowsのUAC承認を求めます。必要versionが導入済みなら管理者権限は使いません。
 
-1. `Alpheratz-Installer.exe` を実行
-2. インストール先を選択する
-3. 既定のインストール先は `%LOCALAPPDATA%\CosmoArtsStore\Alpheratz`
+更新または再インストールでは launcher と `app` ディレクトリを置き換え、既存の `Data` は保持します。アンインストールではアプリ本体、ショートカット、`Data`、関連する HKCU レジストリキーを削除します。参照元の写真フォルダは削除しません。
 
-管理者権限は不要。Program Files 配下へのインストールは installer 側で拒否する。
-
-更新または再インストールでは launcher と `app` を入れ替え、既存の `Data` を保持する。
-
-### Uninstallation
-
-Windows の「アプリと機能」または `uninstall.exe` からアンインストールする。
-
-アンインストール時はアプリ本体、ショートカット、`Data/db`, `Data/logs`, `Data/cache`, レジストリキーを削除する。写真フォルダ本体はアプリ管理外のため削除しない。
-
----
-
-## Build from Source
+## Build and Test
 
 ```powershell
 # 開発ビルド
 dotnet build app/Alpheratz.Frontend.csproj
+
+# Debug 実行
 dotnet run --project app/Alpheratz.Frontend.csproj
 
-# テスト
+# 全テスト
 dotnet test tests/Alpheratz.Tests/Alpheratz.Tests.csproj
 
-# 本番ビルド + NSIS インストーラ
+# Release publish、launcher、NSIS installer
 .\BuildWorks\scripts\build-release.ps1
 ```
 
-本番ビルドの完了後、`BuildWorks\Alpheratz-Installer.exe` が生成される。
+インストーラは `BuildWorks\Alpheratz-Installer.exe` に生成されます。Release の XAML 配置とMicrosoft Visual C++ Redistributableの同梱には通常の `dotnet publish` 以外の処理が必要なため、配布物は必ず `build-release.ps1` から作成してください。scriptはMicrosoft公式配布物を取得して署名を検証します。通信できない環境で検証済みcacheを再利用するときだけ、`-UseCachedVcRedist`を指定します。
 
----
-
-## Project Structure
-
-```
-.
-├── README.md
-├── docs/                         公開技術ドキュメント
-│   ├── spec.md                   機能仕様書
-│   ├── database.md               データベース定義書
-│   ├── tech-stack.md             技術スタックと ADR
-│   └── basic-design.html         画面レイアウト基本設計書
-├── app/                          WinUI 3 アプリケーション
-│   ├── Features/                 画面・ViewModel
-│   ├── Core/                     DB、スキャン、画像処理、パス解決
-│   ├── Services/                 ビジネスロジック
-│   ├── Models/                   DTO / UI モデル
-│   ├── Messages/                 UI 文言カタログ
-│   ├── Shared/                   共通コントロール、コンバーター、サービス
-│   └── Themes/                   WinUI 3 スタイル
-├── tests/Alpheratz.Tests/        xUnit テスト
-└── BuildWorks/                   launcher、publish、NSIS installer
-```
-
----
+`.github/workflows/ci.yml` は、mainへのpushとmain宛PRで全テストと最終NSIS installer生成を実行します。同一branchの古い実行は新しいpush時にcancelします。
 
 ## Data and Privacy
 
-本アプリはローカル完結で動作する。
-
 | Data | Location | Purpose |
 | --- | --- | --- |
-| SQLite データベース | `<install>\Data\db\Alpheratz.db` | 写真メタデータ、タグ、ワールド解決履歴 |
-| 設定 JSON | `<install>\Data\db\setting.json` | フォルダ、テーマ、表示モード、起動設定、投稿設定、テンプレート |
-| サムネイルキャッシュ | `<install>\Data\cache\1st-cache\imgCache`, `<install>\Data\cache\2nd-cache\imgCache` | 一覧表示用画像 |
-| ログ | `<install>\Data\logs` | アプリ実行ログ |
-| インストール先 | Windows Registry `HKCU\Software\CosmoArtsStore\Alpheratz` | installer とアプリのパス解決 |
+| SQLite | `<install>\Data\db\Alpheratz.db` | 写真メタデータ、タグ、訪問履歴 |
+| Settings | `<install>\Data\db\setting.json` | フォルダ、テーマ、表示、起動、投稿、テンプレート |
+| Thumbnails | `<install>\Data\cache\1st-cache\imgCache`、`2nd-cache\imgCache` | 一覧・候補表示 |
+| Logs | `<install>\Data\logs\info.log` | fatal ログ。詳細ログは明示的に有効化した場合のみ |
+| Registry | `HKCU\Software\CosmoArtsStore\Alpheratz` | インストール先と frontend の場所 |
 
-アプリ本体から外部 API・認証・テレメトリ送信は行わない。Polaris archive の補完は、同一 Windows ユーザーのローカルレジストリとローカルファイルだけを参照する。投稿、VRChat ワールド表示、クレジットのリンクはユーザー操作に応じて既定のブラウザーで開く。
+写真フォルダを変更またはリセットすると、進行中の走査とサムネイル生成を止め、対象 source slot の DB 行とキャッシュを整理してから再走査します。整理要求は `setting.json` に保存されるため、途中で終了しても次回起動時に再実行されます。1st と 2nd に同一フォルダまたは親子関係のフォルダは設定できません。
 
-写真フォルダを変更すると、進行中のスキャンとサムネイル生成を停止してから対象スロットの DB 情報とキャッシュを初期化する。途中で失敗した処理は設定に記録し、次回起動時に再開する。
+通常は `Fatal` だけを最大1 MiBのローテーションログへ保存します。`ALPHERATZ_VERBOSE_LOGS=1` を設定した場合は `Error`、`Warn`、`Info` も保存し、`TRACE_LOGGING` を有効にしたビルドでは `Trace` も対象になります。
 
----
+## Project Structure
 
-## Security
-
-### Application
-
-- ネットワーク API、認証、外部サーバ送信を持たない。
-- SQLite 書き込みはパラメータバインドを使う。
-- Polaris archive はレジストリから解決できる場合のみ参照する。
-
-### Installation
-
-- current user install。管理者権限を要求しない。
-- Program Files 配下へのインストールは拒否する。
-- コード署名は未実装。
-
-### Known Risks
-
-- コード署名なしのため SmartScreen 警告が出る場合がある。
-- 写真ファイルと Polaris archive のアクセス権は OS ユーザー権限に依存する。
-
----
+```text
+.
+├─ app/                           WinUI 3 application
+│  ├─ Features/                   screen-local UI and state
+│  ├─ Services/                   application services
+│  ├─ Core/                       database, scanner, imaging, paths
+│  ├─ Messages/                   Japanese UI message catalog
+│  ├─ Shared/                     shared controls and services
+│  └─ Themes/                     XAML resources
+├─ tests/Alpheratz.Tests/         xUnit tests
+├─ BuildWorks/                    launcher, publish scripts, NSIS
+├─ docs/                          public current-state documents
+└─ .claude/                       agent-only rules and handoffs
+```
 
 ## Documentation
 
-| Document | Description |
+| Document | Scope |
 | --- | --- |
-| [docs/spec.md](docs/spec.md) | 機能仕様書（アーキテクチャ、各機能、データフロー、状態管理） |
-| [docs/database.md](docs/database.md) | データベース定義書（スキーマ、インデックス、マイグレーション） |
-| [docs/tech-stack.md](docs/tech-stack.md) | 技術スタック詳細と意思決定記録（ADR） |
-| [docs/basic-design.html](docs/basic-design.html) | 画面レイアウト基本設計書 |
-
----
-
-## Acknowledgements
-
-- PDQ perceptual hash algorithm
-- .NET, WinUI 3, Windows App SDK
-- SQLite
-
----
+| [Specification](docs/spec.md) | 現行機能、処理フロー、並行処理、制約 |
+| [Database Schema](docs/database.md) | SQLite スキーマ、クエリ上の意味、トランザクション |
+| [Tech Stack](docs/tech-stack.md) | バージョン、ビルド・配布契約、採用理由 |
+| [Basic Design](docs/basic-design.html) | 現行画面の構成と操作状態 |
 
 ## License
 

@@ -119,6 +119,37 @@ public sealed class ProjectPackagingTests
                 && comment.Value.Contains("StellaRecord", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// コンパイル済みバインディングを含む DataTemplate が、実データ型を明示することを確認する。
+    ///
+    /// x:DataType がない場合、XAML コンパイラは DataTemplate 自体をデータ型として生成し、
+    /// 項目の実体を表示するときに不正な型変換でアプリを終了させる。
+    /// </summary>
+    [Fact]
+    public void XamlDataTemplates_WithCompiledBindings_DeclareItemType()
+    {
+        var appDirectory = Path.Combine(FindRepositoryRoot(), "app");
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var violations = Directory
+            .EnumerateFiles(appDirectory, "*.xaml", SearchOption.AllDirectories)
+            .Where(path => !NormalizeProjectPath(Path.GetRelativePath(appDirectory, path))
+                .StartsWith("artifacts/", StringComparison.OrdinalIgnoreCase))
+            .SelectMany(path => XDocument.Load(path)
+                .Descendants()
+                .Where(element => element.Name.LocalName == "DataTemplate")
+                .Where(template => template
+                    .DescendantsAndSelf()
+                    .Attributes()
+                    .Any(attribute => attribute.Value.Contains("{x:Bind", StringComparison.Ordinal)))
+                .Where(template => string.IsNullOrWhiteSpace(template.Attribute(xaml + "DataType")?.Value))
+                .Select(_ => NormalizeProjectPath(Path.GetRelativePath(FindRepositoryRoot(), path))))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        Assert.Empty(violations);
+    }
+
     [Fact]
     public void FrontendProject_DoesNotRecursivelyCopyGeneratedXbfSubfolder()
     {
@@ -134,6 +165,70 @@ public sealed class ProjectPackagingTests
         Assert.Equal(
             "$(OutDir)$(AssemblyName)/$(AssemblyName)",
             NormalizeProjectPath(removeDir.Attribute("Directories")?.Value ?? string.Empty));
+    }
+
+    /// <summary>
+    /// 配布installerがMicrosoft署名済みのVisual C++ Redistributableを内包し、
+    /// 既存appを置換する前に必要versionを確保することを確認する。
+    /// </summary>
+    [Fact]
+    public void ReleasePackaging_BundlesVerifiedVisualCppRuntimeBeforeReplacingApp()
+    {
+        var root = FindRepositoryRoot();
+        var prepareScript = File.ReadAllText(Path.Combine(
+            root,
+            "BuildWorks",
+            "scripts",
+            "prepare-vc-redist.ps1"));
+        var buildScript = File.ReadAllText(Path.Combine(
+            root,
+            "BuildWorks",
+            "scripts",
+            "build-release.ps1"));
+        var installerScript = File.ReadAllText(Path.Combine(
+            root,
+            "BuildWorks",
+            "nsis",
+            "Installer.nsi"));
+
+        Assert.Contains("https://aka.ms/vc14/vc_redist.x64.exe", prepareScript, StringComparison.Ordinal);
+        Assert.Contains("Get-AuthenticodeSignature", prepareScript, StringComparison.Ordinal);
+        Assert.Contains("CN=Microsoft Corporation", prepareScript, StringComparison.Ordinal);
+        Assert.Contains("VC_redist.x64.exe", prepareScript, StringComparison.Ordinal);
+        Assert.Contains("Microsoft Visual C++*Redistributable*(x64)*", prepareScript, StringComparison.Ordinal);
+        Assert.Contains("prepare-vc-redist.ps1", buildScript, StringComparison.Ordinal);
+        Assert.Contains("/DVC_REDIST_VERSION=", buildScript, StringComparison.Ordinal);
+        Assert.Contains("File /oname=vc_redist.x64.exe", installerScript, StringComparison.Ordinal);
+        Assert.Contains("/install /passive /norestart", installerScript, StringComparison.Ordinal);
+        Assert.Contains("SetRebootFlag true", installerScript, StringComparison.Ordinal);
+
+        var runtimeCheckIndex = installerScript.IndexOf(
+            "Call EnsureVisualCppRuntime",
+            StringComparison.Ordinal);
+        var appReplacementIndex = installerScript.IndexOf(
+            "Delete \"$INSTDIR\\${MAINBINARYNAME}.exe\"",
+            StringComparison.Ordinal);
+
+        Assert.True(runtimeCheckIndex >= 0);
+        Assert.True(appReplacementIndex > runtimeCheckIndex);
+    }
+
+    /// <summary>mainへ入る変更がWindows上のtestと最終installer生成を通ることを確認する。</summary>
+    [Fact]
+    public void CiWorkflow_GatesMainChangesWithTestsAndReleasePackaging()
+    {
+        var workflowPath = Path.Combine(FindRepositoryRoot(), ".github", "workflows", "ci.yml");
+        var workflow = File.ReadAllText(workflowPath);
+
+        Assert.Contains("push:", workflow, StringComparison.Ordinal);
+        Assert.Contains("pull_request:", workflow, StringComparison.Ordinal);
+        Assert.Contains("branches: [main]", workflow, StringComparison.Ordinal);
+        Assert.Contains("cancel-in-progress: true", workflow, StringComparison.Ordinal);
+        Assert.Contains("runs-on: windows-2025", workflow, StringComparison.Ordinal);
+        Assert.Contains("dotnet test tests/Alpheratz.Tests/Alpheratz.Tests.csproj", workflow, StringComparison.Ordinal);
+        Assert.Contains(".\\BuildWorks\\scripts\\build-release.ps1", workflow, StringComparison.Ordinal);
+        Assert.Contains("choco install nsis", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("continue-on-error", workflow, StringComparison.Ordinal);
     }
 
     /// <summary>

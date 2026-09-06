@@ -123,7 +123,7 @@ public sealed partial class GalleryGridStage : UserControl
     }
 
     /// <summary>
-    /// ロード中スピナーと EmptyState を排他で出し分ける。
+    /// ロード中バーと EmptyState を排他で出し分ける。
     /// - IsLoading=true → 写真グリッド + LoadingVeil
     /// - IsLoading=false && TotalCount=0 → EmptyState 表示・グリッド/Masonry/MonthNav 非表示
     /// - IsLoading=false && TotalCount>0 → グリッド表示のみ

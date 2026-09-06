@@ -126,6 +126,16 @@ public sealed class PdqHasherTests
 
         var result = PdqHasher.GeneratePdq(luma, width: 16, height: 16);
         var variants = PdqHasher.ComputeHashVariantsHex(luma, w: 16, h: 16).Split('|');
+        var rotated90 = PdqHasher.Rotate90(luma, 16, 16);
+        var rotated180 = PdqHasher.Rotate180(luma, 16, 16);
+        var rotated270 = PdqHasher.Rotate270(luma, 16, 16);
+        var expectedVariants = new[]
+        {
+            PdqHasher.ToHex(result!.Value.Hash),
+            PdqHasher.ToHex(PdqHasher.GeneratePdq(rotated90.luma, rotated90.width, rotated90.height)!.Value.Hash),
+            PdqHasher.ToHex(PdqHasher.GeneratePdq(rotated180.luma, rotated180.width, rotated180.height)!.Value.Hash),
+            PdqHasher.ToHex(PdqHasher.GeneratePdq(rotated270.luma, rotated270.width, rotated270.height)!.Value.Hash),
+        };
 
         Assert.NotNull(result);
         Assert.Equal(PdqHasher.HashLength, result.Value.Hash.Length);
@@ -133,5 +143,6 @@ public sealed class PdqHasherTests
         Assert.Equal(64, PdqHasher.ToHex(result.Value.Hash).Length);
         Assert.Equal(4, variants.Length);
         Assert.All(variants, value => Assert.Equal(64, value.Length));
+        Assert.Equal(expectedVariants, variants);
     }
 }

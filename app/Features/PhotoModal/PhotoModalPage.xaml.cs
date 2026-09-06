@@ -75,6 +75,17 @@ public sealed partial class PhotoModalPage : Page
         }
     }
 
+    /// <summary>投稿テンプレートの選択状態に応じて投稿操作を有効化する。</summary>
+    public void SetTweetAvailable(bool available)
+    {
+        TweetButton.IsEnabled = available;
+        var helpText = getMsg(available
+            ? "PhotoModalPage.postHelp"
+            : "PhotoModalPage.postUnavailableHelp");
+        ToolTipService.SetToolTip(TweetButton, helpText);
+        AutomationProperties.SetHelpText(TweetButton, helpText);
+    }
+
     /// <summary>初期 ViewModel を受け取り、状態変更購読と DataContext を設定する。</summary>
     public PhotoModalPage(PhotoModalViewModel viewModel)
     {

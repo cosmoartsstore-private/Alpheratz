@@ -305,13 +305,13 @@ public sealed class WorldServiceBehaviorTests
     }
 
     /// <summary>
-    /// Explorer 選択表示の起動情報が、コマンド文字列ではなく分離された引数として構築されることを確認する。
+    /// Explorer 選択表示の起動情報が、選択オプションと対象パスを1つの引数として構築することを確認する。
     ///
-    /// 写真パスに引用符やシェル区切りに見える文字が含まれても、ArgumentList の2番目の値として渡す。
-    /// これにより、表示対象パスと Explorer オプションの境界を保ったまま OS へ渡せる。
+    /// Explorer の `/select,<path>` 構文は全体が1引数であるため、文字列連結後の値を ArgumentList へ渡す。
+    /// ProcessStartInfo に引用処理を委ね、シェル経由のコマンド文字列は組み立てない。
     /// </summary>
     [Fact]
-    public void BuildExplorerSelectionStartInfo_SeparatesSelectOptionAndPathArgument()
+    public void BuildExplorerSelectionStartInfo_BuildsSingleSelectArgument()
     {
         var input = "C:/photos/a\" & calc.jpg";
         var psi = WorldService.BuildExplorerSelectionStartInfo(input);
@@ -319,7 +319,7 @@ public sealed class WorldServiceBehaviorTests
         Assert.True(Path.IsPathRooted(psi.FileName));
         Assert.Equal("explorer.exe", Path.GetFileName(psi.FileName));
         Assert.False(psi.UseShellExecute);
-        Assert.Equal(["/select,", Path.GetFullPath(input.Replace('/', '\\'))], psi.ArgumentList.ToArray());
+        Assert.Equal(["/select," + Path.GetFullPath(input.Replace('/', '\\'))], psi.ArgumentList.ToArray());
         Assert.Throws<ArgumentException>(() => WorldService.BuildExplorerSelectionStartInfo(""));
     }
 

@@ -67,6 +67,8 @@ public sealed partial class GalleryMasonryView : UserControl
         public Border? SelectionRing;
         public FavoriteCornerBadge? FavoriteBadge;
         public TextBlock? ErrorIcon;
+        public Grid? MediaHost;
+        public Border? SkeletonPlaceholder;
         public BitmapImage? CurrentBitmap;
         public string LoadedPath = string.Empty;
         public string LoadingPath = string.Empty;
@@ -87,7 +89,7 @@ public sealed partial class GalleryMasonryView : UserControl
         public Action? PrepareImageLoad;
         public Action? ShowImageOpened;
         public Action? ShowImageError;
-        public Action? StopShimmer;
+        public Action? StopSkeletonPulse;
     }
 
     /// <summary>現在 Canvas 上に実体化されているカード（キーはレイアウトインデックス）。</summary>
@@ -195,6 +197,10 @@ public sealed partial class GalleryMasonryView : UserControl
                     entry.Container.Background = bg;
                 if (ThemeHelper.Brush(entry.Container, "ABorder") is { } br)
                     entry.Container.BorderBrush = br;
+                if (entry.MediaHost is not null && ThemeHelper.Brush(entry.Container, "ASurfaceSoft") is { } mediaBg)
+                    entry.MediaHost.Background = mediaBg;
+                if (entry.SkeletonPlaceholder is not null && ThemeHelper.Brush(entry.Container, "ASurfaceSofter") is { } skeletonBg)
+                    entry.SkeletonPlaceholder.Background = skeletonBg;
                 if (entry.SelectionTint is not null && ThemeHelper.Brush(entry.Container, "APhotoSelectionTint") is { } tint)
                     entry.SelectionTint.Background = tint;
                 if (entry.SelectionGlow is not null && ThemeHelper.Brush(entry.Container, "APhotoSelectionGlow") is { } glow)
@@ -331,7 +337,7 @@ public sealed partial class GalleryMasonryView : UserControl
         entry.LoadingPath = string.Empty;
         entry.IsLoaded = false;
         entry.IsLoading = false;
-        entry.StopShimmer?.Invoke();
+        entry.StopSkeletonPulse?.Invoke();
     }
 
     private static void ReleaseCard(CardEntry entry)
@@ -811,6 +817,7 @@ public sealed partial class GalleryMasonryView : UserControl
         {
             Width = item.Width,
             Height = item.Height,
+            Background = ThemeHelper.Brush(this, "ASurfaceSoft"),
         };
         cardGrid.Clip = new RectangleGeometry
         {
@@ -818,38 +825,17 @@ public sealed partial class GalleryMasonryView : UserControl
         };
         border.Child = cardGrid;
 
-        // 画像読み込み前のプレースホルダを配置する。
-        var shimmerBase = new Border
+        // 画像読み込み前は、面全体がゆっくり明滅するMaterial UI型のPulseを表示する。
+        var skeletonPlaceholder = new Border
         {
-            Background = ThemeHelper.Brush(this, "ASurfaceSoft"),
+            Background = ThemeHelper.Brush(this, "ASurfaceSofter"),
             Width = item.Width,
             Height = item.Height,
         };
-        cardGrid.Children.Add(shimmerBase);
+        cardGrid.Children.Add(skeletonPlaceholder);
+        SkeletonPulseAnimation.Start(skeletonPlaceholder);
 
-        var shimmer = GalleryMasonryViewportLogic.ShimmerMetrics(item.Width);
-        var shimmerHighlight = new Border
-        {
-            Background = ThemeHelper.Brush(this, "ASurfaceHover"),
-            Width = shimmer.HighlightWidth,
-            Height = item.Height,
-            HorizontalAlignment = HorizontalAlignment.Left,
-        };
-        cardGrid.Children.Add(shimmerHighlight);
-
-        // ハイライトを横に流して読み込み中であることを示す。
-        var shimmerVisual = ElementCompositionPreview.GetElementVisual(shimmerHighlight);
-        var compositor = shimmerVisual.Compositor;
-        ScalarKeyFrameAnimation CreateShimmerAnimation()
-        {
-            var animation = compositor.CreateScalarKeyFrameAnimation();
-            animation.InsertKeyFrame(0f, (float)shimmer.StartOffset);
-            animation.InsertKeyFrame(1f, (float)shimmer.EndOffset);
-            animation.Duration = TimeSpan.FromMilliseconds(shimmer.DurationMilliseconds);
-            animation.IterationBehavior = AnimationIterationBehavior.Forever;
-            return animation;
-        }
-        shimmerVisual.StartAnimation("Offset.X", CreateShimmerAnimation());
+        var compositor = ElementCompositionPreview.GetElementVisual(skeletonPlaceholder).Compositor;
 
         // 写真本体を UniformToFill で表示する。
         var image = new Image
@@ -878,27 +864,23 @@ public sealed partial class GalleryMasonryView : UserControl
         cardGrid.Children.Add(errorIcon);
 
         // 画像ロードの開始・終了・失敗を、同じカードのプレースホルダへ反映する。
-        void StartShimmer()
+        void StartSkeletonPulse()
         {
             try
             {
-                shimmerBase.Background = ThemeHelper.Brush(this, "ASurfaceSoft");
-                shimmerBase.Opacity = 1;
-                shimmerHighlight.Opacity = 1;
-                shimmerVisual.StartAnimation("Offset.X", CreateShimmerAnimation());
+                skeletonPlaceholder.Background = ThemeHelper.Brush(this, "ASurfaceSofter");
+                SkeletonPulseAnimation.Start(skeletonPlaceholder);
             }
-            catch (Exception ex) { AppLogger.Error($"GalleryMasonryView.StartShimmer: threw: {ex}"); }
+            catch (Exception ex) { AppLogger.Error($"GalleryMasonryView.StartSkeletonPulse: threw: {ex}"); }
         }
 
-        void StopShimmer()
+        void StopSkeletonPulse()
         {
             try
             {
-                shimmerVisual.StopAnimation("Offset.X");
-                shimmerBase.Opacity = 0;
-                shimmerHighlight.Opacity = 0;
+                SkeletonPulseAnimation.Stop(skeletonPlaceholder);
             }
-            catch (Exception ex) { AppLogger.Error($"GalleryMasonryView.StopShimmer: threw: {ex}"); }
+            catch (Exception ex) { AppLogger.Error($"GalleryMasonryView.StopSkeletonPulse: threw: {ex}"); }
         }
 
         void PrepareImageLoad()
@@ -908,7 +890,7 @@ public sealed partial class GalleryMasonryView : UserControl
                 errorIcon.Visibility = Visibility.Collapsed;
                 imageVisual.StopAnimation("Opacity");
                 imageVisual.Opacity = 0f;
-                StartShimmer();
+                StartSkeletonPulse();
             }
             catch (Exception ex) { AppLogger.Error($"GalleryMasonryView.PrepareImageLoad: threw: {ex}"); }
         }
@@ -917,11 +899,11 @@ public sealed partial class GalleryMasonryView : UserControl
         {
             try
             {
-                StopShimmer();
+                StopSkeletonPulse();
                 imageVisual.StopAnimation("Opacity");
                 imageVisual.Opacity = 0f;
-                shimmerBase.Background = ThemeHelper.Brush(this, "ASurfaceSoft");
-                shimmerBase.Opacity = 1;
+                skeletonPlaceholder.Background = ThemeHelper.Brush(this, "ASurfaceSofter");
+                skeletonPlaceholder.Opacity = 1;
                 errorIcon.Visibility = Visibility.Visible;
             }
             catch (Exception ex) { AppLogger.Error($"GalleryMasonryView.ShowImageError: threw: {ex}"); }
@@ -936,7 +918,7 @@ public sealed partial class GalleryMasonryView : UserControl
                 fadeIn.InsertKeyFrame(1f, 1f, easing);
                 fadeIn.Duration = TimeSpan.FromMilliseconds(200);
                 imageVisual.StartAnimation("Opacity", fadeIn);
-                StopShimmer();
+                StopSkeletonPulse();
             }
             catch (Exception ex) { AppLogger.Error($"GalleryMasonryView.ShowImageOpened: threw: {ex}"); }
         }
@@ -997,6 +979,11 @@ public sealed partial class GalleryMasonryView : UserControl
         favoriteBadge.OnClick = () => OnFavoriteClicked?.Invoke(item.Photo);
         cardGrid.Children.Add(favoriteBadge);
 
+        // ギャラリーモードでは写真を優先し、操作時だけお気に入りバッジを表示する。
+        // Composition の不透明度だけを変えることで、キーボードのフォーカス対象は維持する。
+        var favoriteVisual = ElementCompositionPreview.GetElementVisual(favoriteBadge);
+        favoriteVisual.Opacity = 0f;
+
         // --- 複数選択モードの選択リング ---
         // チェックバッジを使わず、カード全体の二重枠で選択を示す。
         // PhotoThumbnailItem.IsSelected の変化を PhotoSubscription で受けて Visibility を切り替える。
@@ -1035,9 +1022,31 @@ public sealed partial class GalleryMasonryView : UserControl
         ElementCompositionPreview.SetIsTranslationEnabled(border, true);
         borderVisual.Properties.InsertVector3("Translation", Vector3.Zero);
         var hoverEasing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.25f, 0.1f), new Vector2(0.25f, 1f));
+        var isPointerOver = false;
+        var isFavoriteFocused = false;
+
+        void AnimateFavoriteOpacity(float targetOpacity)
+        {
+            var animation = compositor.CreateScalarKeyFrameAnimation();
+            animation.InsertKeyFrame(1f, targetOpacity, hoverEasing);
+            animation.Duration = TimeSpan.FromMilliseconds(180);
+            favoriteVisual.StartAnimation("Opacity", animation);
+        }
+
+        favoriteBadge.GotFocus += (_, _) =>
+        {
+            isFavoriteFocused = true;
+            AnimateFavoriteOpacity(1f);
+        };
+        favoriteBadge.LostFocus += (_, _) =>
+        {
+            isFavoriteFocused = false;
+            if (!isPointerOver) AnimateFavoriteOpacity(0f);
+        };
 
         border.PointerEntered += (_, _) =>
         {
+            isPointerOver = true;
             var liftAnim = compositor.CreateVector3KeyFrameAnimation();
             liftAnim.InsertKeyFrame(1f, new Vector3(0f, -2f, 0f), hoverEasing);
             liftAnim.Duration = TimeSpan.FromMilliseconds(200);
@@ -1053,10 +1062,12 @@ public sealed partial class GalleryMasonryView : UserControl
             overlayFadeIn.InsertKeyFrame(1f, 1f, hoverEasing);
             overlayFadeIn.Duration = TimeSpan.FromMilliseconds(180);
             overlayVisual.StartAnimation("Opacity", overlayFadeIn);
+            AnimateFavoriteOpacity(1f);
         };
 
         border.PointerExited += (_, _) =>
         {
+            isPointerOver = false;
             var liftAnim = compositor.CreateVector3KeyFrameAnimation();
             liftAnim.InsertKeyFrame(1f, Vector3.Zero, hoverEasing);
             liftAnim.Duration = TimeSpan.FromMilliseconds(200);
@@ -1071,6 +1082,7 @@ public sealed partial class GalleryMasonryView : UserControl
             overlayFadeOut.InsertKeyFrame(1f, 0f, hoverEasing);
             overlayFadeOut.Duration = TimeSpan.FromMilliseconds(180);
             overlayVisual.StartAnimation("Opacity", overlayFadeOut);
+            if (!isFavoriteFocused) AnimateFavoriteOpacity(0f);
         };
 
         border.Tapped += (_, _) =>
@@ -1090,10 +1102,12 @@ public sealed partial class GalleryMasonryView : UserControl
             SelectionRing = selectionRing,
             FavoriteBadge = favoriteBadge,
             ErrorIcon = errorIcon,
+            MediaHost = cardGrid,
+            SkeletonPlaceholder = skeletonPlaceholder,
             PrepareImageLoad = PrepareImageLoad,
             ShowImageOpened = ShowImageOpened,
             ShowImageError = ShowImageError,
-            StopShimmer = StopShimmer,
+            StopSkeletonPulse = StopSkeletonPulse,
         };
         // サムネイル生成完了時に GridThumbPath が更新されるので、自動で画像を差し替える。
         // また IsSelected / IsFavorite の変化に応じて各バッジ表示を切り替える。

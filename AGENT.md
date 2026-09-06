@@ -5,7 +5,7 @@ Common ethics, engineering philosophy, comment policy, and workflow rules live i
 
 ## Next Documents
 
-- `.claude/README.md` - project-local index, moved agent notes, follow-up notes, and Claude workspace files.
+- `.claude/README.md` - project-local index, current implementation contracts, packaging handoff, and Claude workspace settings.
 - `README.md` - public project overview and repository layout.
 - `docs/spec.md` - public feature specification and data flow.
 - `docs/database.md` - public SQLite schema and migration reference.
@@ -14,7 +14,7 @@ Common ethics, engineering philosophy, comment policy, and workflow rules live i
 
 ## Routing
 
-- Need project-local decisions or prior agent notes: read `.claude/README.md`.
+- Need project-local implementation contracts or packaging cautions: read `.claude/README.md`.
 - Need GitHub-visible or user-facing explanation: read `README.md`.
 - Need public feature, database, stack, or screen layout details: read `docs/spec.md`, `docs/database.md`, `docs/tech-stack.md`, and `docs/basic-design.html`.
 - Need an internal note, audit handoff, or archived working sample: keep it under `.claude/`; do not move it into public docs.

@@ -14,21 +14,15 @@
                 BorderBrush="{ThemeResource ABorder}"
                 BorderThickness="1">
             <StackPanel Spacing="14">
-                <ProgressRing Width="44" Height="44" IsActive="True" HorizontalAlignment="Center"
-                              Foreground="{ThemeResource APrimary}"/>
                 <TextBlock Text="{x:Bind messages:MessageCatalog.getMsg('ScanningOverlay.heading')}"
                            FontSize="{StaticResource AFontSize2Xl}"
                            FontWeight="SemiBold"
                            HorizontalAlignment="Center"/>
-                <TextBlock Text="{Binding ScanProgress.current_world}"
-                           Style="{StaticResource HintTextStyle}"
-                           AutomationProperties.LiveSetting="Polite"
-                           TextAlignment="Center"/>
                 <shared:WaveProgressBar Minimum="0"
                                         Maximum="{Binding ScanProgress.total}"
                                         Value="{Binding ScanProgress.processed}"
                                         AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('ScanningOverlay.progress')}"
-                                        Height="8"/>
+                                        Height="4"/>
                 <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
                     <TextBlock Text="{Binding ScanProgress.processed}" Style="{StaticResource CaptionTextStyle}" Foreground="{ThemeResource ATextDim}"/>
                     <TextBlock Text="/" Style="{StaticResource CaptionTextStyle}" Foreground="{ThemeResource ATextDim}"/>

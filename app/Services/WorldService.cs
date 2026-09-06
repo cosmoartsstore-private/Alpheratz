@@ -7,6 +7,7 @@ using Alpheratz.Core;
 using Alpheratz.Core.Database;
 using Alpheratz.Core.Imaging.Pdq;
 using Alpheratz.Core.Scanner;
+using Alpheratz.Shared.Services;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 using Windows.Storage.Streams;
@@ -27,17 +28,24 @@ public sealed class WorldService
     private const string TweetIntentPath = "/intent/tweet";
     private const string TweetIntentQueryPrefix = "?text=";
     private const string ExplorerExecutableName = "explorer.exe";
-    private const string ExplorerSelectArgument = "/select,";
+    private const string ExplorerSelectArgumentPrefix = "/select,";
 
     /// <summary>
-    /// PDQ ハミング距離の最大許容値。
-    /// 256 ビットハッシュ中 124 ビット以下の差なら「同じワールドで撮影された可能性が高い」と判定する。
-    /// 256 の約半分 (128) を閾値にすると偶然一致でも閾値を下回るため、やや厳しめの 124 を採用。
+    /// 自動補完に利用できる PDQ ハミング距離の最大値。
+    /// 表示式 round((1 - distance / 256) * 100) では 75 が 71%、76 が 70% になるため、
+    /// 一致率 70% 以下を除外する境界として 75 を採用する。
     /// </summary>
-    public const int WorldMatchDistanceThreshold = 124;
+    public const int WorldMatchDistanceThreshold = 75;
+    private const int ParallelCandidateRankingMinimumCount = 512;
+    private static int CandidateRankingParallelism
+        => Math.Clamp(
+            Environment.ProcessorCount - Math.Max(1, Environment.ProcessorCount / 5),
+            1,
+            16);
 
     private readonly AlpheratzDb _db;
     private readonly PhotoScanner _scanner;
+    private readonly DispatcherService _dispatcherService;
 
     /// <summary>
     /// PDQ 文字列を候補取得時に一度だけパースした既知ワールド候補。
@@ -45,14 +53,19 @@ public sealed class WorldService
     /// </summary>
     internal sealed record PreparedKnownWorldRow(
         AlpheratzDb.KnownWorldRow Row,
-        IReadOnlyList<string> HashVariants);
+        PdqHasher.PackedHash256[] HashVariants);
 
-    /// <summary>ワールド情報を扱う DB とログ由来の解決処理を受け取ってサービスを作成する。</summary>
-    public WorldService(AlpheratzDb db, PhotoScanner scanner)
+    /// <summary>指定距離が表示上一致率 71% 以上で、自動補完に利用できるかを返す。</summary>
+    public static bool CanAutomaticallyComplete(int? distance)
+        => distance is >= 0 and <= WorldMatchDistanceThreshold;
+
+    /// <summary>ワールド情報を扱う DB、ログ由来の解決処理、UI dispatcher を受け取ってサービスを作成する。</summary>
+    public WorldService(AlpheratzDb db, PhotoScanner scanner, DispatcherService? dispatcherService = null)
     {
         AppLogger.Trace("WorldService.ctor: enter");
         _db = db;
         _scanner = scanner;
+        _dispatcherService = dispatcherService ?? new DispatcherService();
         AppLogger.Trace("WorldService.ctor: exit");
     }
 
@@ -123,11 +136,15 @@ public sealed class WorldService
         {
             var normalizedPath = System.IO.Path.GetFullPath(photoPath.Replace('/', '\\'));
             var file = await StorageFile.GetFileFromPathAsync(normalizedPath).AsTask(ct).ConfigureAwait(false);
-            var dataPackage = new DataPackage();
-            dataPackage.SetBitmap(RandomAccessStreamReference.CreateFromFile(file));
-            dataPackage.SetStorageItems(new[] { file });
-            Clipboard.SetContent(dataPackage);
-            Clipboard.Flush();
+            ct.ThrowIfCancellationRequested();
+            await _dispatcherService.RunOnUiThread(() =>
+            {
+                var dataPackage = new DataPackage();
+                dataPackage.SetBitmap(RandomAccessStreamReference.CreateFromFile(file));
+                dataPackage.SetStorageItems(new[] { file });
+                Clipboard.SetContent(dataPackage);
+                Clipboard.Flush();
+            }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -172,14 +189,15 @@ public sealed class WorldService
         if (string.IsNullOrWhiteSpace(path))
             throw new ArgumentException("Explorer で表示する写真パスが空です。", nameof(path));
 
-        // /select と対象パスを別引数にすることで、引用符や区切り文字を含むパスをコマンド文字列へ混ぜない。
+        // Explorer の選択指定は /select,<path> が1つの引数である。
+        // ArgumentList に渡し、空白を含むパスの引用処理は ProcessStartInfo に委ねる。
         var psi = new ProcessStartInfo
         {
             FileName = ResolveExplorerExecutablePath(),
             UseShellExecute = false,
         };
-        psi.ArgumentList.Add(ExplorerSelectArgument);
-        psi.ArgumentList.Add(System.IO.Path.GetFullPath(path.Replace('/', '\\')));
+        var normalizedPath = System.IO.Path.GetFullPath(path.Replace('/', '\\'));
+        psi.ArgumentList.Add(ExplorerSelectArgumentPrefix + normalizedPath);
         return psi;
     }
 
@@ -296,8 +314,8 @@ public sealed class WorldService
         CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
-        var targetVariants = PdqHasher.ParseHashVariants(targetPhash);
-        if (targetVariants.Count == 0) return null;
+        var targetVariants = PdqHasher.ParsePackedHashVariants(targetPhash);
+        if (targetVariants.Length == 0) return null;
 
         var bestDistance = int.MaxValue;
         AlpheratzDb.KnownWorldRow? best = null;
@@ -306,10 +324,10 @@ public sealed class WorldService
             if ((index & 0x7F) == 0)
                 ct.ThrowIfCancellationRequested();
             var candidate = candidates[index];
-            var d = PdqHasher.ClosestHashDistance(targetVariants, candidate.HashVariants);
-            if (d is null || d.Value > WorldMatchDistanceThreshold) continue;
-            if (d.Value >= bestDistance) continue;
-            bestDistance = d.Value;
+            var d = PdqHasher.ClosestPackedHashDistance(targetVariants, candidate.HashVariants);
+            if (d > WorldMatchDistanceThreshold) continue;
+            if (d >= bestDistance) continue;
+            bestDistance = d;
             best = candidate.Row;
             if (bestDistance == 0) break;
         }
@@ -329,21 +347,39 @@ public sealed class WorldService
         CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
-        var targetVariants = PdqHasher.ParseHashVariants(targetPhash);
-        if (targetVariants.Count == 0) return [];
+        var targetVariants = PdqHasher.ParsePackedHashVariants(targetPhash);
+        if (targetVariants.Length == 0) return [];
 
-        var ranked = new List<(AlpheratzDb.KnownWorldRow Row, int Distance)>();
-        for (var index = 0; index < candidates.Count; index++)
+        var ranked = new (AlpheratzDb.KnownWorldRow Row, int Distance)[candidates.Count];
+        if (candidates.Count < ParallelCandidateRankingMinimumCount)
         {
-            if ((index & 0x7F) == 0)
-                ct.ThrowIfCancellationRequested();
-            var candidate = candidates[index];
-            var d = PdqHasher.ClosestHashDistance(targetVariants, candidate.HashVariants);
-            if (d is null) continue;
-            ranked.Add((candidate.Row, d.Value));
+            for (var index = 0; index < candidates.Count; index++)
+            {
+                if ((index & 0x7F) == 0)
+                    ct.ThrowIfCancellationRequested();
+                var candidate = candidates[index];
+                ranked[index] = (
+                    candidate.Row,
+                    PdqHasher.ClosestPackedHashDistance(targetVariants, candidate.HashVariants));
+            }
         }
-        ranked.Sort((a, b) => a.Distance.CompareTo(b.Distance));
-        return ranked;
+        else
+        {
+            Parallel.For(0, candidates.Count, new ParallelOptions
+            {
+                CancellationToken = ct,
+                MaxDegreeOfParallelism = CandidateRankingParallelism,
+            }, index =>
+            {
+                var candidate = candidates[index];
+                ranked[index] = (
+                    candidate.Row,
+                    PdqHasher.ClosestPackedHashDistance(targetVariants, candidate.HashVariants));
+            });
+        }
+
+        Array.Sort(ranked, static (left, right) => left.Distance.CompareTo(right.Distance));
+        return new List<(AlpheratzDb.KnownWorldRow Row, int Distance)>(ranked);
     }
 
     internal static IReadOnlyList<PreparedKnownWorldRow> PrepareKnownWorldRows(
@@ -357,9 +393,13 @@ public sealed class WorldService
             if ((index & 0x7F) == 0)
                 ct.ThrowIfCancellationRequested();
             var candidate = candidates[index];
-            var variants = PdqHasher.ParseHashVariants(candidate.Phash);
-            if (variants.Count > 0)
-                prepared.Add(new PreparedKnownWorldRow(candidate, variants));
+            var variants = PdqHasher.ParsePackedHashVariants(candidate.Phash);
+            if (variants.Length > 0)
+            {
+                // 比較は固定長整数へ変換済みなので、約259文字の元ハッシュをキャッシュへ残さない。
+                // 写真パスやワールド情報は候補表示と適用に必要なため、そのまま保持する。
+                prepared.Add(new PreparedKnownWorldRow(candidate with { Phash = string.Empty }, variants));
+            }
         }
         return prepared;
     }

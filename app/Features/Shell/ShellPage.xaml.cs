@@ -70,7 +70,17 @@ public sealed partial class ShellPage : Page
             HeaderBar.OnViewModeChange = async modeStr =>
             {
                 var mode = modeStr == "gallery" ? ViewMode.gallery : ViewMode.standard;
-                await viewModel.handleSetViewMode(mode).ConfigureAwait(false);
+                // 2 つのスイッチを相互排他に保つ。ギャラリーモードを優先した場合は、
+                // 現在のワールド単位グループ化を解除してから表示方式を切り替える。
+                if (mode == ViewMode.gallery
+                    && viewModel.galleryViewModel.filtersState.GroupingMode != GroupingMode.none)
+                {
+                    viewModel.galleryViewModel.displayState.prepareGroupingModeChange(
+                        viewModel.galleryViewModel.filtersState.GroupingMode,
+                        GroupingMode.none,
+                        groupingMode => viewModel.galleryViewModel.filtersState.GroupingMode = groupingMode);
+                }
+                await viewModel.handleSetViewMode(mode).ConfigureAwait(true);
             };
             // 検索ボックスで Enter が押されたときの即時検索。SearchQuery は HeaderBar 側で
             // UpdateSource 済みなので、ここでは applySearchNow() を呼ぶだけ (リアルタイム検索は廃止)。
@@ -101,6 +111,7 @@ public sealed partial class ShellPage : Page
         HeaderBar.SetViewMode(viewModel.ViewMode);
         HeaderBar.SetGroupingMode(viewModel.galleryViewModel.filtersState.GroupingMode);
         HeaderBar.SetGalleryBusy(viewModel.galleryViewModel.photosState.IsLoading);
+        FilterPanel.setFilteredCount(viewModel.galleryViewModel.photosState.TotalCount);
         UpdateScanningOverlayVisibility();
         AppLogger.Trace("ShellPage.ctor: exit");
     }
@@ -145,6 +156,8 @@ public sealed partial class ShellPage : Page
         {
             if (e.PropertyName == nameof(viewModel.galleryViewModel.photosState.IsLoading))
                 HeaderBar.SetGalleryBusy(viewModel.galleryViewModel.photosState.IsLoading);
+            else if (e.PropertyName == nameof(viewModel.galleryViewModel.photosState.TotalCount))
+                FilterPanel.setFilteredCount(viewModel.galleryViewModel.photosState.TotalCount);
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.OnShellPhotosStateChanged: threw: {ex}"); }
         AppLogger.Trace("ShellPage.OnShellPhotosStateChanged: exit");
@@ -169,8 +182,10 @@ public sealed partial class ShellPage : Page
                 HeaderBar.SetGroupingMode(viewModel.galleryViewModel.filtersState.GroupingMode);
             }
             else if (e.PropertyName == nameof(viewModel.ScanStatus)) UpdateScanningOverlayVisibility();
-            else if (e.PropertyName == nameof(viewModel.PendingFolderPath) && viewModel.PendingFolderPath is not null) _ = ShowFolderChangeConfirmAsync();
-            else if (e.PropertyName == nameof(viewModel.PendingResetRequest) && viewModel.PendingResetRequest is not null) _ = ShowResetConfirmAsync();
+            else if (e.PropertyName == nameof(viewModel.PendingFolderPath) && viewModel.PendingFolderPath is not null)
+                RunUiTask(ShowFolderChangeConfirmAsync);
+            else if (e.PropertyName == nameof(viewModel.PendingResetRequest) && viewModel.PendingResetRequest is not null)
+                RunUiTask(ShowResetConfirmAsync);
             else if (e.PropertyName == nameof(viewModel.ThemeMode)) ApplyTheme(viewModel.ThemeMode);
             else if (e.PropertyName == nameof(viewModel.CanStartWorldResolve)
                 || e.PropertyName == nameof(viewModel.PdqProgress)
@@ -179,6 +194,20 @@ public sealed partial class ShellPage : Page
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.OnShellViewModelChanged: threw: {ex}"); }
         AppLogger.Trace("ShellPage.OnShellViewModelChanged: exit");
+    }
+
+    /// <summary>確認画面などの XAML 操作を、この Page を所有する UI スレッドで開始する。</summary>
+    private void RunUiTask(Func<Task> operation)
+    {
+        var queue = DispatcherQueue;
+        if (queue is null || queue.HasThreadAccess)
+        {
+            _ = operation();
+            return;
+        }
+
+        if (!queue.TryEnqueue(() => _ = operation()))
+            AppLogger.Warn("ShellPage.RunUiTask: UI 処理をキューへ登録できませんでした");
     }
 
     private TaskCompletionSource<bool?>? confirmTcs;
@@ -468,11 +497,60 @@ public sealed partial class ShellPage : Page
     }
 
     /// <summary>
-    /// 設定モーダルを開く。3 セクション (全般 / タグマスタ / テンプレート) を統合した
-    /// SettingsPage を Stage.ModalContent 経由で重ねる。Gallery は背景に残ったまま。
+    /// 各設定セクションを統合した SettingsPage を Stage.ModalContent 経由で重ねる。
+    /// Gallery は背景に残ったまま。
     /// インスタンスは初回生成時にキャッシュし、以降の表示は再ハイドレートで使い回す。
     /// </summary>
     public void ShowSettings() => ShowSettings(null);
+
+    /// <summary>以前のバックアップを置き換える前に確認し、承認時だけ現在の写真情報を保存する。</summary>
+    private async Task CreatePhotoUserDataBackupWithConfirmationAsync()
+    {
+        var answer = await ShowConfirmDialogAsync(
+            title: getMsg("SettingsPage.photoUserDataBackupConfirmTitle"),
+            message: getMsg("SettingsPage.photoUserDataBackupConfirmMessage"),
+            yesText: getMsg("SettingsPage.photoUserDataBackupConfirmButton"),
+            noText: getMsg("common.cancel")).ConfigureAwait(true);
+        if (answer != true) return;
+
+        await viewModel.createPhotoUserDataBackup().ConfigureAwait(false);
+    }
+
+    /// <summary>ファイル名一致によるお気に入り・タグの一括反映を確認し、承認時だけ復元する。</summary>
+    private async Task RestorePhotoUserDataBackupWithConfirmationAsync()
+    {
+        var answer = await ShowConfirmDialogAsync(
+            title: getMsg("SettingsPage.photoUserDataRestoreConfirmTitle"),
+            message: getMsg("SettingsPage.photoUserDataRestoreConfirmMessage"),
+            yesText: getMsg("SettingsPage.photoUserDataRestoreConfirmButton"),
+            noText: getMsg("common.cancel")).ConfigureAwait(true);
+        if (answer != true) return;
+
+        await viewModel.restorePhotoUserDataBackup().ConfigureAwait(false);
+    }
+
+    /// <summary>選択中の重複写真の件数と削除方法を確認し、承認時だけ再検証付き削除を実行する。</summary>
+    private async Task DeleteSelectedDuplicatePhotosWithConfirmationAsync()
+    {
+        var duplicates = viewModel.duplicatePhotosViewModel;
+        if (!duplicates.CanDeleteSelected || duplicates.SelectedCount == 0)
+            return;
+
+        var answer = await ShowConfirmDialogAsync(
+            title: getMsg("SettingsPage.deleteDuplicatePhotosConfirmTitle"),
+            message: getMsg(
+                "SettingsPage.deleteDuplicatePhotosConfirmMessage",
+                ("count", duplicates.SelectedCount),
+                ("size", duplicates.SelectedSizeLabel)),
+            yesText: getMsg("common.delete"),
+            noText: getMsg("common.cancel")).ConfigureAwait(true);
+        if (answer != true)
+            return;
+
+        await duplicates
+            .DeleteSelectedAsync(viewModel.deleteDuplicatePhotos)
+            .ConfigureAwait(false);
+    }
 
     /// <summary>指定セクションを初期表示して設定モーダルを開く。null なら前回表示セクションを維持する。</summary>
     public void ShowSettings(string? initialSection)
@@ -490,7 +568,7 @@ public sealed partial class ShellPage : Page
                     viewModel.tagMasterViewModel,
                     viewModel.templatePageViewModel);
 
-                settingsPage = new SettingsPage(compositeVm)
+                settingsPage = new SettingsPage(compositeVm, viewModel.duplicatePhotosViewModel)
                 {
                     // ===== 共通 =====
                     // Settings は中位モーダルなので CloseMiddleModal を呼ぶ。
@@ -499,7 +577,7 @@ public sealed partial class ShellPage : Page
                     // ===== 全般 =====
                     OnChooseFolder = async slot =>
                     {
-                        var path = await viewModel.settingsViewModel.handleChooseFolderPathOnly().ConfigureAwait(false);
+                        var path = await viewModel.settingsViewModel.handleChooseFolderPathOnly();
                         if (string.IsNullOrWhiteSpace(path)) return;
                         var currentPath = slot == 1 ? viewModel.PhotoFolderPath : viewModel.SecondaryPhotoFolderPath;
                         if (string.Equals(path, currentPath, StringComparison.Ordinal)) return;
@@ -522,6 +600,11 @@ public sealed partial class ShellPage : Page
                     // CloseModal を経由するとフェードアウト中に新コンテンツを差し込むため、
                     // ShowWorldResolveModalAsync 側で ModalContent を直接差し替える。
                     OnStartWorldAnalysis = ShowWorldResolveModalAsync,
+                    OnCreatePhotoUserDataBackup = CreatePhotoUserDataBackupWithConfirmationAsync,
+                    OnRestorePhotoUserDataBackup = RestorePhotoUserDataBackupWithConfirmationAsync,
+
+                    // ===== 重複写真 =====
+                    OnDeleteDuplicatePhotos = DeleteSelectedDuplicatePhotosWithConfirmationAsync,
 
                     // ===== タグマスタ =====
                     OnCreateTag = viewModel.tagMasterViewModel.createTag,
@@ -574,9 +657,7 @@ public sealed partial class ShellPage : Page
             // PhotoModal を閉じてから Settings モーダルを開くことで、モーダル階層を 1 つに保つ。
             page.OnOpenTagMaster = () =>
             {
-                modalViewModel.closePhotoModal();
-                CloseModal();
-                ShowSettings("tags");
+                _ = OpenTagMasterFromPhotoAsync(modalViewModel);
             };
             page.OnToggleFavorite = async () =>
             {
@@ -593,6 +674,8 @@ public sealed partial class ShellPage : Page
                     return false;
                 return await viewModel.templatePageViewModel.openTweetIntent(selectedPhoto).ConfigureAwait(false);
             };
+            page.SetTweetAvailable(!string.IsNullOrWhiteSpace(
+                viewModel.templatePageViewModel.ActiveTweetTemplate));
             page.OnGoBack = () => modalViewModel.goBackPhoto();
             page.OnGoPrev = () => modalViewModel.state.goPrevPhoto(throttleRepeatedInput: true);
             page.OnGoNext = () => modalViewModel.state.goNextPhoto(throttleRepeatedInput: true);
@@ -609,6 +692,26 @@ public sealed partial class ShellPage : Page
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowPhotoModal: threw: {ex}"); }
         AppLogger.Trace("ShellPage.ShowPhotoModal: exit");
+    }
+
+    /// <summary>
+    /// 写真詳細と、その下に残っているグループ詳細を順に閉じてからタグマスタを開く。
+    /// 中位モーダルの終了を待たずに設定を開くと、多重表示防止のガードで拒否される。
+    /// </summary>
+    private async Task OpenTagMasterFromPhotoAsync(PhotoModalViewModel modalViewModel)
+    {
+        try
+        {
+            modalViewModel.closePhotoModal();
+            CloseModal();
+            if (isMiddleModalOpen)
+                await CloseMiddleModalAsync();
+            ShowSettings("tags");
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"ShellPage.OpenTagMasterFromPhotoAsync: threw: {ex}");
+        }
     }
 
     /// <summary>

@@ -1,60 +1,59 @@
 # Agent Notes
 
-These notes prevent future sessions from redoing already-audited recovery work.
+この文書は、現行実装に対して再検証済みのproject-local contractだけを保持する。日付付きの作業履歴、解決済み課題、生成reportの場所は記録しない。
 
-## Completed Decisions
+## Authority and Scope
 
-- `BuildWorks/_recovered-src` is generated/recovery material, not the active development source. Do not re-add it.
-- Files ending in `.recovered-0516` under `app/` are historical recovery snapshots. They may appear in `rg`, but they are not the active XAML/code-behind implementation.
-- WinUI code-behind is treated as the OS/UI framework boundary. Behavior should be covered through extracted `*Logic.cs` classes and service tests.
-- Use `ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")` consistently for framework-boundary UI code.
-- The gallery filter panel is intentionally hosted inside `ShellPage.FilterOverlay`. Do not move the existing instance between parents at show time; that can break inherited `ActualTheme`.
-- The filter panel width is intentionally fixed at 612px as of 2026-06-06. Long tag/world values should wrap or ellipsize inside that width instead of stretching the panel.
-- Header search is intentionally plain text only as of 2026-06-06. Search execution is Enter-submit only; do not restore input-time debounce search. Do not reintroduce command search, `cmd:` UI, a command quick menu, or `SearchCommandParser`.
-- Photo modal layout has already been adjusted for long world names. Keep the right details pane bounded and wrap detail text.
-- Match source/source slot badges were removed from the photo modal because their user-facing meaning was unclear. Reintroduce only with clearer labels.
-- The old photo-modal history back circle is intentionally hidden. Photo-to-photo movement is exposed through hidden-by-default image-edge navigation and keyboard left/right handling. The image-edge navigation should match `F:\planetes-atelier\bk\Alpheratz-tauri`: no circular/oval button chrome; on left/right edge hover, show a subtle black-to-transparent gradient plus `<` / `>` chevrons, then hide again on pointer exit.
-- `openWorldLinkOnPost` / `OpenWorldLinkOnPost` is the persisted setting for opening the selected photo's VRChat world link when launching the tweet/post intent.
-- `AppLogger` intentionally persists only `Fatal` by default. `Error`, `Warn`, `Info`, and `Trace` are opt-in through `ALPHERATZ_VERBOSE_LOGS=1`; the queue is bounded and `info.log` rotates at 1MB to avoid user storage growth from repeated sync/media failures.
-- Settings modal layout is intentionally single-column in the order General, Tag master, Template, Credits, with `MaxWidth=760`.
-- Credits profile avatar is only a profile image. Do not add it back to the material-credit list; keep the code comment near the avatar image.
-- `MVVMTK0045` is suppressed in `app/Alpheratz.Frontend.csproj` to keep build/test output usable. Do not reintroduce warning noise unless doing the full CommunityToolkit source-generator migration.
-- `TextBlock` default `IsTextSelectionEnabled` is set to `False` to avoid text boxes looking like focused inputs unless selection is explicitly needed.
-- World grouping is normalized by `GalleryPhotosStateLogic.BuildWorldGroupKey`: null, empty, and whitespace-only names are all grouped as the unknown-world group.
-- Group drill-down should prefer preserved `GroupPhotos` from the clicked card. Use DB fallback only when `GroupPhotos` is absent.
-- Favorite-star handlers must also run on `DataContextChanged`, not only `Loaded`, because virtualized cards are reused.
-- The favorite toggle argument name `currentIsFavorite` is intentional: it represents the current state before calculating the next state.
-- 2026-06-13 XAML startup crashes were traced to unpackaged self-contained XBF/PRI layout and custom WinUI startup, not sync interference. Read `.claude/xaml-packaging-notes.md` before changing `App.xaml`, `Program.cs`, `Alpheratz.Frontend.csproj`, or `BuildWorks/scripts/publish-app-release.ps1`.
+- 仕様が変化している間はproduction sourceを正本とする。
+- Publicな現在仕様は `README.md` と `docs/` に置く。この文書へ利用者向け仕様を複製しない。
+- Framework boundaryのcoverage除外理由は `CoveragePolicyTests.CoverageBoundaryJustification` と完全一致させ、allowlistを同時に更新する。
+- WinUI startup、XAML resource、Release publishを変更する前に `xaml-packaging-notes.md` を読む。
 
-## Known Follow-Up Work
+## Current UI Contracts
 
-- Migration from `[ObservableProperty]` fields to WinUI/AOT-compatible partial properties is still a separate task; the warning noise itself is already suppressed.
-- Existing code still has many lowerCamel method names. Broad naming cleanup is a separate task, not part of the UI/bug-fix pass.
-- Do not create a new visual design direction unless explicitly requested. Preserve the current design and repair concrete breakage.
-- Audit status from the 2026-06-06 recheck:
-  - Fixed in the follow-up pass: UI-bound mutations after `ConfigureAwait(false)` now use `DispatcherService` in the main Gallery / PhotoModal / WorldResolve / Settings / Tag / Toast paths touched by the audit.
-  - Fixed in the follow-up pass: `PhotoModalPage` subscribes to the selected `PhotoThumbnailItem` and resyncs derived UI for `Tags`, `WorldName`, `MatchSource`, and `EffectiveDisplayPath`.
-  - Fixed in the follow-up pass: `WorldResolveViewModel` thumbnail callbacks dispatch item property updates back to the UI thread.
-  - Fixed in the follow-up pass: date preset/custom date apply paths use a batched `applyDateRange` path and raise one `BatchCompleted`.
-  - Still true by design: `UiObservableCollection` and `UiThreadSafeObservableObject` only marshal notifications; they do not make mutation itself UI-thread-owned. Continue to prefer explicit `DispatcherService.RunOnUiThread(...)` for UI-bound state mutations.
-  - Fixed in the 2026-06-06 visual pass: narrow-window layout for Settings, PhotoModal, GroupDrillDown, WorldResolve, and the Gallery bulk bar. Keep future changes compatible with 640px snapped-window captures.
-  - Fixed in the 2026-06-06 visual pass: Settings -> "分析" no longer awaits WorldResolve initialization on the UI path. The modal is shown first; DB/PDQ initialization runs asynchronously and starts by leaving the UI thread.
-  - Fixed in the 2026-06-06 visual pass: `CopyXbfToSubfolder` excludes the generated assembly-named subfolder and removes stale direct recursion, preventing repeated `Alpheratz.Frontend\Alpheratz.Frontend\...` output growth.
-  - Visual comparison report for that pass is generated at `artifacts/visual-regression/report.html` with embedded screenshots.
-  - Still pending: Shell overlay state is split across local flags and `ShellStage`; current guards are tested, but a single overlay state model would reduce future drift.
-- Rechecked non-issues:
-  - `ShellStage` already clears modal content with version guards after close animations. Do not re-fix modal content cleanup unless new evidence appears.
-  - `SettingsPage` already reattaches subscriptions on `Loaded` and detaches on `Unloaded`.
-  - `PhotoService` mutation methods accepting `sourceSlot` while updating by `photo_path` are not currently a functional bug because `photo_path` is the primary key; treat broader slot-key redesign as a separate schema/API decision.
+- Shellは44 pxの`ShellHeaderBar`と`ShellStage`で構成する。Galleryはmain content、Settings／WorldResolve／GroupDrillDownはmiddle modal、PhotoModalはtop modalである。
+- Shell overlayの判断は `ShellOverlayState` を正本とする。個別flagはframework viewの実状態を集める入力であり、header interactivity、Esc、dismissの分岐を別々に再実装しない。
+- Filter panelは`ShellPage.FilterOverlay`の`FilterPanelContainer`に固定配置し、幅612 pxを維持する。表示時にparentを付け替えない。
+- Header world searchはplain textのみ。入力中にDB検索せず、Enterで確定する。command prefix、quick command menu、`SearchCommandParser`を追加しない。
+- Standard viewだけworld groupingを許可する。null、空文字、空白だけのworldは同じunknown groupにする。
+- Group drill-downはclicked cardの`GroupPhotos`を優先し、存在しない場合だけDB fallbackを使う。
+- PhotoModalの前後移動はkeyboard左右keyと画像端のhover affordanceを使う。円形button chrome、履歴back button、match source／source slot badgeは表示しない。
+- Photo cardはvirtualizationで再利用されるため、favorite等のvisual stateを`Loaded`だけでなく`DataContextChanged`でも同期する。
+- Settingsは最大1120×820 px、左navigationでGeneral／Tags／Templates／Creditsを切り替え、選択sectionだけを表示する。旧single-column 760 px構成へ戻さない。
+- Tag上限はGallery、PhotoModal、TagMasterを通して25文字。投稿templateは実文字数とX加重文字数の双方で280以下とする。
+- Bootstrapはlogoとcopyrightだけを表示する。phase percentage、progress bar、補間timerを戻さない。
+- 視覚変更は現行resource tokenとlayout directionを維持し、long world/tag/file名と狭いwindowで確認する。
 
-## Work Rules
+## Current Behavior Contracts
 
-- Check `git status --short` before edits.
-- If the running app locks build artifacts, stop the `Alpheratz.Frontend` process before build/test.
-- Use `apply_patch` for manual file edits.
-- Run at least `dotnet test tests\Alpheratz.Tests\Alpheratz.Tests.csproj` before handing off source changes.
-- For UI checks, include long tag names, long world names, empty/unknown worlds, and virtualized reused photo cards.
-- Before changing visual design, inspect relevant real running services or official product docs first and record the design basis in the handoff. Do not ship visual changes based only on intuition.
-- When a user references old Alpheratz behavior or a backup source such as `bk`, inspect that source before recreating the UI. If the referenced source cannot be found, report that explicitly and separate inference from verified behavior.
-- `F:\planetes-atelier\bk\Alpheratz-tauri` exists and is the relevant old Alpheratz/Tauri reference for photo-modal edge navigation and the shared `menu` sliders icon. Check it before recreating those interactions.
-- When a user lists multiple requirements separated by `｜`, split each block into trackable plan items so later sessions do not collapse distinct requirements into one broad task.
+- Folder change/resetはscan、post-scan、thumbnail生成の停止完了を待つ。対象slotのDB/cache cleanup要求を`pendingFolderCleanup`として先に保存し、終了後も次回起動で再実行できる状態を保つ。
+- 1stと2ndに同一folderまたは親子folderを設定しない。scan時も重複を再検証する。
+- Scan完了後はarchive resolution、orientation、PDQ、filter metadata refreshを直列実行し、最後に`scan:enrich_completed`を発行する。
+- PDQ候補のUI採用閾値はdistance 75以下、表示一致率71%以上。World Resolveは同じsource slotの候補だけを表示し、利用者の確定を必須とする。
+- `WorldService.ResolveUnknownWorldsFromSimilarPhotosAsync`は自動DB更新可能なservice APIとして存在するが、現行UIとpost-scan workflowは呼ばない。UIを自動更新経路へ戻す変更と混同しない。
+- World Resolveのcandidateが閾値外または存在しない場合もmanual world nameを入力できる。確定由来は自動候補が`phash_confirmed`、manualが`manual`である。
+- `openWorldLinkOnPost`は投稿画面を開いた後、写真に有効な`world_id`があるときだけVRChat pageを開く永続設定である。
+- AppLoggerは通常`Fatal`だけを保存する。`ALPHERATZ_VERBOSE_LOGS=1`でError／Warn／Infoを有効化し、Traceは`TRACE_LOGGING` buildに限る。queueは512行、messageは8000文字、`info.log`は1 MiBで1世代rotateする。
+- `UiObservableCollection`と`UiThreadSafeObservableObject`はnotificationだけをmarshalする。UI-bound mutationは`DispatcherService.RunOnUiThread`へ明示的に戻す。
+
+## Data Compatibility Kept by Current Source
+
+- Gallery queryは常に`is_missing = 0`を条件にするが、現行scanは完全に列挙できたslotの欠落行を物理削除する。`is_missing`はcompatibility columnとして残っている。
+- `phash_version`はschemaに存在するが現行PDQ保存で更新しない。画像内容変更時は0へ戻す。
+- 新規`photo_tags`には`ON DELETE CASCADE`がある。既存tableへCASCADEを後付けしないため、tag deleteとslot resetは関連行を明示削除する。
+- `Initialize()`は不足columnを追加し、旧`photo_embeddings` tableを削除する。`user_version`や独立migration frameworkは使わない。
+
+## Confirmed Maintenance Scope
+
+- field-based `[ObservableProperty]`が残っており、`MVVMTK0045`はprojectで抑止している。NativeAOTへ移行する場合はpartial property化を一括で扱う。warningだけを局所的に戻さない。
+- Public method名にはlowerCamelが残る。外部API境界ではなくrepository内の広範なrenameになるため、機能変更へ混ぜない。
+- Distributionはcode signingを持たない。実装済みと記述しない。
+
+これらは現行runtimeの既知障害を示す一覧ではない。変更要求がない限り、architecture migrationや命名統一へscopeを広げない。
+
+## Verification
+
+- Source変更後は `dotnet test tests\Alpheratz.Tests\Alpheratz.Tests.csproj` を実行する。
+- `.github\workflows\ci.yml`はmainへのpushとmain宛PRでtestと最終installer生成をhard gateにする。
+- XAML／startup／packaging変更では、unit testに加えて `BuildWorks\scripts\build-release.ps1` とinstalled launcher経由の起動確認が必要である。
+- UI確認ではlong tag、long world、unknown world、virtualized card再利用、640 px程度の狭いwindowを含める。

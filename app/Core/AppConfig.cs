@@ -13,6 +13,9 @@ namespace Alpheratz.Core;
 public sealed class AppConfig
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+    private const string StartupRegistryKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    private const string StartupRegistryValueName = "Alpheratz";
+    private const string LauncherExecutableName = "Alpheratz.exe";
     private readonly object _lock = new();
     private readonly string? settingDir;
 
@@ -112,21 +115,56 @@ public sealed class AppConfig
     {
         AppLogger.Trace("AppConfig.GetStartupPreference: enter");
         var s = LoadSetting();
-        AppLogger.Trace($"AppConfig.GetStartupPreference: exit enabled={s.EnableStartup} set={s.StartupPreferenceSet}");
-        return (s.EnableStartup, s.StartupPreferenceSet);
+        // 明示保存先はテスト・移行用なので Windows レジストリへ触れず、保存値を返す。
+        // 通常実行では、画面上の状態を実際の Run 登録へ合わせる。
+        var enabled = string.IsNullOrWhiteSpace(settingDir)
+            ? IsStartupRegistrationCurrent()
+            : s.EnableStartup;
+        AppLogger.Trace($"AppConfig.GetStartupPreference: exit enabled={enabled} set={s.StartupPreferenceSet}");
+        return (enabled, s.StartupPreferenceSet);
     }
 
-    /// <summary>自動起動の希望値を保存し、可能なら Windows の Run キーへも反映する。</summary>
+    /// <summary>自動起動の希望値を設定と Windows の Run 登録へ一体として反映する。</summary>
     public void SaveStartupPreference(bool enabled)
     {
         AppLogger.Trace($"AppConfig.SaveStartupPreference: enter enabled={enabled}");
+        var s = LoadSetting();
         try
         {
-            var s = LoadSetting();
-            s.EnableStartup = enabled;
-            s.StartupPreferenceSet = true;
+            // 明示保存先はテスト・移行用であり、利用者の Run 登録へ触れない。
+            if (!string.IsNullOrWhiteSpace(settingDir))
+            {
+                s.EnableStartup = enabled;
+                s.StartupPreferenceSet = true;
+                SaveSetting(s);
+                return;
+            }
+
+            // 先に旧内容を保存して書込み可能か確認する。ここで失敗した場合は Windows 側を変更しない。
             SaveSetting(s);
-            SetStartupEnabled(enabled);
+            var previousRegistration = CaptureStartupRegistration();
+            try
+            {
+                SetStartupEnabled(enabled);
+                s.EnableStartup = enabled;
+                s.StartupPreferenceSet = true;
+                SaveSetting(s);
+            }
+            catch (Exception updateException)
+            {
+                try
+                {
+                    RestoreStartupRegistration(previousRegistration);
+                }
+                catch (Exception restoreException)
+                {
+                    throw new AggregateException(
+                        "自動起動設定の更新と以前の登録への復元に失敗しました",
+                        updateException,
+                        restoreException);
+                }
+                throw;
+            }
         }
         catch (Exception ex)
         {
@@ -136,40 +174,117 @@ public sealed class AppConfig
         AppLogger.Trace("AppConfig.SaveStartupPreference: exit");
     }
 
-    /// <summary>Windows の Run キーを更新する。権限や環境の都合で失敗しても設定保存は維持する。</summary>
+    /// <summary>Windows の Run キーを更新する。失敗は呼出側へ返し、設定値の成功扱いを防ぐ。</summary>
     private static void SetStartupEnabled(bool enabled)
     {
         AppLogger.Trace($"AppConfig.SetStartupEnabled: enter enabled={enabled}");
         try
         {
-            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
-                @"Software\Microsoft\Windows\CurrentVersion\Run", writable: true);
-            if (key is null)
-            {
-                AppLogger.Trace("AppConfig.SetStartupEnabled: skip (Run key unavailable)");
-                return;
-            }
+            using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(
+                StartupRegistryKeyPath, writable: true)
+                ?? throw new InvalidOperationException("Windows の自動起動設定を開けません");
             if (enabled)
             {
-                var exe = Environment.ProcessPath;
-                if (string.IsNullOrWhiteSpace(exe))
-                {
-                    AppLogger.Warn("自動起動へ登録する実行ファイルのパスを取得できませんでした");
-                    return;
-                }
-                key.SetValue("Alpheratz", $"\"{exe}\"");
+                var launcherPath = ResolveStartupExecutablePath();
+                key.SetValue(
+                    StartupRegistryValueName,
+                    QuoteExecutablePath(launcherPath),
+                    Microsoft.Win32.RegistryValueKind.String);
             }
             else
             {
-                key.DeleteValue("Alpheratz", throwOnMissingValue: false);
+                key.DeleteValue(StartupRegistryValueName, throwOnMissingValue: false);
             }
         }
         catch (Exception ex)
         {
-            // レジストリ更新は環境依存なので、失敗しても設定ファイル側の保存は取り消さない。
-            AppLogger.Warn($"自動起動の設定に失敗しました: {ex.Message}");
+            AppLogger.Error($"自動起動の設定に失敗しました: {ex}");
+            throw;
         }
         AppLogger.Trace("AppConfig.SetStartupEnabled: exit");
+    }
+
+    /// <summary>現在の Run 登録が、インストール先の外側 launcher を正しく指しているか確認する。</summary>
+    private static bool IsStartupRegistrationCurrent()
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(StartupRegistryKeyPath, writable: false);
+            var registered = key?.GetValue(
+                StartupRegistryValueName,
+                defaultValue: null,
+                options: Microsoft.Win32.RegistryValueOptions.DoNotExpandEnvironmentNames) as string;
+            if (registered is null)
+                return false;
+
+            var expected = QuoteExecutablePath(ResolveStartupExecutablePath());
+            return string.Equals(registered, expected, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Warn($"自動起動の現在値を確認できませんでした: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>内部の WinUI 本体ではなく、インストールルートの launcher を返す。</summary>
+    private static string ResolveStartupExecutablePath()
+    {
+        if (!string.IsNullOrWhiteSpace(AppPaths.InstallLocation))
+        {
+            var installedLauncher = Path.GetFullPath(Path.Combine(AppPaths.InstallLocation, LauncherExecutableName));
+            if (File.Exists(installedLauncher))
+                return installedLauncher;
+        }
+
+        // レジストリが利用できない開発配置でも、app\Alpheratz.Frontend.exe の1階層上を確認する。
+        var processPath = Environment.ProcessPath;
+        var runtimeDirectory = string.IsNullOrWhiteSpace(processPath)
+            ? null
+            : Path.GetDirectoryName(processPath);
+        var installDirectory = runtimeDirectory is not null
+            && string.Equals(Path.GetFileName(runtimeDirectory), "app", StringComparison.OrdinalIgnoreCase)
+                ? Directory.GetParent(runtimeDirectory)?.FullName
+                : runtimeDirectory;
+        if (!string.IsNullOrWhiteSpace(installDirectory))
+        {
+            var adjacentLauncher = Path.GetFullPath(Path.Combine(installDirectory, LauncherExecutableName));
+            if (File.Exists(adjacentLauncher))
+                return adjacentLauncher;
+        }
+
+        throw new FileNotFoundException("自動起動へ登録する Alpheratz launcher が見つかりません");
+    }
+
+    private static string QuoteExecutablePath(string path) => $"\"{path}\"";
+
+    private readonly record struct StartupRegistrationSnapshot(
+        bool Exists,
+        object? Value,
+        Microsoft.Win32.RegistryValueKind Kind);
+
+    /// <summary>更新失敗時に Run 登録を正確に戻せるよう、値と型を保存する。</summary>
+    private static StartupRegistrationSnapshot CaptureStartupRegistration()
+    {
+        using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(StartupRegistryKeyPath, writable: false);
+        var value = key?.GetValue(
+            StartupRegistryValueName,
+            defaultValue: null,
+            options: Microsoft.Win32.RegistryValueOptions.DoNotExpandEnvironmentNames);
+        return value is null
+            ? new StartupRegistrationSnapshot(false, null, Microsoft.Win32.RegistryValueKind.String)
+            : new StartupRegistrationSnapshot(true, value, key!.GetValueKind(StartupRegistryValueName));
+    }
+
+    private static void RestoreStartupRegistration(StartupRegistrationSnapshot snapshot)
+    {
+        using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(
+            StartupRegistryKeyPath, writable: true)
+            ?? throw new InvalidOperationException("Windows の自動起動設定を復元できません");
+        if (snapshot.Exists)
+            key.SetValue(StartupRegistryValueName, snapshot.Value!, snapshot.Kind);
+        else
+            key.DeleteValue(StartupRegistryValueName, throwOnMissingValue: false);
     }
 
     // コンストラクタで明示された保存先を優先し、未指定時だけ標準の AppPaths を使う。

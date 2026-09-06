@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -18,11 +20,15 @@ public sealed partial class PhotoScanner
 {
     private const int MaxItxtSize = 4 * 1024 * 1024;
     private const int ScanDbBatchSize = 500;
-    private const int ScanProgressInterval = 100;
+    private const int ScanProgressUpdateIntervalMilliseconds = 100;
+    // 画像ヘッダーと PNG メタデータの読込みを並列化する。UI と他処理へ余力を残すため最大 4 並列に抑える。
+    private static int ScanAnalysisParallelism
+        => Math.Clamp(Environment.ProcessorCount / 2, 1, 4);
     // VRChat の output_log 1 行の上限。ここを超える行は破損または異常データとみなして
     // Regex を走らせずに打ち切る。デフォルト 64 KiB。
     private const int MaxLogLineLength = 64 * 1024;
-    private static readonly string[] SupportedExtensions = ["png", "jpg", "jpeg", "webp", "psd", "xcf"];
+    // 任意追加の Windows codec に依存せず、対応 OS だけで全処理を完結できる形式に限定する。
+    private static readonly string[] SupportedExtensions = ["png", "jpg", "jpeg"];
     private static readonly string[] SkipDirs = ["node_modules", "vendor", "cache", "$recycle.bin", "system volume information", "thumbnails"];
 
     [GeneratedRegex(@"VRChat_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.(\d{3})")]
@@ -70,7 +76,7 @@ public sealed partial class PhotoScanner
         catch (OperationCanceledException)
         {
             AppLogger.Trace("PhotoScanner.ScanAsync: cancelled");
-            await _bus.PublishAsync(EventNames.ScanError, getMsg("PhotoScanner.cancelled")).ConfigureAwait(false);
+            await _bus.PublishAsync(EventNames.ScanCancelled, getMsg("PhotoScanner.cancelled")).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -172,51 +178,88 @@ public sealed partial class PhotoScanner
             {
                 var reappeared = ex.IsMissing;
                 var sourceChanged = ex.SourceSlot != slot;
-                var missingWorld = ex.WorldName is null && ex.WorldId is null && ex.MatchSource is null;
+                var initialWorldAnalysisNotRecorded = ex.WorldName is null
+                    && ex.WorldId is null
+                    && ex.MatchSource is null;
                 var filenameChanged = ex.PhotoFilename != filename;
                 var fileModified = IsFileModifiedSinceStoredMtime(path, ex);
 
+                // 新規・再出現・内容変更では必ず初回解析を行う。一度解析して情報が無かった写真は
+                // match_source = unresolved として保持し、通常スキャンでは再解析しない。
+                // match_source 自体が null の PNG は初回解析の完了記録が無いため、その未完了分だけ補う。
+                // 将来の StellaRecordDB 再取得も、設定画面の明示操作から MetadataOnly を使う。
                 if (reappeared || sourceChanged || fileModified)
                     candidates.Add((slot, filename, path, ScanRefreshKind.Full));
                 else if (filenameChanged)
                     candidates.Add((slot, filename, path, ScanRefreshKind.PathOnly));
-                else if (missingWorld && filename.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+                else if (initialWorldAnalysisNotRecorded
+                    && filename.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+                {
                     candidates.Add((slot, filename, path, ScanRefreshKind.MetadataOnly));
+                }
             }
         }
 
         var total = candidates.Count;
         await _bus.PublishAsync(EventNames.ScanProgress, new ScanProgressDto { processed = 0, total = total, current_world = getMsg("PhotoScanner.updatesFound", ("count", total)), phase = "scan" }).ConfigureAwait(false);
 
-        var pendingUpserts = new List<PhotoUpsertData>(ScanDbBatchSize);
-        for (var i = 0; i < candidates.Count; i++)
-        {
-            ct.ThrowIfCancellationRequested();
-            var (slot, filename, path, kind) = candidates[i];
-            var normalizedPath = AppPaths.NormalizePathForDb(path);
-            existing.TryGetValue(normalizedPath, out var ex);
+        var processed = 0;
+        var currentWorld = getMsg("common.unknownWorld");
+        using var progressCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var progressTask = PublishScanProgressAsync(
+            total,
+            () => Volatile.Read(ref processed),
+            () => Volatile.Read(ref currentWorld),
+            progressCts.Token);
 
-            var photo = AnalyzePhoto(path, filename, slot, ex, kind);
-            pendingUpserts.Add(photo);
-            if (pendingUpserts.Count >= ScanDbBatchSize)
+        try
+        {
+            for (var batchStart = 0; batchStart < candidates.Count; batchStart += ScanDbBatchSize)
             {
-                await _db.UpsertPhotosAsync(pendingUpserts, ct).ConfigureAwait(false);
-                pendingUpserts.Clear();
+                ct.ThrowIfCancellationRequested();
+                var batchLength = Math.Min(ScanDbBatchSize, candidates.Count - batchStart);
+                var batchUpserts = new PhotoUpsertData[batchLength];
+
+                await Task.Run(() =>
+                {
+                    Parallel.For(0, batchLength, new ParallelOptions
+                    {
+                        CancellationToken = ct,
+                        MaxDegreeOfParallelism = ScanAnalysisParallelism,
+                    }, offset =>
+                    {
+                        var (slot, filename, path, kind) = candidates[batchStart + offset];
+                        var normalizedPath = AppPaths.NormalizePathForDb(path);
+                        existing.TryGetValue(normalizedPath, out var existingPhoto);
+
+                        var photo = AnalyzePhoto(path, filename, slot, existingPhoto, kind);
+                        batchUpserts[offset] = photo;
+                        Volatile.Write(ref currentWorld, photo.WorldName ?? getMsg("common.unknownWorld"));
+                        Interlocked.Increment(ref processed);
+                    });
+                }, ct).ConfigureAwait(false);
+
+                // SQLite 書込みは順序を保ったまま 1 バッチずつ確定する。
+                await _db.UpsertPhotosAsync(batchUpserts, ct).ConfigureAwait(false);
             }
 
-            if (ShouldPublishScanProgress(i, total))
+            if (total > 0)
             {
                 await _bus.PublishAsync(EventNames.ScanProgress, new ScanProgressDto
                 {
-                    processed = i + 1,
+                    processed = total,
                     total = total,
-                    current_world = photo.WorldName ?? getMsg("common.unknownWorld"),
+                    current_world = Volatile.Read(ref currentWorld),
                     phase = "scan"
                 }).ConfigureAwait(false);
             }
         }
-        if (pendingUpserts.Count > 0)
-            await _db.UpsertPhotosAsync(pendingUpserts, ct).ConfigureAwait(false);
+        finally
+        {
+            progressCts.Cancel();
+            try { await progressTask.ConfigureAwait(false); }
+            catch (OperationCanceledException) { }
+        }
 
         if (incompleteSlots.Count > 0)
         {
@@ -232,13 +275,36 @@ public sealed partial class PhotoScanner
     private static string FormatSourceSlot(long slot)
         => getMsg("PhotoScanner.sourceSlot", ("slot", slot));
 
-    private static bool ShouldPublishScanProgress(int itemIndex, int total)
+    /// <summary>
+    /// 解析件数の変化を一定時間ごとに通知する。件数刻みではなく時間刻みにすることで、
+    /// 高速な走査でも UI 更新を増やしすぎず、バーが大きく飛ぶ見え方を避ける。
+    /// </summary>
+    private async Task PublishScanProgressAsync(
+        int total,
+        Func<int> getProcessed,
+        Func<string> getCurrentWorld,
+        CancellationToken ct)
     {
-        if (total <= 0) return false;
-        var processed = itemIndex + 1;
-        return processed == 1
-            || processed == total
-            || processed % ScanProgressInterval == 0;
+        if (total <= 0)
+            return;
+
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(ScanProgressUpdateIntervalMilliseconds));
+        var lastPublished = 0;
+        while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(false))
+        {
+            var current = Math.Clamp(getProcessed(), 0, total);
+            if (current <= lastPublished)
+                continue;
+
+            await _bus.PublishAsync(EventNames.ScanProgress, new ScanProgressDto
+            {
+                processed = current,
+                total = total,
+                current_world = getCurrentWorld(),
+                phase = "scan"
+            }).ConfigureAwait(false);
+            lastPublished = current;
+        }
     }
 
     /// <summary>1枚の写真から DB upsert 用のメタデータを組み立てる。</summary>
@@ -285,8 +351,9 @@ public sealed partial class PhotoScanner
             && existing.Orientation is { Length: > 0 } existingOrient
             && existingOrient != "unknown")
         {
-            // MetadataOnly はワールド情報の補完が目的なので、寸法や orientation は既存値を優先する。
-            // 既存値が未確定の場合だけ画像を再読込する。
+            // MetadataOnly は初回解析の未完了分と、将来の設定画面から利用者が明示的に
+            // 再取得するときの経路である。寸法や orientation は既存値を優先し、
+            // 未確定の場合だけ画像を再読込する。
             orientation = existingOrient;
             imageWidth = existingWidth;
             imageHeight = existingHeight;
@@ -326,6 +393,8 @@ public sealed partial class PhotoScanner
         if (existing is { WorldName: not null } or { WorldId: not null })
             return (existing.WorldName, existing.WorldId, existing.MatchSource ?? "title");
 
+        // 初回解析を実施したが写真内にワールド情報が無かったことを記録する。
+        // null と区別し、変更されていない写真を通常スキャンで繰り返し解析しない。
         return (null, null, "unresolved");
     }
 
@@ -371,30 +440,135 @@ public sealed partial class PhotoScanner
 
     private static (long w, long h) ReadJpegSize(Stream stream)
     {
-        var buf = new byte[4];
-        if (stream.Read(buf, 0, 2) < 2 || buf[0] != 0xFF || buf[1] != 0xD8) return (0, 0);
+        if (stream.ReadByte() != 0xFF || stream.ReadByte() != 0xD8)
+            return (0, 0);
+
+        long width = 0;
+        long height = 0;
+        var exifOrientation = 1;
         while (stream.Position < stream.Length)
         {
-            if (stream.Read(buf, 0, 2) < 2) break;
-            if (buf[0] != 0xFF) break;
-            var marker = buf[1];
-            if (stream.Read(buf, 0, 2) < 2) break;
-            int segLen = (buf[0] << 8) | buf[1];
-            // 破損 JPEG では segLen<2 が起こり得る。Seek(segLen-2,...) が後退して
-            // 無限ループになるのを防ぐためここで打ち切る。
-            if (segLen < 2) break;
-            if (marker is >= 0xC0 and <= 0xC3)
+            int prefix;
+            do { prefix = stream.ReadByte(); }
+            while (prefix >= 0 && prefix != 0xFF);
+            if (prefix < 0) break;
+
+            int marker;
+            do { marker = stream.ReadByte(); }
+            while (marker == 0xFF);
+            if (marker < 0) break;
+            if (marker == 0x00) continue;
+            if (marker is 0xD9 or 0xDA) break;
+            if (marker == 0x01 || marker is >= 0xD0 and <= 0xD8)
+                continue;
+
+            var lengthHigh = stream.ReadByte();
+            var lengthLow = stream.ReadByte();
+            if (lengthHigh < 0 || lengthLow < 0) break;
+            var segmentLength = (lengthHigh << 8) | lengthLow;
+            // 破損 JPEG で後退 seek や範囲外読込みを起こさない。
+            if (segmentLength < 2) break;
+            var payloadLength = segmentLength - 2;
+            if (payloadLength > stream.Length - stream.Position) break;
+
+            if (marker == 0xE1)
             {
-                if (stream.Read(buf, 0, 1) < 1) break;
-                if (stream.Read(buf, 0, 4) < 4) break;
-                long h = (buf[0] << 8) | buf[1];
-                long w = (buf[2] << 8) | buf[3];
-                return (w, h);
+                var exifSegment = new byte[payloadLength];
+                stream.ReadExactly(exifSegment);
+                // JPEG には XMP など Exif 以外の APP1 も複数入る。後続の非 Exif APP1 で
+                // 先に取得した orientation を通常向きへ戻さない。
+                if (exifSegment.AsSpan().StartsWith("Exif\0\0"u8))
+                    exifOrientation = ReadExifOrientation(exifSegment);
             }
-            stream.Seek(segLen - 2, SeekOrigin.Current);
+            else if (IsJpegStartOfFrameMarker(marker) && payloadLength >= 5)
+            {
+                _ = stream.ReadByte(); // sample precision
+                var heightHigh = stream.ReadByte();
+                var heightLow = stream.ReadByte();
+                var widthHigh = stream.ReadByte();
+                var widthLow = stream.ReadByte();
+                if (heightHigh < 0 || heightLow < 0 || widthHigh < 0 || widthLow < 0)
+                    break;
+                height = (heightHigh << 8) | heightLow;
+                width = (widthHigh << 8) | widthLow;
+                stream.Seek(payloadLength - 5, SeekOrigin.Current);
+            }
+            else
+            {
+                stream.Seek(payloadLength, SeekOrigin.Current);
+            }
         }
-        return (0, 0);
+
+        if (width <= 0 || height <= 0)
+            return (0, 0);
+        return exifOrientation is >= 5 and <= 8
+            ? (height, width)
+            : (width, height);
     }
+
+    private static bool IsJpegStartOfFrameMarker(int marker)
+        => marker is 0xC0 or 0xC1 or 0xC2 or 0xC3
+            or 0xC5 or 0xC6 or 0xC7
+            or 0xC9 or 0xCA or 0xCB
+            or 0xCD or 0xCE or 0xCF;
+
+    /// <summary>APP1 Exif の IFD0 から orientation を読み、未設定・破損時は通常向きの1を返す。</summary>
+    private static int ReadExifOrientation(ReadOnlySpan<byte> segment)
+    {
+        if (segment.Length < 14
+            || !segment[..6].SequenceEqual("Exif\0\0"u8))
+        {
+            return 1;
+        }
+
+        var tiff = segment[6..];
+        var littleEndian = tiff[0] == (byte)'I' && tiff[1] == (byte)'I';
+        var bigEndian = tiff[0] == (byte)'M' && tiff[1] == (byte)'M';
+        if ((!littleEndian && !bigEndian) || ReadExifUInt16(tiff, 2, littleEndian) != 42)
+            return 1;
+
+        var ifdOffsetValue = ReadExifUInt32(tiff, 4, littleEndian);
+        if (ifdOffsetValue > int.MaxValue)
+            return 1;
+        var ifdOffset = (int)ifdOffsetValue;
+        if (ifdOffset < 0 || ifdOffset + 2 > tiff.Length)
+            return 1;
+
+        var entryCount = ReadExifUInt16(tiff, ifdOffset, littleEndian);
+        for (var index = 0; index < entryCount; index++)
+        {
+            var entryOffset = ifdOffset + 2 + index * 12;
+            if (entryOffset < 0 || entryOffset + 12 > tiff.Length)
+                break;
+            if (ReadExifUInt16(tiff, entryOffset, littleEndian) != 0x0112)
+                continue;
+            if (ReadExifUInt16(tiff, entryOffset + 2, littleEndian) != 3
+                || ReadExifUInt32(tiff, entryOffset + 4, littleEndian) != 1)
+            {
+                return 1;
+            }
+
+            var orientation = ReadExifUInt16(tiff, entryOffset + 8, littleEndian);
+            return orientation is >= 1 and <= 8 ? orientation : 1;
+        }
+        return 1;
+    }
+
+    private static ushort ReadExifUInt16(ReadOnlySpan<byte> data, int offset, bool littleEndian)
+        => littleEndian
+            ? (ushort)(data[offset] | data[offset + 1] << 8)
+            : (ushort)(data[offset] << 8 | data[offset + 1]);
+
+    private static uint ReadExifUInt32(ReadOnlySpan<byte> data, int offset, bool littleEndian)
+        => littleEndian
+            ? (uint)(data[offset]
+                | data[offset + 1] << 8
+                | data[offset + 2] << 16
+                | data[offset + 3] << 24)
+            : (uint)(data[offset] << 24
+                | data[offset + 1] << 16
+                | data[offset + 2] << 8
+                | data[offset + 3]);
 
     /// <summary>ファイル名の日時を優先し、取れない場合はファイル更新時刻から撮影日時文字列を作る。</summary>
     private static string ResolveTimestamp(string path, string filename)
@@ -495,8 +669,8 @@ public sealed partial class PhotoScanner
         var idMatch = ReWorldId().Match(xmp);
         var nameMatch = ReWorldName().Match(xmp);
         return (
-            nameMatch.Success ? nameMatch.Groups[1].Value : null,
-            idMatch.Success ? idMatch.Groups[1].Value : null
+            nameMatch.Success ? WebUtility.HtmlDecode(nameMatch.Groups[1].Value) : null,
+            idMatch.Success ? WebUtility.HtmlDecode(idMatch.Groups[1].Value) : null
         );
     }
 
@@ -599,6 +773,7 @@ public sealed partial class PhotoScanner
     public async Task<int> ResolveUnknownWorldsFromArchiveAsync(CancellationToken ct = default)
     {
         AppLogger.Trace("PhotoScanner.ResolveUnknownWorldsFromArchiveAsync: enter");
+        var startedAt = Stopwatch.GetTimestamp();
         var archiveDir = AppPaths.GetPolarisArchiveDir();
         if (archiveDir is null)
         {
@@ -607,18 +782,18 @@ public sealed partial class PhotoScanner
         }
 
         var visits = LoadPolarisWorldVisits(archiveDir, ct);
+        var archiveReadElapsed = Stopwatch.GetElapsedTime(startedAt);
+        var databaseStartedAt = Stopwatch.GetTimestamp();
         await _db.UpsertArchiveWorldVisitsAsync(visits, ct).ConfigureAwait(false);
 
-        var unknownPhotos = await _db.GetUnknownWorldPhotosAsync("all", ct).ConfigureAwait(false);
-        var resolved = 0;
-        foreach (var (photoPath, timestamp) in unknownPhotos)
-        {
-            ct.ThrowIfCancellationRequested();
-            var worldName = await _db.LookupWorldNameFromArchiveAsync(timestamp, ct).ConfigureAwait(false);
-            if (worldName is null) continue;
-            await _db.UpdatePhotoWorldNameAsync(photoPath, worldName, "polaris_archive", ct).ConfigureAwait(false);
-            resolved++;
-        }
+        // 訪問履歴との照合と保存は DB 内で一括実行する。写真ごとの接続・検索・更新は、
+        // 未解決写真が多い初回分析で待ち時間を線形以上に増やすため使用しない。
+        var resolved = await _db.ResolveUnknownWorldsFromArchiveAsync(ct).ConfigureAwait(false);
+        AppLogger.Info(
+            $"Performance.WorldArchive visits={visits.Count} resolved={resolved} " +
+            $"archive_read_ms={archiveReadElapsed.TotalMilliseconds:F3} " +
+            $"database_ms={Stopwatch.GetElapsedTime(databaseStartedAt).TotalMilliseconds:F3} " +
+            $"total_ms={Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F3}");
         AppLogger.Trace($"PhotoScanner.ResolveUnknownWorldsFromArchiveAsync: exit resolved={resolved}");
         return resolved;
     }

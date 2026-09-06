@@ -6,12 +6,12 @@ namespace Alpheratz.Shared.Controls;
 /// </summary>
 internal static class CustomScrollbarLogic
 {
-    public const double MinimumThumbHeight = 18;
-    public const double RestThumbWidth = 4;
+    public const double MinimumThumbHeight = 24;
+    public const double RestThumbWidth = 2;
     public const double HoverThumbWidth = 6;
     public const float HiddenRailOpacity = 0f;
-    public const float VisibleRailOpacity = 0.35f;
-    public const int HoverAnimationDurationMilliseconds = 200;
+    public const float VisibleRailOpacity = 0.55f;
+    public const int HoverAnimationDurationMilliseconds = 120;
     public const string RestThumbBrushKey = "AScrollbarThumb";
     public const string HoverThumbBrushKey = "AScrollbarThumbHover";
 

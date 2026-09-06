@@ -7,175 +7,324 @@
   <style>
     :root {
       color-scheme: light;
-      --bg: #f6f7f9;
+      --bg: #f5f6f8;
       --paper: #ffffff;
-      --ink: #1f2933;
-      --muted: #64748b;
-      --line: #d7dde5;
-      --accent: #2563eb;
-      --soft: #e8f0ff;
+      --ink: #20242b;
+      --muted: #5d6674;
+      --line: #d6dbe2;
+      --line-strong: #aeb6c2;
+      --soft: #edf1f6;
+      --code-bg: #18202c;
+      --code-ink: #e7edf5;
+      --focus: #235eaa;
     }
+
     * { box-sizing: border-box; }
-    body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Segoe UI", "Noto Sans JP", sans-serif; line-height: 1.65; }
-    header { padding: 32px 40px 20px; background: var(--paper); border-bottom: 1px solid var(--line); }
-    main { max-width: 1120px; margin: 0 auto; padding: 28px 24px 48px; }
-    h1, h2, h3 { line-height: 1.25; margin: 0; }
-    h1 { font-size: 30px; }
-    h2 { margin-top: 34px; padding-bottom: 8px; border-bottom: 2px solid var(--line); font-size: 22px; }
-    h3 { margin-top: 24px; font-size: 18px; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Segoe UI", "Noto Sans JP", sans-serif;
+      line-height: 1.65;
+    }
+
+    header {
+      padding: 32px 40px 22px;
+      background: var(--paper);
+      border-bottom: 1px solid var(--line);
+    }
+
+    main {
+      max-width: 1160px;
+      margin: 0 auto;
+      padding: 28px 24px 56px;
+    }
+
+    h1, h2, h3 { line-height: 1.3; }
+    h1 { margin: 0; font-size: 30px; }
+    h2 { margin: 38px 0 16px; padding-bottom: 8px; border-bottom: 2px solid var(--line); font-size: 22px; }
+    h3 { margin: 0 0 8px; font-size: 18px; }
     p { margin: 10px 0; }
-    table { width: 100%; border-collapse: collapse; margin: 14px 0 22px; background: var(--paper); }
-    th, td { border: 1px solid var(--line); padding: 9px 10px; vertical-align: top; }
-    th { background: #eef2f7; text-align: left; }
-    .meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
-    .meta div, .screen { background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 14px; }
-    .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
-    .value { font-weight: 600; }
-    .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    .wireframe { margin: 12px 0 0; padding: 12px; background: #0f172a; color: #dbeafe; border-radius: 6px; overflow-x: auto; font-family: Consolas, "Courier New", monospace; font-size: 12px; line-height: 1.35; }
-    .note { border-left: 4px solid var(--accent); background: var(--soft); padding: 10px 12px; }
+    code { font-family: Consolas, "Cascadia Mono", monospace; font-size: .94em; }
+
+    table {
+      width: 100%;
+      margin: 14px 0 24px;
+      border-collapse: collapse;
+      background: var(--paper);
+    }
+
+    th, td {
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      vertical-align: top;
+    }
+
+    th { background: var(--soft); text-align: left; }
+
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .meta > div,
+    .screen,
+    .notice {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    .meta > div { padding: 14px; }
+    .label { color: var(--muted); font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
+    .value { margin-top: 2px; font-weight: 650; }
+
+    .notice {
+      margin: 14px 0 20px;
+      padding: 12px 14px;
+      background: var(--soft);
+      border-color: var(--line-strong);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .screen { padding: 16px; }
+
+    .wireframe {
+      margin: 12px 0 0;
+      padding: 14px;
+      overflow-x: auto;
+      border: 1px solid #303b4b;
+      border-radius: 6px;
+      background: var(--code-bg);
+      color: var(--code-ink);
+      font-family: Consolas, "Cascadia Mono", monospace;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    a { color: var(--focus); }
+    a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
     @media (max-width: 820px) {
-      header { padding: 24px 20px 16px; }
-      main { padding: 20px 14px 36px; }
+      header { padding: 24px 20px 18px; }
+      main { padding: 20px 14px 40px; }
       .meta, .layout { grid-template-columns: 1fr; }
+      table { display: block; overflow-x: auto; }
     }
   </style>
 </head>
 <body>
   <header>
     <h1>Alpheratz 基本設計書</h1>
-    <p>画面構成、遷移、主要レイアウト、状態表示を外部設計レベルで定義する。</p>
+    <p>現行 WinUI 3 実装の画面構成、レイヤー、主要操作、表示状態を外部設計レベルで示す。</p>
     <div class="meta">
       <div><div class="label">Document</div><div class="value">docs/basic-design.html</div></div>
-      <div><div class="label">Target</div><div class="value">Alpheratz</div></div>
-      <div><div class="label">Platform</div><div class="value">Windows / WinUI 3</div></div>
-      <div><div class="label">Status</div><div class="value">Public reference</div></div>
+      <div><div class="label">Platform</div><div class="value">Windows x64 / WinUI 3</div></div>
+      <div><div class="label">Shell</div><div class="value">Header 44 px + Stage</div></div>
+      <div><div class="label">Authority</div><div class="value">Current source</div></div>
     </div>
   </header>
+
   <main>
-    <section>
-      <h2>1. Screen List</h2>
+    <section aria-labelledby="screen-list">
+      <h2 id="screen-list">1. Screen List</h2>
       <table>
-        <thead><tr><th>Screen</th><th>Purpose</th><th>Primary Operations</th><th>Source</th></tr></thead>
+        <thead>
+          <tr><th>Screen / View</th><th>Purpose</th><th>Primary Operations</th><th>Source</th></tr>
+        </thead>
         <tbody>
-          <tr><td>Bootstrap</td><td>起動初期化状態を表示する。</td><td>初期化進捗表示、Shell 遷移</td><td>Features/Bootstrap</td></tr>
-          <tr><td>Gallery</td><td>写真一覧の閲覧、検索、選択を行う。</td><td>フィルタ、ワールド検索、表示・グループ切替、複数選択</td><td>Features/Gallery</td></tr>
-          <tr><td>Photo Modal</td><td>選択写真の詳細を表示・編集する。</td><td>タグ編集、お気に入り、投稿、ワールド・ファイル表示</td><td>Features/PhotoModal</td></tr>
-          <tr><td>Settings</td><td>アプリ設定とマスタを管理する。</td><td>フォルダ設定、起動・投稿設定、テーマ、タグ、テンプレート、クレジット</td><td>Features/Settings</td></tr>
-          <tr><td>World Resolve</td><td>ワールド名不明写真の候補を確認する。</td><td>候補選択、一括適用、ワールド名確定</td><td>Features/WorldResolve</td></tr>
-          <tr><td>Group Drill Down</td><td>月・ワールド等のグループ内写真を表示する。</td><td>グループ内閲覧、写真選択</td><td>Features/Gallery</td></tr>
+          <tr><td>Bootstrap</td><td>起動中のブランド表示。</td><td>ロゴのフェード表示、Shellへの自動遷移。進捗値は表示しない。</td><td><code>Features/Bootstrap</code></td></tr>
+          <tr><td>Gallery</td><td>写真一覧の閲覧と選択。</td><td>標準／メイソンリー切替、検索、filter、group、複数選択。</td><td><code>Features/Gallery</code></td></tr>
+          <tr><td>Filter Panel</td><td>Galleryの検索条件編集。</td><td>sort、date、orientation、world、tag、favorite、group、reset。</td><td><code>Gallery/Controls/GalleryFilterPanel</code></td></tr>
+          <tr><td>Group Drill Down</td><td>選択したworld group内の写真表示。</td><td>group内閲覧、写真詳細の起動。</td><td><code>Features/Gallery</code></td></tr>
+          <tr><td>Photo Modal</td><td>選択写真の詳細と操作。</td><td>前後移動、favorite、tag、post、world page、Explorer。</td><td><code>Features/PhotoModal</code></td></tr>
+          <tr><td>Settings</td><td>設定とmaster dataの管理。</td><td>folder、startup、post、theme、tag、template、credits、world resolve起動。</td><td><code>Features/Settings</code></td></tr>
+          <tr><td>World Resolve</td><td>ワールド名不明写真の補完内容を確認。</td><td>候補選択、手動入力、preview、apply toggle、一括確定。</td><td><code>Features/WorldResolve</code></td></tr>
         </tbody>
       </table>
     </section>
 
-    <section>
-      <h2>2. Navigation Structure</h2>
-      <div class="note">Shell を基点に、Gallery を背景として中位モーダル (Settings / WorldResolve / Group Drill Down) と上位モーダル (Photo Modal) を重ねる。</div>
+    <section aria-labelledby="navigation">
+      <h2 id="navigation">2. Navigation and Layering</h2>
+      <div class="notice">ShellはGalleryをmain contentとして維持し、検索条件、確認dialog、2段のmodal layerをその上に重ねる。開いていないlayerのcontentはclose animation後にversion guard付きで解放する。</div>
       <pre class="wireframe">Bootstrap
-  └─ Shell
-      ├─ Gallery
-      │   ├─ Group Drill Down (middle modal)
-      │   └─ Photo Modal (top modal)
-      ├─ Settings (middle modal)
-      │   ├─ General
-      │   ├─ Tag Master
-      │   ├─ Template
-      │   └─ Credits
-      └─ World Resolve (middle modal)</pre>
+└─ ShellPage
+   ├─ HeaderBar (44 px)
+   ├─ ShellStage
+   │  ├─ MainContentHost: Gallery
+   │  ├─ ModalLayerHost: Settings | World Resolve | Group Drill Down
+   │  ├─ TopModalLayerHost: Photo Modal
+   │  ├─ ScanningOverlay
+   │  └─ ToastHost
+   ├─ FilterOverlay: fixed 612 px left panel
+   └─ ConfirmOverlay: folder reset/change confirmation</pre>
+      <p>Group Drill Downから写真を開く場合、Photo Modalは中位modalの上に表示する。SettingsとWorld Resolveを同じ中位layerで同時表示しない。Escは最上位の開いているviewから順に閉じる。</p>
     </section>
 
-    <section>
-      <h2>3. Common Layout Rules</h2>
+    <section aria-labelledby="common-layout">
+      <h2 id="common-layout">3. Common Layout Rules</h2>
       <table>
-        <thead><tr><th>Area</th><th>Definition</th></tr></thead>
+        <thead><tr><th>Area / State</th><th>Definition</th></tr></thead>
         <tbody>
-          <tr><td>Header</td><td>フィルタ入口、ワールド検索、表示モード、ワールド別表示、複数選択、設定ボタンを配置する。</td></tr>
-          <tr><td>Main content</td><td>Gallery を常設し、選択状態とフィルタ状態に応じて表示を更新する。</td></tr>
-          <tr><td>Middle modal</td><td>Settings / WorldResolve / Group Drill Down を表示する。背景 Gallery は維持する。</td></tr>
-          <tr><td>Top modal</td><td>Photo Modal を表示する。中位モーダルが開いていても最上位に重ねる。</td></tr>
-          <tr><td>Feedback</td><td>スキャン、PDQ、WorldResolve 候補探索、サムネイル、保存失敗はトーストまたは画面内状態で表示する。</td></tr>
+          <tr><td>Header</td><td>filter入口、中央のworld search、view／group／multi-select操作、settings入口を置く。modalまたはfilter表示中は操作状態に合わせてdim・disableする。</td></tr>
+          <tr><td>Filter overlay</td><td>panelは幅612 pxで左側に固定し、表示時もparentを付け替えない。開閉はvisibilityと180 msのhorizontal slideで行う。</td></tr>
+          <tr><td>Middle modal</td><td>Settings、World Resolve、Group Drill Down専用。Gallery stateとscroll位置を保持する。</td></tr>
+          <tr><td>Top modal</td><td>Photo Modal専用。中位modalからも起動できる。</td></tr>
+          <tr><td>Progress</td><td>scan、gallery load、PDQ、World Resolve candidate searchは、実際の処理状態と件数をwave bar、overlay、status textで表示する。</td></tr>
+          <tr><td>Feedback</td><td>局所validationは入力欄付近、操作結果と回復可能な失敗はtoast、破壊的folder操作はconfirm dialogを使う。</td></tr>
+          <tr><td>Responsive behavior</td><td>狭いwindowではcontentをwrapまたはscrollし、長いworld/tag/file名でmodal幅を拡張しない。主要操作をviewport外へ固定しない。</td></tr>
         </tbody>
       </table>
     </section>
 
-    <section>
-      <h2>4. Screen Layouts</h2>
+    <section aria-labelledby="screen-layouts">
+      <h2 id="screen-layouts">4. Screen Layouts</h2>
       <div class="layout">
         <article class="screen">
-          <h3>Gallery</h3>
-          <p>写真一覧の標準表示。フィルタ、サムネイル要求、選択状態を扱い、日付順では月ナビゲーションを表示する。</p>
-          <pre class="wireframe">┌ Header: filter | world search | view/group/select | settings ┐
-├──────────────────────────────────────────────┬ Month navigation
-│ Photo grid or masonry viewport               │ month list
-│ [thumb][thumb][thumb][thumb]                 │
-│ [thumb][thumb][thumb][thumb]                 │
-├──────────────────────────────────────────────┴───────────────┤
-└ Bulk actions: selected / clear / favorite / tag / copy      ┘</pre>
+          <h3>Bootstrap</h3>
+          <p>背景中央に<code>LogoText.png</code>、下端に著作権表示を置く。初期化の段階、percentage、spinnerは置かない。</p>
+          <pre class="wireframe">┌─────────────────────────────────────┐
+│                                     │
+│          [ Alpheratz logo ]         │
+│                                     │
+│                                     │
+│              copyright             │
+└─────────────────────────────────────┘</pre>
         </article>
+
+        <article class="screen">
+          <h3>Gallery / Shell</h3>
+          <p>HeaderはShell所有、photo viewportとbulk barはGallery所有。Standardは6列を基準にし、Galleryはresponsive masonryを使う。</p>
+          <pre class="wireframe">┌ filter ─── world search ─── view / group / select / settings ┐
+├────────────────────────────────────────────┬ month navigation ┤
+│ Standard grid or Masonry viewport          │ dateDesc only     │
+│ [photo] [photo] [photo] [photo] [photo]    │                   │
+│ [photo] [photo] [photo] [photo] [photo]    │                   │
+├────────────────────────────────────────────┴───────────────────┤
+│ selected / clear / favorite / unfavorite / tags / copy        │
+└────────────────────────────────────────────────────────────────┘</pre>
+        </article>
+
+        <article class="screen">
+          <h3>Filter Panel</h3>
+          <p>縦scroll可能な1本のpanelとして表示する。各sectionは独立したcardだが、filter全体をさらに囲む不要なcontainerは追加しない。</p>
+          <pre class="wireframe">┌ Search conditions ─────────── close ┐
+│ matched count                       │
+│ sort: newest | world                │
+│ date preset / custom range          │
+│ orientation: all | landscape | portrait
+│ world choices + search              │
+│ tag choices                         │
+│ favorite only                       │
+│ grouping: none | world              │
+│ reset                               │
+└─────────────────────────────────────┘</pre>
+        </article>
+
         <article class="screen">
           <h3>Photo Modal</h3>
-          <p>大きな写真表示とワールド・タグ操作を 1 画面で扱う。</p>
-          <pre class="wireframe">┌ Photo Modal ────────────────────────────── close ┐
-├ Image preview                    ┬ World name     │
-│ previous / next                  │ match source   │
-│                                  ├ Tags           │
-│ filename                         │                │
-├──────────────────────────────────┴────────────────┤
-└ Actions: favorite / post / world / Explorer      ┘</pre>
+          <p>左側に写真、右側にworldとtag、下部に4つの主要actionを置く。match sourceやsource slotのbadgeは表示しない。</p>
+          <pre class="wireframe">┌ Photo details ───────────────────────────────── close ┐
+│ ‹  photo preview  ›       │ world name               │
+│                            │ timestamp                 │
+│ filename                   │ assigned tags             │
+│                            │ add multiple tags         │
+├────────────────────────────┴───────────────────────────┤
+│ favorite │ post │ VRChat world │ Explorer             │
+└────────────────────────────────────────────────────────┘</pre>
         </article>
+
         <article class="screen">
           <h3>Settings</h3>
-          <p>左ナビゲーションで設定カテゴリを切り替える。</p>
-          <pre class="wireframe">┌ Settings modal ───────────────────────┐
-│ Nav       │ Content                    │
-│ General   │ folders / startup / post   │
-│           │ theme / world resolve      │
-│ Tags      │ tag list / add / delete    │
-│ Template  │ template list / editor     │
-│ Credits   │ creator / material credits │
-└────────────────────────────────────────┘</pre>
+          <p>outer surfaceは最大1120×820 px、margin 24 px。左navigationは164 pxで、右側は選択sectionだけを表示する。</p>
+          <pre class="wireframe">┌ Settings ───────────────────────────────────── close ┐
+│ General    │ folders 1st / 2nd                      │
+│ Tags       │ startup / open world on post / theme   │
+│ Templates  │ world resolve + PDQ state              │
+│ Credits    │                                        │
+│            │ selected section content               │
+└──────────────────────────────────────────────────────┘</pre>
         </article>
+
+        <article class="screen">
+          <h3>Tag Master / Templates</h3>
+          <p>Tagは25文字、templateは実文字数と加重文字数の双方で280まで。入力可否と文字数を保存buttonの近くに表示する。</p>
+          <pre class="wireframe">Tags                         Templates
+┌ input (25) ─ add ┐        ┌ multiline editor (280) ┐
+│ validation       │        │ count / warning        │
+│ saved tag chips  │        │ quick token / save     │
+└──────────────────┘        │ saved template cards   │
+                            └─────────────────────────┘</pre>
+        </article>
+
         <article class="screen">
           <h3>World Resolve</h3>
-          <p>ワールド名不明写真と候補ワールドを並べて確認する。</p>
-          <pre class="wireframe">┌ World Resolve ────────────────────────┐
-│ 候補探索の進捗                         │
-│ target → predicted world / distance    │
-│          matched photo / other choice  │
-│ target → predicted world / distance    │
-│ apply toggle / apply all / skip all    │
-│ candidate picker                       │
-│                    confirm / close      │
-└────────────────────────────────────────┘</pre>
+          <p>初回解析中は件数付きoverlayを表示する。解析後はtargetとmatchを同じ行で比較し、適用予定状態を行単位で切り替える。</p>
+          <pre class="wireframe">┌ World name completion ────────────────────── close ┐
+│ unknown count / progress                          │
+│ apply all / skip all                              │
+│ [target photo] → [match photo] world / rate / use │
+│ [target photo] → no 71% candidate / choose        │
+│                         selected N items apply     │
+└────────────────────────────────────────────────────┘</pre>
+        </article>
+
+        <article class="screen">
+          <h3>Candidate Picker / Preview</h3>
+          <p>候補選択はWorld Resolve内のsubview。71%以上の候補をdistance順に示し、候補がない場合もmanual inputを常に利用できる。targetまたはmatch画像は上位preview overlayで拡大する。</p>
+          <pre class="wireframe">┌ Choose candidate / manual ───────── back ┐
+│ [world name input] [use this name]       │
+│ [candidate] world / 93%                  │
+│ [candidate] world / 78%                  │
+│ no candidate: guidance + manual input    │
+└──────────────────────────────────────────┘</pre>
         </article>
       </div>
     </section>
 
-    <section>
-      <h2>5. Modal and Dialog Layouts</h2>
+    <section aria-labelledby="interaction-states">
+      <h2 id="interaction-states">5. Interaction States</h2>
       <table>
-        <thead><tr><th>Modal</th><th>Layer</th><th>Close Rule</th><th>State Source</th></tr></thead>
+        <thead><tr><th>Context</th><th>Enabled State</th><th>Busy / Empty / Failure State</th></tr></thead>
         <tbody>
-          <tr><td>Settings</td><td>Middle</td><td>閉じるボタンまたは Esc</td><td>SettingsViewModel</td></tr>
-          <tr><td>Group Drill Down</td><td>Middle</td><td>戻る/閉じる操作</td><td>GalleryViewModel</td></tr>
-          <tr><td>World Resolve</td><td>Middle</td><td>閉じる操作時に候補生成と UI 更新の停止完了を待つ</td><td>WorldResolveViewModel</td></tr>
-          <tr><td>Photo Modal</td><td>Top</td><td>閉じるボタンまたは Esc</td><td>PhotoModalViewModel</td></tr>
+          <tr><td>Gallery load</td><td>Header controls are available when no blocking overlay is open.</td><td>Top wave progress and loading veil。0件ならempty stateへ切り替える。</td></tr>
+          <tr><td>World search</td><td>入力候補を最大5件表示し、Enterで検索を確定。</td><td>入力だけでは再loadしない。候補0件でもplain textとして確定可能。</td></tr>
+          <tr><td>Multi-select</td><td>選択件数とbulk actionsを下部barに表示。</td><td>partial failure時は失敗写真だけを選択状態に残し、toastで再試行を案内。</td></tr>
+          <tr><td>PDQ analysis</td><td>完了後にWorld Resolveを開ける。</td><td>解析中はbuttonをdisableし、件数とprogressを同じ領域に表示。</td></tr>
+          <tr><td>World Resolve</td><td><code>CanApply</code>の行だけtoggle・一括適用対象。</td><td>candidateなしはmanual inputを案内。保存失敗は一部保存の可能性を明示。</td></tr>
+          <tr><td>Folder change</td><td>利用者のconfirm後に実行。</td><td>scan、post-scan、thumbnail完了を待つ。cleanup失敗時は新しいscanを開始しない。</td></tr>
+          <tr><td>Post</td><td>active templateがある場合だけ実行。</td><td>clipboard、browser、optional world pageを段階別messageで通知。</td></tr>
         </tbody>
       </table>
     </section>
 
-    <section>
-      <h2>6. State and Feedback</h2>
+    <section aria-labelledby="visual-contract">
+      <h2 id="visual-contract">6. Visual and Accessibility Contract</h2>
       <table>
-        <thead><tr><th>State</th><th>Display</th><th>Trigger</th></tr></thead>
+        <thead><tr><th>Rule</th><th>Current Contract</th></tr></thead>
         <tbody>
-          <tr><td>Scanning</td><td>進捗、現在処理中ワールド、キャンセル状態</td><td>PhotoScanner events</td></tr>
-          <tr><td>PDQ running</td><td>解析件数、完了通知、World Resolve 利用可否</td><td>PhashService events</td></tr>
-          <tr><td>Thumbnail pending</td><td>プレースホルダからサムネイルへ差し替え</td><td>ThumbnailWorker</td></tr>
-          <tr><td>Folder cleanup</td><td>進行中操作を停止し、失敗時は警告して次回起動時に再開</td><td>SettingsService / ShellViewModel</td></tr>
-          <tr><td>Save error</td><td>トーストまたはダイアログ</td><td>DB / setting save failure</td></tr>
+          <tr><td>Theme</td><td>Light / DarkともXAML theme resourcesを正本とし、hard-coded色は局所的な意味色に限定する。</td></tr>
+          <tr><td>Hierarchy</td><td>page title、section title、body、hintの順を保ち、同じ領域へ複数の強いaccentを重ねない。</td></tr>
+          <tr><td>Status</td><td>色だけに依存せず、text、icon、enabled state、progress countを併用する。</td></tr>
+          <tr><td>Keyboard</td><td>Escでoverlayを閉じ、Photo Modalは左右keyで移動し、world searchとtag inputはEnter操作を持つ。</td></tr>
+          <tr><td>Automation</td><td>icon-only button、preview、previous/next、folder操作にはautomation nameまたはhelp textを与える。</td></tr>
+          <tr><td>Long content</td><td>world、tag、filenameはwrapまたはellipsisを使い、screenやmodalの幅を押し広げない。</td></tr>
+          <tr><td>Virtualization</td><td>reused photo cardは<code>Loaded</code>だけでなく<code>DataContextChanged</code>でもfavorite等のvisual stateを同期する。</td></tr>
         </tbody>
       </table>
+    </section>
+
+    <section aria-labelledby="references">
+      <h2 id="references">7. References</h2>
+      <p>機能の判定条件と処理順は <a href="spec.md">Specification</a>、保存形式は <a href="database.md">Database Schema</a>、buildとruntimeの制約は <a href="tech-stack.md">Tech Stack and Architecture Decisions</a> を参照する。</p>
     </section>
   </main>
 </body>

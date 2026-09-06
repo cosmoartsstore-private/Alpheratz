@@ -42,7 +42,6 @@ public sealed class CoveragePolicyTests
             "app/App.xaml.cs",
             "app/Features/Bootstrap/BootstrapPage.xaml.cs",
             "app/Features/Gallery/Controls/GalleryFilterPanel.xaml.cs",
-            "app/Features/Gallery/Controls/GalleryFilterSidebar.xaml.cs",
             "app/Features/Gallery/Controls/GalleryGridStage.xaml.cs",
             "app/Features/Gallery/Controls/GalleryMasonryView.xaml.cs",
             "app/Features/Gallery/Controls/MonthNav.xaml.cs",
