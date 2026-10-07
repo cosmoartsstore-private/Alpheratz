@@ -16,13 +16,14 @@ internal static class GalleryMasonryViewportLogic
     public const int DefaultRequestedColumnCount = 5;
     public const int MinRequestedColumnCount = 2;
     public const int MaxRequestedColumnCount = 10;
+    private const int HorizontalViewportInset = 28;
 
     /// <summary>コントロール幅と指定column数から、内部幅と実効column数を算出する。</summary>
     public static (double InnerWidth, int EffectiveColumns) ComputeColumns(double actualWidth, double scrollHostWidth, int? requestedColumnCount)
     {
         var availableWidth = actualWidth;
         if (availableWidth <= 0) availableWidth = scrollHostWidth;
-        var inner = Math.Max(0, availableWidth - 28);
+        var inner = Math.Max(0, availableWidth - HorizontalViewportInset);
         var autoCols = inner > 0
             ? Math.Max(1, (int)Math.Floor((inner + GalleryMasonryLayout.Gap) / (GalleryMasonryLayout.PreferredColumnWidth + GalleryMasonryLayout.Gap)))
             : 1;
