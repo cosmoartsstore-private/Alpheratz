@@ -19,9 +19,5 @@ public sealed record PhashProgressEvent
     public string? current { get; init; }
 
     public static PhashProgressEvent Empty { get; } = new()
-    {
-        done = 0,
-        total = 0,
-        current = null,
-    };
+    { done = 0, total = 0, current = null, };
 }

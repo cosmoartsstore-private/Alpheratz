@@ -16,9 +16,7 @@ namespace Alpheratz.Core.Imaging.Pdq;
 public static class PdqImageReader
 {
     /// <summary>指定パスの画像を読み込み、PDQ 用 luma 配列と縮小後サイズを返す。読めない場合は null。</summary>
-    public static async Task<(float[] luma, int width, int height)?> ReadLumaAsync(
-        string path,
-        CancellationToken ct = default)
+    public static async Task<(float[] luma, int width, int height)?> ReadLumaAsync(string path, CancellationToken ct = default)
     {
         var image = await ReadLumaOwnerAsync(path, usePool: false, ct).ConfigureAwait(false);
         if (image is null) return null;
@@ -29,15 +27,9 @@ public static class PdqImageReader
     /// 連続解析用に ArrayPool から借りた輝度配列を返す。
     /// 呼出側はハッシュ計算後に必ず Dispose し、次の画像処理へ作業領域を返却する。
     /// </summary>
-    internal static Task<PdqLumaImage?> ReadPooledLumaAsync(
-        string path,
-        CancellationToken ct = default)
-        => ReadLumaOwnerAsync(path, usePool: true, ct);
+    internal static Task<PdqLumaImage?> ReadPooledLumaAsync(string path, CancellationToken ct = default) => ReadLumaOwnerAsync(path, usePool: true, ct);
 
-    private static async Task<PdqLumaImage?> ReadLumaOwnerAsync(
-        string path,
-        bool usePool,
-        CancellationToken ct)
+    private static async Task<PdqLumaImage?> ReadLumaOwnerAsync(string path, bool usePool, CancellationToken ct)
     {
         try
         {
@@ -57,10 +49,7 @@ public static class PdqImageReader
     }
 
     /// <summary>IRandomAccessStream から画像をデコードし、必要に応じて縮小して luma 配列へ変換する。</summary>
-    private static async Task<PdqLumaImage?> ReadLumaCoreAsync(
-        IRandomAccessStream stream,
-        bool usePool,
-        CancellationToken ct)
+    private static async Task<PdqLumaImage?> ReadLumaCoreAsync(IRandomAccessStream stream, bool usePool, CancellationToken ct)
     {
         var decoder = await BitmapDecoder.CreateAsync(stream).AsTask(ct).ConfigureAwait(false);
         var origW = (int)decoder.PixelWidth;
@@ -88,18 +77,9 @@ public static class PdqImageReader
         }
 
         var transform = new BitmapTransform
-        {
-            ScaledWidth = (uint)targetW,
-            ScaledHeight = (uint)targetH,
-            InterpolationMode = BitmapInterpolationMode.Linear,
-        };
+        { ScaledWidth = (uint)targetW, ScaledHeight = (uint)targetH, InterpolationMode = BitmapInterpolationMode.Linear, };
 
-        var pixelData = await decoder.GetPixelDataAsync(
-            BitmapPixelFormat.Bgra8,
-            BitmapAlphaMode.Ignore,
-            transform,
-            ExifOrientationMode.IgnoreExifOrientation,
-            ColorManagementMode.DoNotColorManage).AsTask(ct).ConfigureAwait(false);
+        var pixelData = await decoder.GetPixelDataAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore, transform, ExifOrientationMode.IgnoreExifOrientation, ColorManagementMode.DoNotColorManage).AsTask(ct).ConfigureAwait(false);
         var bgra = pixelData.DetachPixelData();
 
         var pixelCount = targetW * targetH;

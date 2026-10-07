@@ -2,14 +2,14 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
 
-    <!-- WinUI 3 requires a Windows TFM with a concrete target platform. -->
+    <!-- WinUI 3 には対象 platform を明示した Windows TFM が必要である。 -->
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
 
     <RootNamespace>Alpheratz</RootNamespace>
     <UseWinUI>true</UseWinUI>
 
-    <!-- NSIS/unpackaged distribution. Do not switch this project back to WPF/MSIX-only packaging. -->
+    <!-- NSIS による unpackaged 配布を使用する。WPF や MSIX 専用の構成へ戻さない。 -->
     <WindowsPackageType>None</WindowsPackageType>
     <!-- Debug は Program.Main で明示初期化し、Release は reg-free WinRT を使う。 -->
     <WindowsAppSdkBootstrapInitialize>false</WindowsAppSdkBootstrapInitialize>
@@ -82,8 +82,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Messages\messages.ja.properties"
-                      LogicalName="Alpheratz.Messages.messages.ja.properties">
+    <EmbeddedResource Include="Messages\messages.ja.properties" LogicalName="Alpheratz.Messages.messages.ja.properties">
       <WithCulture>false</WithCulture>
     </EmbeddedResource>
   </ItemGroup>
@@ -95,18 +94,14 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.11" />
   </ItemGroup>
 
-  <!-- Keep an assembly-name XBF mirror for older generated LoadComponent paths.
+  <!-- 旧生成コードの LoadComponent パスに対応するため、assembly 名の XBF コピーを残す。
        Release publish also mirrors XBF files to the app root because current
        generated code uses root-relative ms-appx:/// paths. -->
   <Target Name="CopyXbfToSubfolder" AfterTargets="Build">
-    <RemoveDir Directories="$(OutDir)$(AssemblyName)\$(AssemblyName)"
-               Condition="Exists('$(OutDir)$(AssemblyName)\$(AssemblyName)')" />
+    <RemoveDir Directories="$(OutDir)$(AssemblyName)\$(AssemblyName)" Condition="Exists('$(OutDir)$(AssemblyName)\$(AssemblyName)')" />
     <ItemGroup>
-      <_XbfFiles Include="$(OutDir)**\*.xbf"
-                 Exclude="$(OutDir)$(AssemblyName)\**\*.xbf" />
+      <_XbfFiles Include="$(OutDir)**\*.xbf" Exclude="$(OutDir)$(AssemblyName)\**\*.xbf" />
     </ItemGroup>
-    <Copy SourceFiles="@(_XbfFiles)"
-          DestinationFiles="@(_XbfFiles->'$(OutDir)$(AssemblyName)\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_XbfFiles)" DestinationFiles="@(_XbfFiles->'$(OutDir)$(AssemblyName)\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
   </Target>
 </Project>

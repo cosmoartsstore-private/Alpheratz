@@ -52,15 +52,8 @@ public partial class DuplicatePhotoItemViewModel : UiThreadSafeObservableObject
         var timestamp = string.IsNullOrWhiteSpace(photo.Timestamp)
             ? getMsg("DuplicatePhotosViewModel.unknownDate")
             : photo.Timestamp;
-        DetailsText = getMsg(
-            "DuplicatePhotosViewModel.photoDetails",
-            ("timestamp", timestamp),
-            ("size", DuplicatePhotosViewModel.FormatFileSize(photo.FileSize)),
-            ("source", sourceLabel));
-        SelectionAutomationName = getMsg(
-            "DuplicatePhotosViewModel.selectForDeletionAutomationName",
-            ("filename", PhotoFilename),
-            ("folder", DirectoryPath));
+        DetailsText = getMsg("DuplicatePhotosViewModel.photoDetails", ("timestamp", timestamp), ("size", DuplicatePhotosViewModel.FormatFileSize(photo.FileSize)), ("source", sourceLabel));
+        SelectionAutomationName = getMsg("DuplicatePhotosViewModel.selectForDeletionAutomationName", ("filename", PhotoFilename), ("folder", DirectoryPath));
     }
 
     partial void OnIsSelectedChanged(bool value)
@@ -75,8 +68,7 @@ public partial class DuplicatePhotoItemViewModel : UiThreadSafeObservableObject
         OnPropertyChanged(nameof(IsSelectionEnabled));
     }
 
-    partial void OnIsBusyChanged(bool value)
-        => OnPropertyChanged(nameof(IsSelectionEnabled));
+    partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(IsSelectionEnabled));
 
     private static string ResolveDirectoryPath(string photoPath)
     {
@@ -98,10 +90,7 @@ public sealed class DuplicatePhotoGroupViewModel : UiThreadSafeObservableObject
         get => selectedCount;
         private set => SetProperty(ref selectedCount, value);
     }
-    public string SummaryText => getMsg(
-        "DuplicatePhotosViewModel.groupSummary",
-        ("count", Photos.Count),
-        ("size", DuplicatePhotosViewModel.FormatFileSize(FileSize)));
+    public string SummaryText => getMsg("DuplicatePhotosViewModel.groupSummary", ("count", Photos.Count), ("size", DuplicatePhotosViewModel.FormatFileSize(FileSize)));
 
     internal event EventHandler? SelectionChanged;
 
@@ -185,10 +174,7 @@ public partial class DuplicatePhotosViewModel : UiThreadSafeObservableObject
         ? "DuplicatePhotosViewModel.detectAgainButton"
         : "DuplicatePhotosViewModel.detectButton");
 
-    public DuplicatePhotosViewModel(
-        PhotoService photoService,
-        DispatcherService dispatcherService,
-        ToastService toastService)
+    public DuplicatePhotosViewModel(PhotoService photoService, DispatcherService dispatcherService, ToastService toastService)
     {
         this.photoService = photoService;
         this.dispatcherService = dispatcherService;
@@ -251,9 +237,7 @@ public partial class DuplicatePhotosViewModel : UiThreadSafeObservableObject
                 if (version == Interlocked.Read(ref detectionVersion))
                     StatusText = getMsg("DuplicatePhotosViewModel.detectionFailed");
             }).ConfigureAwait(false);
-            toastService.addToast(
-                getMsg("DuplicatePhotosViewModel.detectionFailed"),
-                ToastType.error);
+            toastService.addToast(getMsg("DuplicatePhotosViewModel.detectionFailed"), ToastType.error);
         }
         finally
         {
@@ -269,9 +253,7 @@ public partial class DuplicatePhotosViewModel : UiThreadSafeObservableObject
     }
 
     /// <summary>現在選択中の写真を再検証付き削除処理へ渡し、成功した項目だけを結果から除く。</summary>
-    public async Task DeleteSelectedAsync(
-        Func<IReadOnlyList<DuplicatePhotoDeleteTarget>, Task<DuplicatePhotoDeleteResult>> delete,
-        CancellationToken ct = default)
+    public async Task DeleteSelectedAsync(Func<IReadOnlyList<DuplicatePhotoDeleteTarget>, Task<DuplicatePhotoDeleteResult>> delete, CancellationToken ct = default)
     {
         if (IsBusy || !CanDeleteSelected)
             return;
@@ -284,9 +266,7 @@ public partial class DuplicatePhotosViewModel : UiThreadSafeObservableObject
         {
             IsDeleting = true;
             StatusText = string.Empty;
-            ProgressText = getMsg(
-                "DuplicatePhotosViewModel.deletingPhotos",
-                ("count", targets.Count));
+            ProgressText = getMsg("DuplicatePhotosViewModel.deletingPhotos", ("count", targets.Count));
             NotifyDisplayStateChanged();
         }).ConfigureAwait(false);
 
@@ -298,17 +278,13 @@ public partial class DuplicatePhotosViewModel : UiThreadSafeObservableObject
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            await dispatcherService.RunOnUiThread(() =>
-                StatusText = getMsg("DuplicatePhotosViewModel.deletionCanceled")).ConfigureAwait(false);
+            await dispatcherService.RunOnUiThread(() => StatusText = getMsg("DuplicatePhotosViewModel.deletionCanceled")).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             AppLogger.Error($"DuplicatePhotosViewModel.DeleteSelectedAsync: threw: {ex}");
-            await dispatcherService.RunOnUiThread(() =>
-                StatusText = getMsg("DuplicatePhotosViewModel.deletionFailed")).ConfigureAwait(false);
-            toastService.addToast(
-                getMsg("DuplicatePhotosViewModel.deletionFailed"),
-                ToastType.error);
+            await dispatcherService.RunOnUiThread(() => StatusText = getMsg("DuplicatePhotosViewModel.deletionFailed")).ConfigureAwait(false);
+            toastService.addToast(getMsg("DuplicatePhotosViewModel.deletionFailed"), ToastType.error);
         }
         finally
         {
@@ -338,15 +314,7 @@ public partial class DuplicatePhotosViewModel : UiThreadSafeObservableObject
 
             foreach (var photo in group.Photos.Where(item => item.IsSelected))
             {
-                targets.Add(new DuplicatePhotoDeleteTarget(
-                    new SelectedPhotoRefDto
-                    {
-                        photo_path = photo.PhotoPath,
-                        source_slot = photo.SourceSlot,
-                    },
-                    group.ContentHash,
-                    group.FileSize,
-                    retainedPhotoPaths));
+                targets.Add(new DuplicatePhotoDeleteTarget(new SelectedPhotoRefDto { photo_path = photo.PhotoPath, source_slot = photo.SourceSlot, }, group.ContentHash, group.FileSize, retainedPhotoPaths));
             }
         }
         return targets;
@@ -379,10 +347,7 @@ public partial class DuplicatePhotosViewModel : UiThreadSafeObservableObject
         var key = progress.Stage == DuplicatePhotoScanStage.InspectingFiles
             ? "DuplicatePhotosViewModel.inspectingFiles"
             : "DuplicatePhotosViewModel.comparingContents";
-        ProgressText = getMsg(
-            key,
-            ("processed", progress.Processed),
-            ("total", progress.Total));
+        ProgressText = getMsg(key, ("processed", progress.Processed), ("total", progress.Total));
     }
 
     private void ApplyDetectionResult(ExactDuplicateDetectionResult result)
@@ -405,16 +370,12 @@ public partial class DuplicatePhotosViewModel : UiThreadSafeObservableObject
         else if (Groups.Count == 0)
         {
             StatusText = result.UnreadablePhotoCount > 0
-                ? getMsg(
-                    "DuplicatePhotosViewModel.noDuplicatesWithUnreadable",
-                    ("count", result.UnreadablePhotoCount))
+                ? getMsg("DuplicatePhotosViewModel.noDuplicatesWithUnreadable", ("count", result.UnreadablePhotoCount))
                 : getMsg("DuplicatePhotosViewModel.noDuplicates");
         }
         else if (result.UnreadablePhotoCount > 0)
         {
-            StatusText = getMsg(
-                "DuplicatePhotosViewModel.unreadablePhotos",
-                ("count", result.UnreadablePhotoCount));
+            StatusText = getMsg("DuplicatePhotosViewModel.unreadablePhotos", ("count", result.UnreadablePhotoCount));
         }
         else
         {
@@ -451,31 +412,22 @@ public partial class DuplicatePhotosViewModel : UiThreadSafeObservableObject
         ToastType toastType;
         if (!result.DatabaseUpdated)
         {
-            StatusText = getMsg(
-                "DuplicatePhotosViewModel.deletedDatabaseUpdateFailed",
-                ("count", deletedCount));
+            StatusText = getMsg("DuplicatePhotosViewModel.deletedDatabaseUpdateFailed", ("count", deletedCount));
             toastType = ToastType.error;
         }
         else if (failedCount > 0 && deletedCount > 0)
         {
-            StatusText = getMsg(
-                "DuplicatePhotosViewModel.partiallyDeleted",
-                ("deleted", deletedCount),
-                ("failed", failedCount));
+            StatusText = getMsg("DuplicatePhotosViewModel.partiallyDeleted", ("deleted", deletedCount), ("failed", failedCount));
             toastType = ToastType.error;
         }
         else if (failedCount > 0)
         {
-            StatusText = getMsg(
-                "DuplicatePhotosViewModel.noneDeleted",
-                ("count", failedCount));
+            StatusText = getMsg("DuplicatePhotosViewModel.noneDeleted", ("count", failedCount));
             toastType = ToastType.error;
         }
         else
         {
-            StatusText = getMsg(
-                "DuplicatePhotosViewModel.deleted",
-                ("count", deletedCount));
+            StatusText = getMsg("DuplicatePhotosViewModel.deleted", ("count", deletedCount));
             toastType = ToastType.info;
         }
 
@@ -483,21 +435,15 @@ public partial class DuplicatePhotosViewModel : UiThreadSafeObservableObject
         NotifyDisplayStateChanged();
     }
 
-    private void Group_SelectionChanged(object? sender, EventArgs e)
-        => UpdateSelectionState();
+    private void Group_SelectionChanged(object? sender, EventArgs e) => UpdateSelectionState();
 
     private void UpdateSelectionState()
     {
         SelectedCount = Groups.Sum(group => group.SelectedCount);
-        SelectedBytes = Groups.Sum(group => group.Photos
-            .Where(photo => photo.IsSelected)
-            .Sum(photo => photo.FileSize));
+        SelectedBytes = Groups.Sum(group => group.Photos.Where(photo => photo.IsSelected).Sum(photo => photo.FileSize));
         SelectionSummary = SelectedCount == 0
             ? getMsg("DuplicatePhotosViewModel.selectPhotosGuidance")
-            : getMsg(
-                "DuplicatePhotosViewModel.selectionSummary",
-                ("count", SelectedCount),
-                ("size", FormatFileSize(SelectedBytes)));
+            : getMsg("DuplicatePhotosViewModel.selectionSummary", ("count", SelectedCount), ("size", FormatFileSize(SelectedBytes)));
         OnPropertyChanged(nameof(SelectedSizeLabel));
         NotifyDisplayStateChanged();
     }
@@ -513,12 +459,7 @@ public partial class DuplicatePhotosViewModel : UiThreadSafeObservableObject
         var photoCount = Groups.Sum(group => group.Photos.Count);
         var deletableCount = Groups.Sum(group => Math.Max(0, group.Photos.Count - 1));
         var reclaimableBytes = Groups.Sum(group => group.FileSize * Math.Max(0, group.Photos.Count - 1L));
-        DetectionSummary = getMsg(
-            "DuplicatePhotosViewModel.detectionSummary",
-            ("groupCount", Groups.Count),
-            ("photoCount", photoCount),
-            ("deletableCount", deletableCount),
-            ("size", FormatFileSize(reclaimableBytes)));
+        DetectionSummary = getMsg("DuplicatePhotosViewModel.detectionSummary", ("groupCount", Groups.Count), ("photoCount", photoCount), ("deletableCount", deletableCount), ("size", FormatFileSize(reclaimableBytes)));
     }
 
     private void ClearGroups()

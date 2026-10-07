@@ -29,17 +29,13 @@ public sealed class AlpheratzSetting
 
     [JsonPropertyName("tweetTemplates")]
     public List<string> TweetTemplates { get; set; } =
-    [
-        getMsg("AlpheratzSetting.defaultTweetTemplateGreeting"),
-        getMsg("AlpheratzSetting.defaultTweetTemplateWorld"),
-        getMsg("AlpheratzSetting.defaultTweetTemplatePhotography"),
-    ];
+    [getMsg("AlpheratzSetting.defaultTweetTemplateGreeting"), getMsg("AlpheratzSetting.defaultTweetTemplateWorld"), getMsg("AlpheratzSetting.defaultTweetTemplatePhotography"),];
 
     [JsonPropertyName("activeTweetTemplate")]
     public string ActiveTweetTemplate { get; set; } = getMsg("AlpheratzSetting.defaultTweetTemplateGreeting");
 
     /// <summary>
-    /// フォルダ設定の保存後、対象スロットの旧 DB／キャッシュをまだ整理中であることを示す。
+    /// フォルダ設定の保存後、対象スロットの旧 DB／cacheをまだ整理中であることを示す。
     /// 処理途中で終了しても次回起動時に同じ整理を再実行できるよう、設定と同時に永続化する。
     /// </summary>
     [JsonPropertyName("pendingFolderCleanup")]

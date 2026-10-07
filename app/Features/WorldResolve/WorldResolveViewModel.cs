@@ -17,9 +17,7 @@ namespace Alpheratz.Features.WorldResolve;
 /// 候補ワールドリストの 1 エントリ。WorldResolve 画面の「別ワールドを選ぶ」ピッカーで使用。
 /// Distance は対象写真の PDQ ハミング距離で、小さいほど類似度が高い。
 /// </summary>
-public sealed record CandidateEntry(
-    string PhotoPath, string PhotoFilename, string WorldName, string? WorldId,
-    int Distance, long SourceSlot);
+public sealed record CandidateEntry(string PhotoPath, string PhotoFilename, string WorldName, string? WorldId, int Distance, long SourceSlot);
 
 /// <summary>
 /// ワールド不明写真を PDQ 距離で既知写真とマッチさせる解析画面の ViewModel。
@@ -36,10 +34,7 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
     // UI 用に論理 CPU の約20%を残しつつ、固定長整数の距離計算を最大16並列まで利用する。
     // 20論理CPUの実測では12並列より16並列が速く、19並列では逆に遅くなった。
     private static int CandidateSearchParallelism
-        => Math.Clamp(
-            Environment.ProcessorCount - Math.Max(1, Environment.ProcessorCount / 5),
-            1,
-            16);
+        => Math.Clamp(Environment.ProcessorCount - Math.Max(1, Environment.ProcessorCount / 5), 1, 16);
 
     private readonly AlpheratzDb db;
     private readonly ThumbnailWorker thumbnailWorker;
@@ -83,7 +78,7 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
     /// <summary>適用対象として選択された件数。適用ボタンの活性化判定に使う。</summary>
     public int ApplyCount { get => applyCount; set => SetProperty(ref applyCount, value); }
 
-    // --- Candidate picker ---
+    // 候補選択
     private bool isCandidatePickerOpen;
     public bool IsCandidatePickerOpen { get => isCandidatePickerOpen; set => SetProperty(ref isCandidatePickerOpen, value); }
 
@@ -98,17 +93,13 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
     private int candidatePickerGeneration;
 
     /// <summary>
-    /// source_slot ごとに PDQ 文字列を固定長整数へ変換済みにした既知写真候補キャッシュ。
+    /// source_slot ごとに PDQ 文字列を固定長整数へ変換済みにした既知写真候補cache。
     /// 元の長いハッシュ文字列は保持せず、照合中の常駐メモリを抑える。
     /// </summary>
     private Dictionary<long, IReadOnlyList<WorldService.PreparedKnownWorldRow>> preparedKnownBySlot = new();
 
     // ワールド解決に必要な DB、サムネイル生成、通知サービスを受け取る。
-    public WorldResolveViewModel(
-        AlpheratzDb db,
-        ThumbnailWorker thumbnailWorker,
-        ToastService toastService,
-        DispatcherService? dispatcherService = null)
+    public WorldResolveViewModel(AlpheratzDb db, ThumbnailWorker thumbnailWorker, ToastService toastService, DispatcherService? dispatcherService = null)
     {
         this.db = db;
         this.thumbnailWorker = thumbnailWorker;
@@ -121,8 +112,7 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
     /// PDQ 最近隣を計算 → Items を構築 → サムネイル並列生成キック。
     /// CT で中断可能（モーダル閉じや別解析開始時）。
     /// </summary>
-    public Task InitializeAsync(CancellationToken ct = default)
-        => TrackGenerationOperation(InitializeCoreAsync, ct);
+    public Task InitializeAsync(CancellationToken ct = default) => TrackGenerationOperation(InitializeCoreAsync, ct);
 
     private async Task InitializeCoreAsync(CancellationToken ct)
     {
@@ -190,10 +180,7 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
                 await Task.Run(() =>
                 {
                     Parallel.For(0, groupedUnknownIndexes.Length, new ParallelOptions
-                    {
-                        CancellationToken = ct,
-                        MaxDegreeOfParallelism = CandidateSearchParallelism,
-                    }, groupIndex =>
+                    { CancellationToken = ct, MaxDegreeOfParallelism = CandidateSearchParallelism, }, groupIndex =>
                     {
                         var unknownIndexes = groupedUnknownIndexes[groupIndex];
                         var representative = unknowns[unknownIndexes[0]];
@@ -207,11 +194,7 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
                         foreach (var unknownIndex in unknownIndexes)
                         {
                             var unknown = unknowns[unknownIndex];
-                            var item = new WorldResolveItem(
-                                unknown.PhotoPath,
-                                unknown.PhotoFilename,
-                                unknown.Phash,
-                                unknown.SourceSlot);
+                            var item = new WorldResolveItem(unknown.PhotoPath, unknown.PhotoFilename, unknown.Phash, unknown.SourceSlot);
                             if (match is not null)
                             {
                                 item.MatchPhotoPath = match.Value.Row.PhotoPath;
@@ -274,37 +257,22 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
                     thumbTargets.Add((item.MatchPhotoPath, item.TargetSourceSlot));
             }
 
-            StartGenerationOperation(
-                operationToken => GenerateInitialThumbnailsAsync(items, thumbTargets, operationToken),
-                ct);
+            StartGenerationOperation(operationToken => GenerateInitialThumbnailsAsync(items, thumbTargets, operationToken), ct);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
             AppLogger.Error($"WorldResolveViewModel.InitializeAsync: {ex}");
-            toastService.addToast(
-                getMsg("WorldResolveViewModel.initializationFailed"),
-                Shared.Models.ToastType.error);
+            toastService.addToast(getMsg("WorldResolveViewModel.initializationFailed"), Shared.Models.ToastType.error);
         }
         finally
         {
             await dispatcherService.RunOnUiThread(() => IsLoading = false).ConfigureAwait(false);
-            AppLogger.Info(
-                $"Performance.WorldResolve completed={completed} unknown={unknownCount} " +
-                $"unique_unknown={uniqueUnknownCount} known={knownCount} " +
-                $"unknown_query_ms={unknownQueryMilliseconds:F3} known_query_ms={knownQueryMilliseconds:F3} " +
-                $"prepare_ms={prepareMilliseconds:F3} match_ms={matchMilliseconds:F3} " +
-                $"ui_apply_ms={uiApplyMilliseconds:F3} " +
-                $"total_ms={Stopwatch.GetElapsedTime(initializationStartedAt).TotalMilliseconds:F3} " +
-                $"managed_delta_bytes={GC.GetTotalMemory(forceFullCollection: false) - managedBytesBefore} " +
-                $"working_set_delta_bytes={Environment.WorkingSet - workingSetBefore}");
+            AppLogger.Info($"Performance.WorldResolve completed={completed} unknown={unknownCount} " + $"unique_unknown={uniqueUnknownCount} known={knownCount} " + $"unknown_query_ms={unknownQueryMilliseconds:F3} known_query_ms={knownQueryMilliseconds:F3} " + $"prepare_ms={prepareMilliseconds:F3} match_ms={matchMilliseconds:F3} " + $"ui_apply_ms={uiApplyMilliseconds:F3} " + $"total_ms={Stopwatch.GetElapsedTime(initializationStartedAt).TotalMilliseconds:F3} " + $"managed_delta_bytes={GC.GetTotalMemory(forceFullCollection: false) - managedBytesBefore} " + $"working_set_delta_bytes={Environment.WorkingSet - workingSetBefore}");
         }
     }
 
-    private async Task GenerateInitialThumbnailsAsync(
-        IReadOnlyList<WorldResolveItem> items,
-        IReadOnlyList<(string path, long slot)> targets,
-        CancellationToken ct)
+    private async Task GenerateInitialThumbnailsAsync(IReadOnlyList<WorldResolveItem> items, IReadOnlyList<(string path, long slot)> targets, CancellationToken ct)
     {
         var uiUpdates = new ConcurrentBag<Task>();
         var itemsByPhotoPath = new Dictionary<string, List<WorldResolveItem>>(StringComparer.OrdinalIgnoreCase);
@@ -353,10 +321,7 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
         catch (Exception ex) { AppLogger.Warn($"WorldResolve thumb generation: {ex.Message}"); }
     }
 
-    private static void AddThumbnailTarget(
-        Dictionary<string, List<WorldResolveItem>> itemsByPhotoPath,
-        string photoPath,
-        WorldResolveItem item)
+    private static void AddThumbnailTarget(Dictionary<string, List<WorldResolveItem>> itemsByPhotoPath, string photoPath, WorldResolveItem item)
     {
         if (!itemsByPhotoPath.TryGetValue(photoPath, out var matchingItems))
         {
@@ -366,10 +331,7 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
         matchingItems.Add(item);
     }
 
-    private static bool ShouldUpdateSearchProgress(int processed, int total, Stopwatch progressWatch)
-        => processed == 1
-            || processed >= total
-            || progressWatch.ElapsedMilliseconds >= SearchProgressUpdateMinIntervalMs;
+    private static bool ShouldUpdateSearchProgress(int processed, int total, Stopwatch progressWatch) => processed == 1 || processed >= total || progressWatch.ElapsedMilliseconds >= SearchProgressUpdateMinIntervalMs;
 
     private Task UpdateSearchProgressAsync(int processed, int total, CancellationToken ct)
         => dispatcherService.RunOnUiThread(() =>
@@ -383,10 +345,7 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
         SearchProgressProcessed = Math.Clamp(processed, 0, Math.Max(total, 0));
         SearchProgressTotal = Math.Max(total, 0);
         SearchProgressText = SearchProgressTotal > 0
-            ? getMsg(
-                "WorldResolveViewModel.searchProgress",
-                ("processed", SearchProgressProcessed),
-                ("total", SearchProgressTotal))
+            ? getMsg("WorldResolveViewModel.searchProgress", ("processed", SearchProgressProcessed), ("total", SearchProgressTotal))
             : getMsg("WorldResolveViewModel.checkingTargetPhotos");
     }
 
@@ -469,21 +428,14 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
             foreach (var update in updates)
             {
                 ct.ThrowIfCancellationRequested();
-                await db.UpdatePhotoWorldAsync(
-                    update.PhotoPath,
-                    update.WorldName,
-                    update.WorldId,
-                    update.MatchSource,
-                    ct).ConfigureAwait(false);
+                await db.UpdatePhotoWorldAsync(update.PhotoPath, update.WorldName, update.WorldId, update.MatchSource, ct).ConfigureAwait(false);
                 applied++;
             }
         }
         catch (Exception ex)
         {
             AppLogger.Error($"WorldResolveViewModel.ApplyConfirmedAsync: {ex}");
-            toastService.addToast(
-                getMsg("WorldResolveViewModel.applyFailed"),
-                Shared.Models.ToastType.error);
+            toastService.addToast(getMsg("WorldResolveViewModel.applyFailed"), Shared.Models.ToastType.error);
             throw;
         }
         finally
@@ -502,11 +454,10 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
 
     /// <summary>
     /// 「別ワールドを選ぶ」ピッカーを開く。
-    /// 固定長へ変換済みの既知写真キャッシュから、距離順に CandidateList を組み立てる。
+    /// 固定長へ変換済みの既知写真cacheから、距離順に CandidateList を組み立てる。
     /// 候補画像は XAML のコンバーターが元写真を表示用サイズで読み込む。
     /// </summary>
-    public Task OpenCandidatePickerAsync(WorldResolveItem item, CancellationToken ct = default)
-        => TrackGenerationOperation(token => OpenCandidatePickerCoreAsync(item, token), ct);
+    public Task OpenCandidatePickerAsync(WorldResolveItem item, CancellationToken ct = default) => TrackGenerationOperation(token => OpenCandidatePickerCoreAsync(item, token), ct);
 
     private async Task OpenCandidatePickerCoreAsync(WorldResolveItem item, CancellationToken ct)
     {
@@ -523,24 +474,14 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
         try
         {
             var knownPhotos = await GetPreparedKnownPhotosAsync(item.TargetSourceSlot, ct).ConfigureAwait(false);
-            var ranked = await Task.Run(
-                () => WorldService.RankCandidatesByDistance(item.TargetPhash, knownPhotos, ct),
-                ct).ConfigureAwait(false);
+            var ranked = await Task.Run(() => WorldService.RankCandidatesByDistance(item.TargetPhash, knownPhotos, ct), ct).ConfigureAwait(false);
             var entries = ranked
                 .Where(static result => WorldService.CanAutomaticallyComplete(result.Distance))
-                .GroupBy(
-                    static result => result.Row.WorldName,
-                    StringComparer.CurrentCultureIgnoreCase)
+                .GroupBy(static result => result.Row.WorldName, StringComparer.CurrentCultureIgnoreCase)
                 .Select(static group => group.First())
                 .OrderBy(static result => result.Distance)
                 .ThenBy(static result => result.Row.WorldName, StringComparer.CurrentCultureIgnoreCase)
-                .Select(result => new CandidateEntry(
-                    result.Row.PhotoPath,
-                    result.Row.PhotoFilename,
-                    result.Row.WorldName,
-                    result.Row.WorldId,
-                    result.Distance,
-                    result.Row.SourceSlot))
+                .Select(result => new CandidateEntry(result.Row.PhotoPath, result.Row.PhotoFilename, result.Row.WorldName, result.Row.WorldId, result.Distance, result.Row.SourceSlot))
                 .ToList();
 
             await dispatcherService.RunOnUiThread(() =>
@@ -561,16 +502,13 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
             AppLogger.Error($"WorldResolveViewModel.OpenCandidatePickerAsync: {ex}");
             if (IsCurrentCandidatePickerRequest(generation))
             {
-                toastService.addToast(
-                    getMsg("WorldResolveViewModel.candidateLoadFailed"),
-                    Shared.Models.ToastType.error);
+                toastService.addToast(getMsg("WorldResolveViewModel.candidateLoadFailed"), Shared.Models.ToastType.error);
             }
             await CloseCandidatePickerIfCurrentAsync(generation).ConfigureAwait(false);
         }
     }
 
-    private bool IsCurrentCandidatePickerRequest(int generation)
-        => Volatile.Read(ref candidatePickerGeneration) == generation;
+    private bool IsCurrentCandidatePickerRequest(int generation) => Volatile.Read(ref candidatePickerGeneration) == generation;
 
     private Task CloseCandidatePickerIfCurrentAsync(int generation)
         => dispatcherService.RunOnUiThread(() =>
@@ -597,13 +535,7 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
         item.IsManualMatch = false;
 
         var generation = Interlocked.Increment(ref candidateThumbnailGeneration);
-        StartCandidateThumbnailOperation(
-            operationToken => GenerateSelectedCandidateThumbnailAsync(
-                item,
-                entry,
-                generation,
-                operationToken),
-            ct);
+        StartCandidateThumbnailOperation(operationToken => GenerateSelectedCandidateThumbnailAsync(item, entry, generation, operationToken), ct);
 
         CloseCandidatePicker();
     }
@@ -630,11 +562,7 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
         return true;
     }
 
-    private async Task GenerateSelectedCandidateThumbnailAsync(
-        WorldResolveItem item,
-        CandidateEntry entry,
-        int generation,
-        CancellationToken ct)
+    private async Task GenerateSelectedCandidateThumbnailAsync(WorldResolveItem item, CandidateEntry entry, int generation, CancellationToken ct)
     {
         var uiUpdates = new ConcurrentBag<Task>();
         try
@@ -668,9 +596,7 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
         catch (Exception ex) { AppLogger.Warn($"SelectCandidate thumb: {ex.Message}"); }
     }
 
-    private bool IsCurrentCandidateThumbnailRequest(int generation)
-        => !IsGenerationStopping()
-            && Volatile.Read(ref candidateThumbnailGeneration) == generation;
+    private bool IsCurrentCandidateThumbnailRequest(int generation) => !IsGenerationStopping() && Volatile.Read(ref candidateThumbnailGeneration) == generation;
 
     // 候補ピッカーの選択状態と読み込み状態をクリアして閉じる。
     public void CloseCandidatePicker()
@@ -681,14 +607,9 @@ public partial class WorldResolveViewModel : UiThreadSafeObservableObject
         IsCandidateLoading = false;
     }
 
-    private void StartGenerationOperation(
-        Func<CancellationToken, Task> operation,
-        CancellationToken ct)
-        => TrackGenerationOperation(operation, ct);
+    private void StartGenerationOperation(Func<CancellationToken, Task> operation, CancellationToken ct) => TrackGenerationOperation(operation, ct);
 
-    private void StartCandidateThumbnailOperation(
-        Func<CancellationToken, Task> operation,
-        CancellationToken ct)
+    private void StartCandidateThumbnailOperation(Func<CancellationToken, Task> operation, CancellationToken ct)
     {
         CancellationTokenSource? previousCandidate = null;
         lock (generationOperationGate)

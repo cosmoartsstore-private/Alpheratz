@@ -6,7 +6,7 @@ namespace Alpheratz.Features.Gallery;
 
 /// <summary>
 /// 標準グリッドのスクロール位置とスクロール可能範囲を保持するステート。
-/// 写真枚数・列数・行高から論理的なグリッド全体高を算出し、ユーザのスクロール量を
+/// 写真枚数・列数・行高から論理的なグリッド全体高を算出し、ユーザーのスクロール量を
 /// 0 ～ maxScrollTop にクランプする責務を持つ。
 /// (MasonryView は別途自前のスクロール管理を持っているのでこのステートは使わない)
 /// </summary>
@@ -24,7 +24,7 @@ public partial class GalleryScrollState : UiThreadSafeObservableObject
 
     /// <summary>
     /// 写真数・列数・行高の変化に応じてスクロール範囲を再計算する。
-    /// disableProgrammaticBounds=true のときは ScrollTop を強制クランプしない（ユーザが
+    /// disableProgrammaticBounds=true のときは ScrollTop を強制クランプしない（ユーザーが
     /// 慣性スクロール中など、UI 側で値を直接管理しているケース向け）。
     /// </summary>
     public void Recalculate(int photosLength, int columnCount, double gridHeight, double ROW_HEIGHT, bool disableProgrammaticBounds = false)

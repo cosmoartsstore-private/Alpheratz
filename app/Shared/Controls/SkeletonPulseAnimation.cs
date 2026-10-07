@@ -24,9 +24,7 @@ internal static class SkeletonPulseAnimation
         visual.Opacity = 1f;
 
         var compositor = visual.Compositor;
-        var easeInOut = compositor.CreateCubicBezierEasingFunction(
-            new Vector2(0.42f, 0f),
-            new Vector2(0.58f, 1f));
+        var easeInOut = compositor.CreateCubicBezierEasingFunction(new Vector2(0.42f, 0f), new Vector2(0.58f, 1f));
         var pulse = compositor.CreateScalarKeyFrameAnimation();
         pulse.InsertKeyFrame(0f, 1f);
         pulse.InsertKeyFrame(0.5f, MinimumOpacity, easeInOut);

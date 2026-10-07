@@ -14,7 +14,7 @@ namespace Alpheratz.Features.PhotoModal;
 /// PhotoModal の ViewModel。state を薄くラップし、
 /// ワールド関連の操作（ページ遷移）を追加する。
 /// </summary>
-#pragma warning disable CS0162 // Unreachable code (DETACH flags are compile-time constants for debug)
+#pragma warning disable CS0162 // DETACH flag は Debug 用の compile-time constant のため、到達不能コードを許容する。
 public partial class PhotoModalViewModel : UiThreadSafeObservableObject
 {
     private const bool DETACH_RUNTIME_DATA = false;

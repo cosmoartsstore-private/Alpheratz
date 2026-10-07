@@ -11,8 +11,10 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Windows.UI.Core;
 
 namespace Alpheratz.Features.Gallery.Controls;
 
@@ -225,13 +227,56 @@ public sealed partial class GalleryMasonryView : UserControl
         Rebuild();
     }
 
-    /// <summary>表示カラム数を外部から指定する。0 以下で自動計算に戻る。</summary>
+    /// <summary>表示column数を外部から指定する。0 以下で自動計算に戻る。</summary>
     public void SetColumnCount(int count)
     {
         var next = GalleryMasonryViewportLogic.ResolveRequestedColumnCount(count);
         if (requestedColumnCount == next) return;
         requestedColumnCount = next;
         Rebuild();
+    }
+
+    /// <summary>
+    /// 表示中の写真を基準位置に保ったまま列数を増減する。
+    /// 負数は写真を大きく、正数は写真を小さくする。
+    /// </summary>
+    public void AdjustColumnCount(int delta)
+    {
+        if (delta == 0) return;
+
+        try
+        {
+            var currentColumns = currentLayout?.ColumnCount
+                ?? requestedColumnCount
+                ?? GalleryMasonryViewportLogic.DefaultRequestedColumnCount;
+            var nextColumns = GalleryMasonryViewportLogic.AdjustRequestedColumnCount(currentColumns, delta);
+            if (nextColumns == currentColumns) return;
+
+            int? anchorIndex = null;
+            var anchorViewportOffset = 0.0;
+            if (currentLayout is not null && sortedByTopIndices is not null)
+            {
+                anchorIndex = GalleryMasonryViewportLogic.FindFirstVisibleIndex(currentLayout.Items, sortedByTopIndices, ScrollHost.VerticalOffset);
+                if (anchorIndex is { } index)
+                    anchorViewportOffset = currentLayout.Items[index].Top - ScrollHost.VerticalOffset;
+            }
+
+            requestedColumnCount = nextColumns;
+            Rebuild();
+
+            if (anchorIndex is { } preservedIndex
+                && currentLayout is not null
+                && preservedIndex >= 0
+                && preservedIndex < currentLayout.Items.Count)
+            {
+                var nextOffset = Math.Max(0, currentLayout.Items[preservedIndex].Top - anchorViewportOffset);
+                ScrollHost.ChangeView(null, nextOffset, null, disableAnimation: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"GalleryMasonryView.AdjustColumnCount: threw: {ex}");
+        }
     }
 
     // マソンリーのスクロール位置を先頭へ戻す。
@@ -277,6 +322,26 @@ public sealed partial class GalleryMasonryView : UserControl
     // スクロール位置の変更では可視カードだけを更新する。
     private void ScrollHost_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e) => RequestUpdateVisibility();
 
+    // Ctrl+ホイールは通常スクロールへ渡さず、写真サイズ（実効列数）だけを変更する。
+    private void ScrollHost_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
+    {
+        try
+        {
+            var ctrlDown = (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control)
+                & CoreVirtualKeyStates.Down) == CoreVirtualKeyStates.Down;
+            if (!ctrlDown) return;
+
+            var wheelDelta = e.GetCurrentPoint(ScrollHost).Properties.MouseWheelDelta;
+            if (wheelDelta != 0)
+                AdjustColumnCount(wheelDelta > 0 ? -1 : 1);
+            e.Handled = true;
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"GalleryMasonryView.ScrollHost_PointerWheelChanged: threw: {ex}");
+        }
+    }
+
     // 連続スクロール中の可視更新を DispatcherQueue 上で 1 回にまとめる。
     private void RequestUpdateVisibility()
     {
@@ -295,9 +360,8 @@ public sealed partial class GalleryMasonryView : UserControl
         }
     }
 
-    /// <summary>利用可能な幅から内部幅と実効カラム数を算出する。</summary>
-    private (double inner, int effectiveCols) ComputeColumns()
-        => GalleryMasonryViewportLogic.ComputeColumns(this.ActualWidth, ScrollHost.ActualWidth, requestedColumnCount);
+    /// <summary>利用可能な幅から内部幅と実効column数を算出する。</summary>
+    private (double inner, int effectiveCols) ComputeColumns() => GalleryMasonryViewportLogic.ComputeColumns(this.ActualWidth, ScrollHost.ActualWidth, requestedColumnCount);
 
     private static void StopReleaseTimer(CardEntry entry)
     {
@@ -470,13 +534,7 @@ public sealed partial class GalleryMasonryView : UserControl
 
             var items = currentLayout.Items;
             var sorted = sortedByTopIndices;
-            var visibleIndices = GalleryMasonryViewportLogic.FindVisibleIndices(
-                items,
-                sorted,
-                top,
-                ScrollHost.ViewportHeight,
-                OverscanPx,
-                GalleryMasonryLayout.MaxCardHeight);
+            var visibleIndices = GalleryMasonryViewportLogic.FindVisibleIndices(items, sorted, top, ScrollHost.ViewportHeight, OverscanPx, GalleryMasonryLayout.MaxCardHeight);
 
             foreach (var i in visibleIndices)
             {
@@ -495,10 +553,7 @@ public sealed partial class GalleryMasonryView : UserControl
                     LoadImage(card);
 
                 var wasNewThumbRequest = requestedThumbs.Add(layoutPhotos[i].PhotoPath);
-                if (GalleryMasonryViewportLogic.ShouldQueueThumbnailAfterRequestRegistered(
-                    wasNewThumbRequest,
-                    layoutPhotos[i].PhotoPath,
-                    layoutPhotos[i].GridThumbPath))
+                if (GalleryMasonryViewportLogic.ShouldQueueThumbnailAfterRequestRegistered(wasNewThumbRequest, layoutPhotos[i].PhotoPath, layoutPhotos[i].GridThumbPath))
                 {
                     thumbsNeededBuf.Add(layoutPhotos[i]);
                 }
@@ -538,10 +593,7 @@ public sealed partial class GalleryMasonryView : UserControl
     private void ReportFirstVisibleIndex(double scrollTop)
     {
         if (currentLayout is null || sortedByTopIndices is null) return;
-        var firstIdx = GalleryMasonryViewportLogic.FindFirstVisibleIndex(
-            currentLayout.Items,
-            sortedByTopIndices,
-            scrollTop);
+        var firstIdx = GalleryMasonryViewportLogic.FindFirstVisibleIndex(currentLayout.Items, sortedByTopIndices, scrollTop);
         if (!GalleryMasonryViewportLogic.ShouldNotifyFirstVisibleIndex(firstIdx, lastReportedFirstVisible)) return;
         var nextFirstVisible = firstIdx.GetValueOrDefault();
         lastReportedFirstVisible = nextFirstVisible;
@@ -579,12 +631,7 @@ public sealed partial class GalleryMasonryView : UserControl
         try
         {
             var bmp = new BitmapImage
-            {
-                CreateOptions = BitmapCreateOptions.IgnoreImageCache,
-                DecodePixelWidth = request.DecodePixelWidth,
-                DecodePixelType = DecodePixelType.Logical,
-                UriSource = new Uri(request.SourcePath, UriKind.Absolute),
-            };
+            { CreateOptions = BitmapCreateOptions.IgnoreImageCache, DecodePixelWidth = request.DecodePixelWidth, DecodePixelType = DecodePixelType.Logical, UriSource = new Uri(request.SourcePath, UriKind.Absolute), };
             entry.CurrentBitmap = bmp;
             RoutedEventHandler? openedHandler = null;
             ExceptionRoutedEventHandler? failedHandler = null;
@@ -628,16 +675,9 @@ public sealed partial class GalleryMasonryView : UserControl
             || entry.LoadFailureCount <= GalleryMasonryViewportLogic.MaxImageLoadRetries;
     }
 
-    private static bool SamePath(string left, string right)
-        => string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
+    private static bool SamePath(string left, string right) => string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
 
-    private static bool IsCurrentImageLoad(CardEntry entry, BitmapImage bitmap, string path, int loadVersion)
-        => ReferenceEquals(entry.CurrentBitmap, bitmap)
-            && GalleryMasonryViewportLogic.IsCurrentImageLoadCallback(
-                loadVersion,
-                entry.LoadVersion,
-                path,
-                entry.LoadingPath);
+    private static bool IsCurrentImageLoad(CardEntry entry, BitmapImage bitmap, string path, int loadVersion) => ReferenceEquals(entry.CurrentBitmap, bitmap) && GalleryMasonryViewportLogic.IsCurrentImageLoadCallback(loadVersion, entry.LoadVersion, path, entry.LoadingPath);
 
     private static void DetachBitmapHandlers(CardEntry entry)
     {
@@ -646,11 +686,7 @@ public sealed partial class GalleryMasonryView : UserControl
         DetachBitmapHandlers(entry, bitmap, entry.BitmapOpenedHandler, entry.BitmapFailedHandler);
     }
 
-    private static void DetachBitmapHandlers(
-        CardEntry entry,
-        BitmapImage bitmap,
-        RoutedEventHandler? openedHandler,
-        ExceptionRoutedEventHandler? failedHandler)
+    private static void DetachBitmapHandlers(CardEntry entry, BitmapImage bitmap, RoutedEventHandler? openedHandler, ExceptionRoutedEventHandler? failedHandler)
     {
         if (openedHandler is not null)
             bitmap.ImageOpened -= openedHandler;
@@ -702,12 +738,7 @@ public sealed partial class GalleryMasonryView : UserControl
     {
         if (!isControlLoaded)
             return;
-        var insideOverscan = GalleryMasonryViewportLogic.IsInsideOverscan(
-            Canvas.GetTop(entry.Container),
-            entry.Container.Height,
-            ScrollHost.VerticalOffset,
-            ScrollHost.ViewportHeight,
-            OverscanPx);
+        var insideOverscan = GalleryMasonryViewportLogic.IsInsideOverscan(Canvas.GetTop(entry.Container), entry.Container.Height, ScrollHost.VerticalOffset, ScrollHost.ViewportHeight, OverscanPx);
         if (!GalleryMasonryViewportLogic.ShouldRetryImageLoad(entry.LoadFailureCount, insideOverscan))
             return;
 
@@ -732,12 +763,7 @@ public sealed partial class GalleryMasonryView : UserControl
             var currentPath = entry.Photo.EffectiveSourcePath ?? string.Empty;
             if (!SamePath(entry.FailedPath, failedPath) || !SamePath(currentPath, failedPath))
                 return;
-            var stillInsideOverscan = GalleryMasonryViewportLogic.IsInsideOverscan(
-                Canvas.GetTop(entry.Container),
-                entry.Container.Height,
-                ScrollHost.VerticalOffset,
-                ScrollHost.ViewportHeight,
-                OverscanPx);
+            var stillInsideOverscan = GalleryMasonryViewportLogic.IsInsideOverscan(Canvas.GetTop(entry.Container), entry.Container.Height, ScrollHost.VerticalOffset, ScrollHost.ViewportHeight, OverscanPx);
             if (!stillInsideOverscan)
                 return;
             LoadImage(entry);
@@ -771,12 +797,7 @@ public sealed partial class GalleryMasonryView : UserControl
                 || !ReferenceEquals(current, entry))
                 return;
 
-            var returnedToOverscan = GalleryMasonryViewportLogic.IsInsideOverscan(
-                Canvas.GetTop(entry.Container),
-                entry.Container.Height,
-                ScrollHost.VerticalOffset,
-                ScrollHost.ViewportHeight,
-                OverscanPx);
+            var returnedToOverscan = GalleryMasonryViewportLogic.IsInsideOverscan(Canvas.GetTop(entry.Container), entry.Container.Height, ScrollHost.VerticalOffset, ScrollHost.ViewportHeight, OverscanPx);
             if (returnedToOverscan)
                 return;
             try
@@ -801,37 +822,20 @@ public sealed partial class GalleryMasonryView : UserControl
     private CardEntry CreateCard(int index, MasonryItem item)
     {
         var border = new Border
-        {
-            Width = item.Width,
-            Height = item.Height,
-            CornerRadius = new CornerRadius(4),
-            Background = ThemeHelper.Brush(this, "ASurface"),
-            BorderBrush = ThemeHelper.Brush(this, "ABorder"),
-            BorderThickness = new Thickness(1),
-        };
+        { Width = item.Width, Height = item.Height, CornerRadius = new CornerRadius(4), Background = ThemeHelper.Brush(this, "ASurface"), BorderBrush = ThemeHelper.Brush(this, "ABorder"), BorderThickness = new Thickness(1), };
         Canvas.SetLeft(border, item.Left);
         Canvas.SetTop(border, item.Top);
 
         // Border の子を Grid にし、画像・プレースホルダ・情報表示を重ねる。
         var cardGrid = new Grid
-        {
-            Width = item.Width,
-            Height = item.Height,
-            Background = ThemeHelper.Brush(this, "ASurfaceSoft"),
-        };
+        { Width = item.Width, Height = item.Height, Background = ThemeHelper.Brush(this, "ASurfaceSoft"), };
         cardGrid.Clip = new RectangleGeometry
-        {
-            Rect = new Windows.Foundation.Rect(0, 0, item.Width, item.Height),
-        };
+        { Rect = new Windows.Foundation.Rect(0, 0, item.Width, item.Height), };
         border.Child = cardGrid;
 
         // 画像読み込み前は、面全体がゆっくり明滅するMaterial UI型のPulseを表示する。
         var skeletonPlaceholder = new Border
-        {
-            Background = ThemeHelper.Brush(this, "ASurfaceSofter"),
-            Width = item.Width,
-            Height = item.Height,
-        };
+        { Background = ThemeHelper.Brush(this, "ASurfaceSofter"), Width = item.Width, Height = item.Height, };
         cardGrid.Children.Add(skeletonPlaceholder);
         SkeletonPulseAnimation.Start(skeletonPlaceholder);
 
@@ -839,11 +843,7 @@ public sealed partial class GalleryMasonryView : UserControl
 
         // 写真本体を UniformToFill で表示する。
         var image = new Image
-        {
-            Stretch = Stretch.UniformToFill,
-            Width = item.Width,
-            Height = item.Height,
-        };
+        { Stretch = Stretch.UniformToFill, Width = item.Width, Height = item.Height, };
         cardGrid.Children.Add(image);
 
         // 読み込み完了時にフェードインできるよう初期不透明度を 0 にする。
@@ -925,41 +925,14 @@ public sealed partial class GalleryMasonryView : UserControl
 
         // ワールド名と撮影時刻の情報表示を画像下部に重ねる。
         var overlayPanel = new StackPanel
-        {
-            VerticalAlignment = VerticalAlignment.Bottom,
-            Padding = new Thickness(10, 20, 10, 10),
-            Background = new LinearGradientBrush
-            {
-                StartPoint = new Windows.Foundation.Point(0.5, 0),
-                EndPoint = new Windows.Foundation.Point(0.5, 1),
-                GradientStops =
-                {
-                    new GradientStop { Color = Windows.UI.Color.FromArgb(0x00, 0x00, 0x00, 0x00), Offset = 0 },
-                    new GradientStop { Color = Windows.UI.Color.FromArgb(0xC8, 0x00, 0x00, 0x00), Offset = 1 },
-                },
-            },
-        };
+        { VerticalAlignment = VerticalAlignment.Bottom, Padding = new Thickness(10, 20, 10, 10), Background = new LinearGradientBrush { StartPoint = new Windows.Foundation.Point(0.5, 0), EndPoint = new Windows.Foundation.Point(0.5, 1), GradientStops = { new GradientStop { Color = Windows.UI.Color.FromArgb(0x00, 0x00, 0x00, 0x00), Offset = 0 }, new GradientStop { Color = Windows.UI.Color.FromArgb(0xC8, 0x00, 0x00, 0x00), Offset = 1 }, }, }, };
 
         var worldNameBlock = new TextBlock
-        {
-            Text = item.Photo.WorldName ?? string.Empty,
-            FontSize = 12,
-            FontWeight = Microsoft.UI.Text.FontWeights.Bold,
-            Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF)),
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxLines = 1,
-        };
+        { Text = item.Photo.WorldName ?? string.Empty, FontSize = 12, FontWeight = Microsoft.UI.Text.FontWeights.Bold, Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF)), TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 1, };
         overlayPanel.Children.Add(worldNameBlock);
 
         var timestampBlock = new TextBlock
-        {
-            Text = item.Photo.Timestamp ?? string.Empty,
-            FontSize = 10,
-            Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(0xBB, 0xFF, 0xFF, 0xFF)),
-            FontFamily = ThemeHelper.AppResource<FontFamily>("AFontMono"),
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxLines = 1,
-        };
+        { Text = item.Photo.Timestamp ?? string.Empty, FontSize = 10, Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(0xBB, 0xFF, 0xFF, 0xFF)), FontFamily = ThemeHelper.AppResource<FontFamily>("AFontMono"), TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 1, };
         overlayPanel.Children.Add(timestampBlock);
         cardGrid.Children.Add(overlayPanel);
 
@@ -968,14 +941,7 @@ public sealed partial class GalleryMasonryView : UserControl
         overlayVisual.Opacity = 0f;
 
         var favoriteBadge = new FavoriteCornerBadge
-        {
-            BadgeSize = 36,
-            IconSize = 12,
-            Liked = item.Photo.IsFavorite,
-            Interactive = true,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            VerticalAlignment = VerticalAlignment.Top,
-        };
+        { BadgeSize = 36, IconSize = 12, Liked = item.Photo.IsFavorite, Interactive = true, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, };
         favoriteBadge.OnClick = () => OnFavoriteClicked?.Invoke(item.Photo);
         cardGrid.Children.Add(favoriteBadge);
 
@@ -989,32 +955,15 @@ public sealed partial class GalleryMasonryView : UserControl
         // PhotoThumbnailItem.IsSelected の変化を PhotoSubscription で受けて Visibility を切り替える。
         var selection = GalleryMasonryViewportLogic.SelectionVisual(item.Photo.IsSelected);
         var selectionTint = new Border
-        {
-            Background = ThemeHelper.Brush(this, "APhotoSelectionTint"),
-            CornerRadius = new CornerRadius(4),
-            Visibility = ToVisibility(selection.Visible),
-        };
+        { Background = ThemeHelper.Brush(this, "APhotoSelectionTint"), CornerRadius = new CornerRadius(4), Visibility = ToVisibility(selection.Visible), };
         cardGrid.Children.Add(selectionTint);
 
         var selectionGlow = new Border
-        {
-            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
-            BorderBrush = ThemeHelper.Brush(this, "APhotoSelectionGlow"),
-            BorderThickness = new Thickness(6),
-            CornerRadius = new CornerRadius(7),
-            Opacity = 0.7,
-            Visibility = ToVisibility(selection.Visible),
-        };
+        { Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent), BorderBrush = ThemeHelper.Brush(this, "APhotoSelectionGlow"), BorderThickness = new Thickness(6), CornerRadius = new CornerRadius(7), Opacity = 0.7, Visibility = ToVisibility(selection.Visible), };
         cardGrid.Children.Add(selectionGlow);
 
         var selectionRing = new Border
-        {
-            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
-            BorderBrush = ThemeHelper.Brush(this, "APhotoSelectionRing"),
-            BorderThickness = new Thickness(3),
-            CornerRadius = new CornerRadius(5),
-            Visibility = ToVisibility(selection.Visible),
-        };
+        { Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent), BorderBrush = ThemeHelper.Brush(this, "APhotoSelectionRing"), BorderThickness = new Thickness(3), CornerRadius = new CornerRadius(5), Visibility = ToVisibility(selection.Visible), };
         cardGrid.Children.Add(selectionRing);
 
         // ホバー時の浮き上がり・拡大・情報表示アニメーションを設定する。
@@ -1114,18 +1063,8 @@ public sealed partial class GalleryMasonryView : UserControl
         entry.PhotoSubscription = (s, e) =>
         {
             var newPath = entry.Photo.EffectiveSourcePath ?? string.Empty;
-            var insideOverscan = GalleryMasonryViewportLogic.IsInsideOverscan(
-                Canvas.GetTop(entry.Container),
-                entry.Container.Height,
-                ScrollHost.VerticalOffset,
-                ScrollHost.ViewportHeight,
-                OverscanPx);
-            switch (GalleryMasonryViewportLogic.PhotoChangeAction(
-                e.PropertyName,
-                newPath,
-                entry.LoadedPath,
-                entry.IsLoaded,
-                insideOverscan))
+            var insideOverscan = GalleryMasonryViewportLogic.IsInsideOverscan(Canvas.GetTop(entry.Container), entry.Container.Height, ScrollHost.VerticalOffset, ScrollHost.ViewportHeight, OverscanPx);
+            switch (GalleryMasonryViewportLogic.PhotoChangeAction(e.PropertyName, newPath, entry.LoadedPath, entry.IsLoaded, insideOverscan))
             {
                 case MasonryPhotoChangeAction.UpdateSelection:
                     var nextSelection = GalleryMasonryViewportLogic.SelectionVisual(entry.Photo.IsSelected);

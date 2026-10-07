@@ -18,7 +18,7 @@ public sealed class GalleryMasonryViewportLogicTests
     /// コントロール幅と指定カラム数から、内部幅と実効カラム数が計算されることを確認する。
     ///
     /// GalleryMasonryView は ActualWidth がまだ 0 の初期化直後に ScrollViewer 幅へフォールバックする。
-    /// またユーザー指定カラム数が画面幅に対して多すぎる場合は、自動計算された最大数まで絞る。
+    /// 手動指定は180 pxの最小幅まで許可し、自動計算は320 pxの基準幅を使用する。
     /// </summary>
     [Fact]
     public void ComputeColumns_UsesActualWidthFallbackAndClampsRequestedColumns()
@@ -37,7 +37,7 @@ public sealed class GalleryMasonryViewportLogicTests
             requestedColumnCount: 0);
 
         Assert.Equal(1000, fromActualWidth.InnerWidth);
-        Assert.Equal(3, fromActualWidth.EffectiveColumns);
+        Assert.Equal(5, fromActualWidth.EffectiveColumns);
         Assert.Equal(652, fromScrollHost.InnerWidth);
         Assert.Equal(1, fromScrollHost.EffectiveColumns);
         Assert.Equal(0, narrow.InnerWidth);
@@ -57,11 +57,23 @@ public sealed class GalleryMasonryViewportLogicTests
         Assert.Null(GalleryMasonryViewportLogic.ResolveRequestedColumnCount(0));
         Assert.Null(GalleryMasonryViewportLogic.ResolveRequestedColumnCount(-2));
         Assert.Equal(3, GalleryMasonryViewportLogic.ResolveRequestedColumnCount(3));
+        Assert.Equal(2, GalleryMasonryViewportLogic.ResolveRequestedColumnCount(1));
+        Assert.Equal(10, GalleryMasonryViewportLogic.ResolveRequestedColumnCount(100));
 
         Assert.True(GalleryMasonryViewportLogic.ShouldReuseCardsForCollectionChange(NotifyCollectionChangedAction.Add));
         Assert.False(GalleryMasonryViewportLogic.ShouldReuseCardsForCollectionChange(NotifyCollectionChangedAction.Reset));
         Assert.False(GalleryMasonryViewportLogic.ShouldReuseCardsForCollectionChange(NotifyCollectionChangedAction.Remove));
     }
+
+    /// <summary>写真サイズの手動操作を2～10列に制限し、自動列数との違いを維持する。</summary>
+    [Theory]
+    [InlineData(5, -1, 4)]
+    [InlineData(5, 1, 6)]
+    [InlineData(2, -1, 2)]
+    [InlineData(10, 1, 10)]
+    [InlineData(1, 0, 2)]
+    public void AdjustRequestedColumnCount_ClampsManualRange(int current, int delta, int expected)
+        => Assert.Equal(expected, GalleryMasonryViewportLogic.AdjustRequestedColumnCount(current, delta));
 
     /// <summary>
     /// Masonry レイアウト結果から Canvas の実寸が計算されることを確認する。

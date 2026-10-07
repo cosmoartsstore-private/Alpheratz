@@ -5,7 +5,7 @@ namespace Alpheratz.Features.WorldResolve;
 
 public partial class WorldResolveItem : UiThreadSafeObservableObject
 {
-    // --- Target (unknown photo) ---
+    // 判定対象の写真
     public string TargetPhotoPath { get; }
     public string TargetPhotoFilename { get; }
     public string TargetPhash { get; }
@@ -14,7 +14,7 @@ public partial class WorldResolveItem : UiThreadSafeObservableObject
     private string? targetThumbPath;
     public string? TargetThumbPath { get => targetThumbPath; set => SetProperty(ref targetThumbPath, value); }
 
-    // --- Currently selected match candidate ---
+    // 現在選択している一致候補
     private string? matchPhotoPath;
     public string? MatchPhotoPath
     {
@@ -70,7 +70,7 @@ public partial class WorldResolveItem : UiThreadSafeObservableObject
         }
     }
 
-    // --- State ---
+    // 状態
     private bool isApplied;
     public bool IsApplied { get => isApplied; set => SetProperty(ref isApplied, value); }
 

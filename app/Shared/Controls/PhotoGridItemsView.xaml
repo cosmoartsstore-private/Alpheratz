@@ -1,33 +1,15 @@
-<UserControl
-    x:Class="Alpheratz.Shared.Controls.PhotoGridItemsView"
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:controls="using:Alpheratz.Shared.Controls"
-    xmlns:converters="using:Alpheratz.Shared.Converters"
-    xmlns:gallery="using:Alpheratz.Features.Gallery"
-    xmlns:messages="using:Alpheratz.Messages">
+<UserControl x:Class="Alpheratz.Shared.Controls.PhotoGridItemsView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:controls="using:Alpheratz.Shared.Controls" xmlns:converters="using:Alpheratz.Shared.Converters" xmlns:gallery="using:Alpheratz.Features.Gallery" xmlns:messages="using:Alpheratz.Messages">
     <UserControl.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
     </UserControl.Resources>
-    <GridView x:Name="PhotoItems"
-              IsItemClickEnabled="True"
-              ItemClick="PhotoItems_ItemClick"
-              SelectionMode="None"
-              Opacity="0"
-              Padding="10"
-              ScrollViewer.VerticalScrollBarVisibility="Hidden"
-              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-              SizeChanged="GridView_SizeChanged">
+    <GridView x:Name="PhotoItems" IsItemClickEnabled="True" ItemClick="PhotoItems_ItemClick" SelectionMode="None" Opacity="0" Padding="10" ScrollViewer.VerticalScrollBarVisibility="Hidden" ScrollViewer.HorizontalScrollBarVisibility="Disabled" SizeChanged="GridView_SizeChanged">
         <GridView.Resources>
             <SolidColorBrush x:Key="GridViewItemBackgroundPointerOver" Color="Transparent"/>
             <SolidColorBrush x:Key="GridViewItemPointerOverBorderBrush" Color="Transparent"/>
         </GridView.Resources>
         <GridView.ItemsPanel>
             <ItemsPanelTemplate>
-                <ItemsWrapGrid Orientation="Horizontal"
-                               x:Name="PhotoItemsWrapGrid"
-                               ItemWidth="166" ItemHeight="156"
-                               Loaded="PhotoItemsWrapGrid_Loaded"/>
+                <ItemsWrapGrid Orientation="Horizontal" x:Name="PhotoItemsWrapGrid" ItemWidth="166" ItemHeight="156" Loaded="PhotoItemsWrapGrid_Loaded"/>
             </ItemsPanelTemplate>
         </GridView.ItemsPanel>
         <GridView.ItemContainerStyle>
@@ -42,15 +24,8 @@
         </GridView.ItemContainerStyle>
         <GridView.ItemTemplate>
             <DataTemplate x:DataType="gallery:PhotoGridItem">
-                <Grid Margin="4,4,4,6"
-                      HorizontalAlignment="Stretch"
-                      VerticalAlignment="Stretch">
-                    <Border Style="{StaticResource PhotoCardBorderStyle}"
-                            HorizontalAlignment="Stretch"
-                            VerticalAlignment="Stretch"
-                            PointerEntered="CardBorder_PointerEntered"
-                            PointerExited="CardBorder_PointerExited"
-                            DataContextChanged="CardBorder_DataContextChanged">
+                <Grid Margin="4,4,4,6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                    <Border Style="{StaticResource PhotoCardBorderStyle}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" PointerEntered="CardBorder_PointerEntered" PointerExited="CardBorder_PointerExited" DataContextChanged="CardBorder_DataContextChanged">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="*"/>
@@ -63,73 +38,36 @@
                                     ASurfaceSofterの面全体だけをゆっくり明滅させ、複数カードを横切る
                                     ハイライト帯は作らない。ImageOpened後は写真へフェードインする。
                                 -->
-                                <Border x:Name="SkeletonPlaceholder"
-                                        Background="{ThemeResource ASurfaceSofter}"/>
+                                <Border x:Name="SkeletonPlaceholder" Background="{ThemeResource ASurfaceSofter}"/>
                                 <!--
                                     ロード前は Composition の Visual.Opacity を 0 にして隠し、
                                     ImageOpened で 1 へフェードインする (ResetCardLoadVisuals 参照)。
                                     XAML の Opacity は既定(1)のまま: framework Opacity を 0 にすると
                                     Composition の Opacity と乗算されフェードインが効かなくなるため。
                                 -->
-                                <Image x:Name="ThumbImage"
-                                       Stretch="UniformToFill"
-                                       DataContextChanged="ThumbImage_DataContextChanged"
-                                       ImageOpened="ThumbImage_Opened"
-                                       ImageFailed="ThumbImage_Failed"/>
+                                <Image x:Name="ThumbImage" Stretch="UniformToFill" DataContextChanged="ThumbImage_DataContextChanged" ImageOpened="ThumbImage_Opened" ImageFailed="ThumbImage_Failed"/>
 
                                 <!--
                                     ImageFailed 時のフォールバック。通常は非表示で、
                                     code-behind が読み込み失敗時に Visible にする。
                                 -->
-                                <TextBlock x:Name="ErrorIcon"
-                                           Text="&#xE783;"
-                                           FontFamily="Segoe MDL2 Assets"
-                                           FontSize="24"
-                                           Foreground="{ThemeResource ATextDisabled}"
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center"
-                                           AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('PhotoGridItemsView.imageLoadFailed')}"
-                                           Visibility="Collapsed"/>
+                                <TextBlock x:Name="ErrorIcon" Text="&#xE783;" FontFamily="Segoe MDL2 Assets" FontSize="24" Foreground="{ThemeResource ATextDisabled}" HorizontalAlignment="Center" VerticalAlignment="Center" AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('PhotoGridItemsView.imageLoadFailed')}" Visibility="Collapsed"/>
 
                                 <!--
                                     GroupCount バッジ。ADarkOverlay の濃い面色で
                                     画像の上に乗っても可読性を確保しつつ控えめな印象に。
                                     明るい単色面を避け、写真の視認性を優先する。
                                 -->
-                                <Border HorizontalAlignment="Left" VerticalAlignment="Top"
-                                        Margin="8,8,0,0"
-                                        MinWidth="40" Padding="8,3"
-                                        CornerRadius="{StaticResource ARadiusSm}"
-                                        Background="{ThemeResource ADarkOverlay}"
-                                        Visibility="{Binding GroupCountVisibility}">
-                                    <TextBlock Text="{Binding GroupCountLabel}"
-                                               FontSize="{StaticResource AFontSizeXs}" FontWeight="SemiBold"
-                                               Foreground="White"
-                                               HorizontalAlignment="Center"/>
+                                <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8,8,0,0" MinWidth="40" Padding="8,3" CornerRadius="{StaticResource ARadiusSm}" Background="{ThemeResource ADarkOverlay}" Visibility="{Binding GroupCountVisibility}">
+                                    <TextBlock Text="{Binding GroupCountLabel}" FontSize="{StaticResource AFontSizeXs}" FontWeight="SemiBold" Foreground="White" HorizontalAlignment="Center"/>
                                 </Border>
 
-                                <controls:FavoriteCornerBadge HorizontalAlignment="Right"
-                                                              VerticalAlignment="Top"
-                                                              BadgeSize="36"
-                                                              IconSize="12"
-                                                              Liked="{Binding Photo.IsFavorite}"
-                                                              Interactive="True"
-                                                              Loaded="FavoriteBadge_Loaded"
-                                                              DataContextChanged="FavoriteBadge_DataContextChanged"/>
+                                <controls:FavoriteCornerBadge HorizontalAlignment="Right" VerticalAlignment="Top" BadgeSize="36" IconSize="12" Liked="{Binding Photo.IsFavorite}" Interactive="True" Loaded="FavoriteBadge_Loaded" DataContextChanged="FavoriteBadge_DataContextChanged"/>
                             </Grid>
 
-                            <StackPanel Grid.Row="1" Margin="11,8,11,8" Spacing="2"
-                                        VerticalAlignment="Center">
-                                <TextBlock Text="{Binding Photo.WorldName}"
-                                           FontSize="{StaticResource AFontSizeMd}"
-                                           FontWeight="Bold"
-                                           Foreground="{ThemeResource AText}"
-                                           TextTrimming="CharacterEllipsis"/>
-                                <TextBlock Text="{Binding Photo.Timestamp}"
-                                           FontFamily="{StaticResource AFontMono}"
-                                           FontSize="{StaticResource AFontSizeXs}"
-                                           Foreground="{ThemeResource ATextDim}"
-                                           TextTrimming="CharacterEllipsis"/>
+                            <StackPanel Grid.Row="1" Margin="11,8,11,8" Spacing="2" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Photo.WorldName}" FontSize="{StaticResource AFontSizeMd}" FontWeight="Bold" Foreground="{ThemeResource AText}" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Text="{Binding Photo.Timestamp}" FontFamily="{StaticResource AFontMono}" FontSize="{StaticResource AFontSizeXs}" Foreground="{ThemeResource ATextDim}" TextTrimming="CharacterEllipsis"/>
                             </StackPanel>
 
                             <!--
@@ -137,21 +75,8 @@
                                 PhotoThumbnailItem.IsSelected は GallerySelectionState の選択パスと
                                 表示写真の再同期で更新する。
                             -->
-                            <Border Grid.RowSpan="2"
-                                    Background="{ThemeResource APhotoSelectionTint}"
-                                    BorderBrush="{ThemeResource APhotoSelectionGlow}"
-                                    BorderThickness="6"
-                                    CornerRadius="7"
-                                    Opacity="0.7"
-                                    IsHitTestVisible="False"
-                                    Visibility="{Binding Photo.IsSelected, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                            <Border Grid.RowSpan="2"
-                                    Background="Transparent"
-                                    BorderBrush="{ThemeResource APhotoSelectionRing}"
-                                    BorderThickness="3"
-                                    CornerRadius="5"
-                                    IsHitTestVisible="False"
-                                    Visibility="{Binding Photo.IsSelected, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                            <Border Grid.RowSpan="2" Background="{ThemeResource APhotoSelectionTint}" BorderBrush="{ThemeResource APhotoSelectionGlow}" BorderThickness="6" CornerRadius="7" Opacity="0.7" IsHitTestVisible="False" Visibility="{Binding Photo.IsSelected, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                            <Border Grid.RowSpan="2" Background="Transparent" BorderBrush="{ThemeResource APhotoSelectionRing}" BorderThickness="3" CornerRadius="5" IsHitTestVisible="False" Visibility="{Binding Photo.IsSelected, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
                         </Grid>
                     </Border>

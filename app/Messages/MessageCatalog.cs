@@ -11,24 +11,17 @@ public static class MessageCatalog
     private const string LiteralOpenBrace = "\uE000";
     private const string LiteralCloseBrace = "\uE001";
 
-    private static readonly Regex MessageKeyPattern = new(
-        @"^[A-Za-z][A-Za-z0-9]*(?:\.[A-Za-z][A-Za-z0-9]*)+$",
-        RegexOptions.CultureInvariant);
+    private static readonly Regex MessageKeyPattern = new(@"^[A-Za-z][A-Za-z0-9]*(?:\.[A-Za-z][A-Za-z0-9]*)+$", RegexOptions.CultureInvariant);
 
-    private static readonly Regex PlaceholderPattern = new(
-        @"\{([A-Za-z][A-Za-z0-9_]*)\}",
-        RegexOptions.CultureInvariant);
+    private static readonly Regex PlaceholderPattern = new(@"\{([A-Za-z][A-Za-z0-9_]*)\}", RegexOptions.CultureInvariant);
 
-    private static readonly Lazy<IReadOnlyDictionary<string, string>> Messages = new(
-        LoadMessages,
-        LazyThreadSafetyMode.ExecutionAndPublication);
+    private static readonly Lazy<IReadOnlyDictionary<string, string>> Messages = new(LoadMessages, LazyThreadSafetyMode.ExecutionAndPublication);
 
     /// <summary>文言キーを解決する。</summary>
     public static string getMsg(string key) => ResolveMessage(key, []);
 
     /// <summary>文言キーを解決し、<c>{name}</c> 形式の変数を埋め込む。</summary>
-    public static string getMsg(string key, params (string Name, object? Value)[] parameters)
-        => ResolveMessage(key, parameters);
+    public static string getMsg(string key, params (string Name, object? Value)[] parameters) => ResolveMessage(key, parameters);
 
     private static IReadOnlyDictionary<string, string> LoadMessages()
     {

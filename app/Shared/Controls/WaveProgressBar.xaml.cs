@@ -27,11 +27,7 @@ public sealed partial class WaveProgressBar : UserControl
         InitializeComponent();
     }
 
-    public static readonly DependencyProperty MinimumProperty = DependencyProperty.Register(
-        nameof(Minimum),
-        typeof(double),
-        typeof(WaveProgressBar),
-        new PropertyMetadata(0.0, OnProgressPropertyChanged));
+    public static readonly DependencyProperty MinimumProperty = DependencyProperty.Register(nameof(Minimum), typeof(double), typeof(WaveProgressBar), new PropertyMetadata(0.0, OnProgressPropertyChanged));
 
     public double Minimum
     {
@@ -39,11 +35,7 @@ public sealed partial class WaveProgressBar : UserControl
         set => SetValue(MinimumProperty, value);
     }
 
-    public static readonly DependencyProperty MaximumProperty = DependencyProperty.Register(
-        nameof(Maximum),
-        typeof(double),
-        typeof(WaveProgressBar),
-        new PropertyMetadata(100.0, OnProgressPropertyChanged));
+    public static readonly DependencyProperty MaximumProperty = DependencyProperty.Register(nameof(Maximum), typeof(double), typeof(WaveProgressBar), new PropertyMetadata(100.0, OnProgressPropertyChanged));
 
     public double Maximum
     {
@@ -51,11 +43,7 @@ public sealed partial class WaveProgressBar : UserControl
         set => SetValue(MaximumProperty, value);
     }
 
-    public static readonly DependencyProperty ValueProperty = DependencyProperty.Register(
-        nameof(Value),
-        typeof(double),
-        typeof(WaveProgressBar),
-        new PropertyMetadata(0.0, OnProgressPropertyChanged));
+    public static readonly DependencyProperty ValueProperty = DependencyProperty.Register(nameof(Value), typeof(double), typeof(WaveProgressBar), new PropertyMetadata(0.0, OnProgressPropertyChanged));
 
     public double Value
     {
@@ -63,11 +51,7 @@ public sealed partial class WaveProgressBar : UserControl
         set => SetValue(ValueProperty, value);
     }
 
-    public static readonly DependencyProperty IsIndeterminateProperty = DependencyProperty.Register(
-        nameof(IsIndeterminate),
-        typeof(bool),
-        typeof(WaveProgressBar),
-        new PropertyMetadata(false, OnProgressPropertyChanged));
+    public static readonly DependencyProperty IsIndeterminateProperty = DependencyProperty.Register(nameof(IsIndeterminate), typeof(bool), typeof(WaveProgressBar), new PropertyMetadata(false, OnProgressPropertyChanged));
 
     public bool IsIndeterminate
     {
@@ -148,13 +132,7 @@ public sealed partial class WaveProgressBar : UserControl
         }
 
         var animation = new DoubleAnimation
-        {
-            From = currentWidth,
-            To = targetWidth,
-            Duration = TimeSpan.FromMilliseconds(FillAnimationDurationMilliseconds),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
-            EnableDependentAnimation = true,
-        };
+        { From = currentWidth, To = targetWidth, Duration = TimeSpan.FromMilliseconds(FillAnimationDurationMilliseconds), EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }, EnableDependentAnimation = true, };
         Storyboard.SetTarget(animation, FillBorder);
         Storyboard.SetTargetProperty(animation, "Width");
         fillStoryboard = new Storyboard();
@@ -175,12 +153,7 @@ public sealed partial class WaveProgressBar : UserControl
             IndeterminateTransform.X = -segmentWidth;
 
             var animation = new DoubleAnimation
-            {
-                From = -segmentWidth,
-                To = width,
-                Duration = TimeSpan.FromMilliseconds(IndeterminateAnimationDurationMilliseconds),
-                RepeatBehavior = RepeatBehavior.Forever,
-            };
+            { From = -segmentWidth, To = width, Duration = TimeSpan.FromMilliseconds(IndeterminateAnimationDurationMilliseconds), RepeatBehavior = RepeatBehavior.Forever, };
             Storyboard.SetTarget(animation, IndeterminateTransform);
             Storyboard.SetTargetProperty(animation, "X");
             indeterminateStoryboard = new Storyboard();

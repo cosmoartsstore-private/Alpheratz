@@ -20,11 +20,7 @@ public sealed record PhotoUserDataBackupResult(int SourcePhotoCount, int BackupE
 }
 
 /// <summary>写真ファイル名をキーにした利用者付与情報の復元結果。</summary>
-public sealed record PhotoUserDataRestoreResult(
-    int BackupEntryCount,
-    int MatchedPhotoCount,
-    int CreatedTagCount,
-    int AddedPhotoTagCount);
+public sealed record PhotoUserDataRestoreResult(int BackupEntryCount, int MatchedPhotoCount, int CreatedTagCount, int AddedPhotoTagCount);
 
 // AlpheratzDb のトレース規約（プロジェクト方針）：
 // public メソッドは必ず enter/exit を AppLogger.Trace で出し、本体は
@@ -34,9 +30,7 @@ public sealed record PhotoUserDataRestoreResult(
 // 細粒度ヘルパを毎行計装すると、行マッピング・WHERE 構築で大量のログが出て
 // 実用にならない）。
 
-// ---------------------------------------------------------------------------
-// SQLite façade。スキーマ初期化・全クエリ・全更新を集約する。
-// ---------------------------------------------------------------------------
+// SQLite façade。schema初期化・全クエリ・全更新を集約する。
 public sealed class AlpheratzDb
 {
     private const string UpsertPhotoSql = """
@@ -80,7 +74,7 @@ ON CONFLICT(photo_path) DO UPDATE SET
     ///   - WAL (Write-Ahead Logging) は読み書き並列を可能にする。スキャナ書込中でも
     ///     UI 側の SELECT がブロックされないため、大量写真の取込中にも体感応答が落ちない。
     ///   - synchronous=NORMAL は FULL より高速で WAL と組み合わせれば耐クラッシュ性も
-    ///     概ね確保される（最後の数 ms のトランザクションのみ理論上ロスし得る）。
+    ///     概ね確保される（最後の数 ms のtransactionのみ理論上ロスし得る）。
     ///   - foreign_keys=ON は photo_tags → photos / tags の ON DELETE CASCADE を
     ///     有効にするために必須（SQLite はデフォルトで FK 強制が OFF）。
     ///   - busy_timeout はスキャンや解析の短い書き込みとユーザー操作が重なったとき、
@@ -109,7 +103,7 @@ ON CONFLICT(photo_path) DO UPDATE SET
         }
     }
 
-    /// <summary>起動時に一度だけ呼ばれるスキーマ初期化エントリポイント。</summary>
+    /// <summary>起動時に一度だけ呼ばれるschema初期化エントリポイント。</summary>
     public void Initialize()
     {
         AppLogger.Trace("AlpheratzDb.Initialize: enter");
@@ -125,12 +119,12 @@ ON CONFLICT(photo_path) DO UPDATE SET
         AppLogger.Trace("AlpheratzDb.Initialize: exit");
     }
 
-    /// <summary>現行スキーマを作成し、既存 DB に不足している列を追加する。</summary>
+    /// <summary>現行schemaを作成し、既存 DB に不足している列を追加する。</summary>
     private void EnsureSchema()
     {
         using var conn = OpenConnection();
 
-        // --- create tables and indexes ----------------------------------------
+        // table と index の作成
         using var batch = conn.CreateCommand();
         batch.CommandText = @"
 PRAGMA journal_mode = WAL;
@@ -199,7 +193,7 @@ CREATE INDEX IF NOT EXISTS idx_archive_world_visits_source_log_name ON archive_w
 ";
         batch.ExecuteNonQuery();
 
-        // --- incremental column migrations ------------------------------------
+        // 不足 column の追加
         AddColumnIfMissing(conn, "photos",        "ALTER TABLE photos ADD COLUMN orientation    TEXT",                "orientation");
         AddColumnIfMissing(conn, "photos",        "ALTER TABLE photos ADD COLUMN image_width    INTEGER",             "image_width");
         AddColumnIfMissing(conn, "photos",        "ALTER TABLE photos ADD COLUMN image_height   INTEGER",             "image_height");
@@ -210,15 +204,13 @@ CREATE INDEX IF NOT EXISTS idx_archive_world_visits_source_log_name ON archive_w
         AddColumnIfMissing(conn, "photos",        "ALTER TABLE photos ADD COLUMN phash_version  INTEGER DEFAULT 0",   "phash_version");
         AddColumnIfMissing(conn, "photos",        "ALTER TABLE photos ADD COLUMN last_modified_utc TEXT",             "last_modified_utc");
 
-        // 現行スキーマでは使わない埋め込みテーブルが残っていれば削除する。
+        // 現行schemaでは使わない埋め込みテーブルが残っていれば削除する。
         using var dropCmd = conn.CreateCommand();
         dropCmd.CommandText = "DROP TABLE IF EXISTS photo_embeddings;";
         dropCmd.ExecuteNonQuery();
     }
 
-    // -----------------------------------------------------------------------
-    // Internal helpers
-    // -----------------------------------------------------------------------
+    // 内部補助処理
 
     private static bool HasColumn(SqliteConnection conn, string table, string column)
     {
@@ -227,7 +219,7 @@ CREATE INDEX IF NOT EXISTS idx_archive_world_visits_source_log_name ON archive_w
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
         {
-            // column 1 = name
+            // column 1 は name。
             if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase))
                 return true;
         }
@@ -244,8 +236,8 @@ CREATE INDEX IF NOT EXISTS idx_archive_world_visits_source_log_name ON archive_w
     }
 
     /// <summary>
-    /// Reads one column of every row as <see cref="string"/> from the given
-    /// prepared <see cref="SqliteCommand"/> and returns the result list.
+    /// 指定した <see cref="SqliteCommand"/> の各行から1 column を
+    /// <see cref="string"/> として読み取り、結果の一覧を返す。
     /// </summary>
     private static List<string> ReadStringColumn(SqliteCommand cmd)
     {
@@ -273,20 +265,11 @@ CREATE INDEX IF NOT EXISTS idx_archive_world_visits_source_log_name ON archive_w
         return endDate;
     }
 
-    private static string UnknownWorldNameCondition(string tableAlias)
-        => $"({tableAlias}.world_name IS NULL OR TRIM({tableAlias}.world_name) = '')";
+    private static string UnknownWorldNameCondition(string tableAlias) => $"({tableAlias}.world_name IS NULL OR TRIM({tableAlias}.world_name) = '')";
 
-    private static string SourceSlotFilterForTarget(string target, string tableAlias = "photos")
-        => target switch
-        {
-            "primary"   => $" AND COALESCE({tableAlias}.source_slot, 1) = 1",
-            "secondary" => $" AND COALESCE({tableAlias}.source_slot, 1) = 2",
-            _           => string.Empty,
-        };
+    private static string SourceSlotFilterForTarget(string target, string tableAlias = "photos") => target switch { "primary"   => $" AND COALESCE({tableAlias}.source_slot, 1) = 1", "secondary" => $" AND COALESCE({tableAlias}.source_slot, 1) = 2", _           => string.Empty, };
 
-    // -----------------------------------------------------------------------
-    // Tag helpers (used by multiple operations)
-    // -----------------------------------------------------------------------
+    // 複数操作で使用するタグ処理
 
     private static List<string> GetPhotoTagsInternal(SqliteConnection conn, string photoPath)
     {
@@ -302,13 +285,10 @@ ORDER BY t.name COLLATE NOCASE ASC";
     }
 
     /// <summary>
-    /// Loads tags for a batch of photo_paths in a single query.
-    /// Returns a Dictionary keyed by photo_path.
+    /// 複数の photo_paths に対応するタグを1回の query で読み込む。
+    /// photo_path をキーとする Dictionary を返す。
     /// </summary>
-    private static Dictionary<string, List<string>> GetTagsForPaths(
-        SqliteConnection conn,
-        IEnumerable<string> photoPaths,
-        SqliteTransaction? transaction = null)
+    private static Dictionary<string, List<string>> GetTagsForPaths(SqliteConnection conn, IEnumerable<string> photoPaths, SqliteTransaction? transaction = null)
     {
         // SQLite の既定パラメータ上限 (999) を超えないように 500 件ごとに分割実行する。
         const int ChunkSize = 500;
@@ -353,13 +333,11 @@ WHERE pt.photo_path IN (");
         return result;
     }
 
-    // -----------------------------------------------------------------------
-    // Row mapper helpers
-    // -----------------------------------------------------------------------
+    // 行から model への変換
 
     private static PhotoRecordDto MapPhotoRow(SqliteDataReader r)
     {
-        // Column order: 0=photo_filename, 1=photo_path, 2=world_id,
+        // column 順: 0=photo_filename、1=photo_path、2=world_id、
         //               3=world_name, 4=timestamp, 5=phash,
         //               6=orientation, 7=image_width, 8=image_height,
         //               9=source_slot, 10=is_favorite, 11=match_source,
@@ -383,14 +361,9 @@ WHERE pt.photo_path IN (");
         };
     }
 
-    // -----------------------------------------------------------------------
-    // WHERE clause builder for photo filters (shared between COUNT and SELECT)
-    // -----------------------------------------------------------------------
+    // COUNT と SELECT が共用する写真フィルタの WHERE 句
 
-    private static string BuildPhotoWhereClause(
-        PhotoQueryParams q,
-        SqliteCommand cmd,
-        string tableAlias = "photos")
+    private static string BuildPhotoWhereClause(PhotoQueryParams q, SqliteCommand cmd, string tableAlias = "photos")
     {
         var sb = new StringBuilder();
         sb.Append($" {tableAlias}.is_missing = 0");
@@ -480,11 +453,7 @@ WHERE pt.photo_path = {tableAlias}.photo_path
         return sb.ToString();
     }
 
-    private static string EscapeLikePattern(string value)
-        => value
-            .Replace("\\", "\\\\", StringComparison.Ordinal)
-            .Replace("%", "\\%", StringComparison.Ordinal)
-            .Replace("_", "\\_", StringComparison.Ordinal);
+    private static string EscapeLikePattern(string value) => value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("%", "\\%", StringComparison.Ordinal).Replace("_", "\\_", StringComparison.Ordinal);
 
     /// <summary>
     /// フィルタ条件に応じて photos テーブルから 1 ページ分を取得し、タグも結合して返す。
@@ -504,7 +473,7 @@ WHERE pt.photo_path = {tableAlias}.photo_path
         // スキャン書込みが間に入って Total と Items が食い違うのを防ぐ。
         using var transaction = conn.BeginTransaction(deferred: true);
 
-        // --- COUNT query --------------------------------------------------
+        // 条件に一致する写真の総数を取得する。
         int total;
         {
             using var countCmd = conn.CreateCommand();
@@ -520,7 +489,7 @@ WHERE pt.photo_path = {tableAlias}.photo_path
             return Task.FromResult(new PhotoPage { Items = [], Total = 0 });
         }
 
-        // --- SELECT query -------------------------------------------------
+        // 指定ページの写真行を取得する。
         var phashCol = q.IncludePhash ? "phash" : "NULL";
         using var selCmd = conn.CreateCommand();
         selCmd.Transaction = transaction;
@@ -564,7 +533,7 @@ ORDER BY {orderClause}");
                 photoList.Add(MapPhotoRow(r));
         }
 
-        // Batch-load tags for all returned photos
+        // 取得した全写真のタグをまとめて読み込む。
         if (photoList.Count > 0)
         {
             var paths = new List<string>(photoList.Count);
@@ -594,8 +563,7 @@ ORDER BY {orderClause}");
     /// timestamp は ISO8601 形式 (YYYY-MM-DD...) を前提に substr で年月を切り出す
     /// （SQLite に専用の月関数はなく、文字列スライスがいちばん速い）。
     /// </summary>
-    public Task<IReadOnlyList<MonthSummaryItem>> GetMonthSummaryAsync(
-        PhotoQueryParams q, CancellationToken ct = default)
+    public Task<IReadOnlyList<MonthSummaryItem>> GetMonthSummaryAsync(PhotoQueryParams q, CancellationToken ct = default)
     {
         AppLogger.Trace("AlpheratzDb.GetMonthSummaryAsync: enter");
         try
@@ -640,8 +608,7 @@ ORDER BY y DESC, m DESC";
     /// includePhash: PDQ 解析や類似比較が必要なときだけ true にする。
     /// 通常表示では phash 列の数十バイトを引っ張らない（無駄な転送と string 化を回避）。
     /// </summary>
-    public Task<PhotoRecordDto?> GetPhotoRecordAsync(
-        string photoPath, bool includePhash = false, CancellationToken ct = default)
+    public Task<PhotoRecordDto?> GetPhotoRecordAsync(string photoPath, bool includePhash = false, CancellationToken ct = default)
     {
         AppLogger.Trace($"AlpheratzDb.GetPhotoRecordAsync: enter path={photoPath} includePhash={includePhash}");
         try
@@ -689,8 +656,7 @@ WHERE photo_path = @p";
     /// 重複写真の比較に必要な写真情報と、既存の類似分析結果を全件返す。
     /// 通常の一覧取得と異なりタグを結合せず、ファイル内容の比較に不要な列も読み込まない。
     /// </summary>
-    public Task<IReadOnlyList<PhotoRecordDto>> GetPhotosForDuplicateDetectionAsync(
-        CancellationToken ct = default)
+    public Task<IReadOnlyList<PhotoRecordDto>> GetPhotosForDuplicateDetectionAsync(CancellationToken ct = default)
     {
         AppLogger.Trace("AlpheratzDb.GetPhotosForDuplicateDetectionAsync: enter");
         try
@@ -733,8 +699,7 @@ ORDER BY photo_path ASC";
     }
 
     /// <summary>指定写真に紐づくタグ名一覧を取得する（tags テーブルと結合）。</summary>
-    public Task<IReadOnlyList<string>> GetPhotoTagsAsync(
-        string photoPath, CancellationToken ct = default)
+    public Task<IReadOnlyList<string>> GetPhotoTagsAsync(string photoPath, CancellationToken ct = default)
     {
         AppLogger.Trace($"AlpheratzDb.GetPhotoTagsAsync: enter path={photoPath}");
         try
@@ -771,10 +736,7 @@ ORDER BY photo_path ASC";
     }
 
     /// <summary>お気に入りを更新し、対象写真が存在して更新された場合だけ true を返す。</summary>
-    public Task<bool> TrySetPhotoFavoriteAsync(
-        string photoPath,
-        bool isFavorite,
-        CancellationToken ct = default)
+    public Task<bool> TrySetPhotoFavoriteAsync(string photoPath, bool isFavorite, CancellationToken ct = default)
     {
         AppLogger.Trace($"AlpheratzDb.TrySetPhotoFavoriteAsync: enter path={photoPath} isFavorite={isFavorite}");
         try
@@ -807,7 +769,7 @@ ORDER BY photo_path ASC";
 
     /// <summary>
     /// 写真にタグを付与する。tags マスタに無ければ追加し、photo_tags の中間行を作る。
-    /// 「マスタ追加 → 中間行追加」を 1 トランザクションでまとめないと、
+    /// 「マスタ追加 → 中間行追加」を 1 transactionでまとめないと、
     /// マスタ追加直後にクラッシュした場合に photo_tags 側の挿入が失敗してロールバックが効かず、
     /// 「マスタにはあるが写真と紐付かないタグ」が孤児として残り得る。
     /// </summary>
@@ -828,13 +790,10 @@ ORDER BY photo_path ASC";
     }
 
     /// <summary>
-    /// 写真へ複数タグを同一トランザクションで付与する。
+    /// 写真へ複数タグを同一transactionで付与する。
     /// 途中のタグ追加が失敗した場合、その写真に対する今回の追加をすべてロールバックする。
     /// </summary>
-    public Task AddPhotoTagsAsync(
-        string photoPath,
-        IReadOnlyList<string> tags,
-        CancellationToken ct = default)
+    public Task AddPhotoTagsAsync(string photoPath, IReadOnlyList<string> tags, CancellationToken ct = default)
     {
         AppLogger.Trace($"AlpheratzDb.AddPhotoTagsAsync: enter path={photoPath} count={tags.Count}");
         try
@@ -985,7 +944,7 @@ WHERE photo_path = @p
     }
 
     /// <summary>
-    /// タグマスタからタグを削除し、紐づく photo_tags 中間行も同一トランザクションで消す。
+    /// タグマスタからタグを削除し、紐づく photo_tags 中間行も同一transactionで消す。
     /// FK CASCADE が効く新規 DB では photo_tags 側の DELETE は冗長だが、
     /// 既存 DB はインプレース ALTER で CASCADE を後付けできないため明示削除を残してある。
     /// </summary>
@@ -1114,9 +1073,7 @@ LEFT JOIN filename_tags
 
             tx.Commit();
             var result = new PhotoUserDataBackupResult(sourcePhotoCount, backupEntryCount);
-            AppLogger.Trace(
-                $"AlpheratzDb.CreatePhotoUserDataBackupAsync: exit source={result.SourcePhotoCount} " +
-                $"entries={result.BackupEntryCount} consolidated={result.ConsolidatedPhotoCount}");
+            AppLogger.Trace($"AlpheratzDb.CreatePhotoUserDataBackupAsync: exit source={result.SourcePhotoCount} " + $"entries={result.BackupEntryCount} consolidated={result.ConsolidatedPhotoCount}");
             return Task.FromResult(result);
         }
         catch (Exception ex)
@@ -1138,7 +1095,7 @@ LEFT JOIN filename_tags
         {
             ct.ThrowIfCancellationRequested();
             using var conn = OpenConnection();
-            // 件数確認から復元完了まで同じ書込トランザクションに固定する。
+            // 件数確認から復元完了まで同じ書込transactionに固定する。
             using var tx = conn.BeginTransaction(deferred: false);
 
             int backupEntryCount;
@@ -1169,8 +1126,7 @@ WHERE p.is_missing = 0
             {
                 tx.Commit();
                 var emptyResult = new PhotoUserDataRestoreResult(backupEntryCount, matchedPhotoCount, 0, 0);
-                AppLogger.Trace(
-                    $"AlpheratzDb.RestorePhotoUserDataBackupAsync: exit entries={backupEntryCount} matched={matchedPhotoCount}");
+                AppLogger.Trace($"AlpheratzDb.RestorePhotoUserDataBackupAsync: exit entries={backupEntryCount} matched={matchedPhotoCount}");
                 return Task.FromResult(emptyResult);
             }
 
@@ -1248,15 +1204,8 @@ ON CONFLICT(photo_path, tag_id) DO NOTHING";
             }
 
             tx.Commit();
-            var result = new PhotoUserDataRestoreResult(
-                backupEntryCount,
-                matchedPhotoCount,
-                createdTagCount,
-                addedPhotoTagCount);
-            AppLogger.Trace(
-                $"AlpheratzDb.RestorePhotoUserDataBackupAsync: exit entries={result.BackupEntryCount} " +
-                $"matched={result.MatchedPhotoCount} createdTags={result.CreatedTagCount} " +
-                $"addedPhotoTags={result.AddedPhotoTagCount}");
+            var result = new PhotoUserDataRestoreResult(backupEntryCount, matchedPhotoCount, createdTagCount, addedPhotoTagCount);
+            AppLogger.Trace($"AlpheratzDb.RestorePhotoUserDataBackupAsync: exit entries={result.BackupEntryCount} " + $"matched={result.MatchedPhotoCount} createdTags={result.CreatedTagCount} " + $"addedPhotoTags={result.AddedPhotoTagCount}");
             return Task.FromResult(result);
         }
         catch (Exception ex)
@@ -1267,7 +1216,7 @@ ON CONFLICT(photo_path, tag_id) DO NOTHING";
     }
 
     /// <summary>
-    /// 指定 source_slot の photos と photo_tags、imgCache ディレクトリをすべてリセットする。
+    /// 指定 source_slot の photos と photo_tags、imgCache directoryをすべてリセットする。
     /// 順序：photo_tags → photos → 孤児 photo_tags の最終掃除 → imgCache 物理削除。
     /// imgCache 削除失敗は警告のみで例外は出さない（DB はクリーンなのに UI で再スキャン可能なため）。
     /// </summary>
@@ -1357,7 +1306,7 @@ ON CONFLICT(photo_path, tag_id) DO NOTHING";
     }
 
     /// <summary>
-    /// スキャナが見つけた写真を同一トランザクションでまとめて upsert する。
+    /// スキャナが見つけた写真を同一transactionでまとめて upsert する。
     /// 1 件ごとに接続を開くと大量初回スキャンで接続初期化とコミットが支配的になるため、
     /// スキャン側はこの API に小さなバッチを渡して書き込みをまとめる。
     /// </summary>
@@ -1435,12 +1384,10 @@ ON CONFLICT(photo_path, tag_id) DO NOTHING";
     }
 
     /// <summary>
-    /// 指定された写真パスと関連するタグ設定を、単一トランザクションで削除する。
+    /// 指定された写真パスと関連するタグ設定を、単一transactionで削除する。
     /// 既存 DB では photo_tags に ON DELETE CASCADE がない場合があるため、中間行を先に削除する。
     /// </summary>
-    public Task<int> DeletePhotosByPathsAsync(
-        IReadOnlyCollection<string> photoPaths,
-        CancellationToken ct = default)
+    public Task<int> DeletePhotosByPathsAsync(IReadOnlyCollection<string> photoPaths, CancellationToken ct = default)
     {
         AppLogger.Trace($"AlpheratzDb.DeletePhotosByPathsAsync: enter count={photoPaths.Count}");
         try
@@ -1477,10 +1424,7 @@ ON CONFLICT(photo_path, tag_id) DO NOTHING";
     /// 一回の SELECT で全パスを列挙し、HashSet 差分で missing を出してから 500 件単位で
     /// IN (...) 削除する。SQLite のパラメータ上限 (999) を超えないようにチャンク化。
     /// </summary>
-    public Task<int> DeleteMissingPhotosAsync(
-        IEnumerable<string> foundPaths,
-        IReadOnlyCollection<long>? sourceSlots = null,
-        CancellationToken ct = default)
+    public Task<int> DeleteMissingPhotosAsync(IEnumerable<string> foundPaths, IReadOnlyCollection<long>? sourceSlots = null, CancellationToken ct = default)
     {
         AppLogger.Trace("AlpheratzDb.DeleteMissingPhotosAsync: enter");
         try
@@ -1545,9 +1489,7 @@ ON CONFLICT(photo_path, tag_id) DO NOTHING";
     /// 大量パスを 500 件チャンクで IN (...) DELETE に分割発行する。
     /// SQLite のパラメータ上限は標準で 999 / クエリ。一括 SQL のパース時間も削減できる。
     /// </summary>
-    private static int BulkDeleteByPaths(
-        SqliteConnection conn, SqliteTransaction tx,
-        List<string> paths, string deletePrefix, CancellationToken ct)
+    private static int BulkDeleteByPaths(SqliteConnection conn, SqliteTransaction tx, List<string> paths, string deletePrefix, CancellationToken ct)
     {
         const int ChunkSize = 500;
         var affectedRows = 0;
@@ -1573,8 +1515,7 @@ ON CONFLICT(photo_path, tag_id) DO NOTHING";
     /// スキャナが「既存レコードと突き合わせて差分判定」するために全 photos を辞書で返す。
     /// 巨大ライブラリでは全件メモリ展開になるが、スキャナ起動時の 1 回のみ実行されるので許容。
     /// </summary>
-    public Task<IDictionary<string, ExistingPhotoInfo>> GetExistingPhotosAsync(
-        CancellationToken ct = default)
+    public Task<IDictionary<string, ExistingPhotoInfo>> GetExistingPhotosAsync(CancellationToken ct = default)
     {
         AppLogger.Trace("AlpheratzDb.GetExistingPhotosAsync: enter");
         try
@@ -1601,7 +1542,7 @@ FROM photos";
                     PhotoPath     = r.GetString(1),
                     WorldId       = NullableString(r, 2),
                     WorldName     = NullableString(r, 3),
-                    // col 4 = timestamp (not in ExistingPhotoInfo, skipped)
+                    // column 4 の timestamp は ExistingPhotoInfo に含まれないため読み飛ばす。
                     MatchSource   = NullableString(r, 5),
                     Orientation   = NullableString(r, 6),
                     ImageWidth    = NullableLong(r, 7),
@@ -1624,8 +1565,7 @@ FROM photos";
     }
 
     /// <summary>世界名と match_source を上書き更新する（PDQ マッチ結果適用などで使用）。</summary>
-    public Task UpdatePhotoWorldNameAsync(
-        string photoPath, string worldName, string matchSource, CancellationToken ct = default)
+    public Task UpdatePhotoWorldNameAsync(string photoPath, string worldName, string matchSource, CancellationToken ct = default)
     {
         AppLogger.Trace($"AlpheratzDb.UpdatePhotoWorldNameAsync: enter path={photoPath} world={worldName}");
         try
@@ -1658,8 +1598,7 @@ WHERE photo_path = @p";
     /// target は "all" / "primary" / "secondary" の 3 種で source_slot をフィルタする。
     /// PDQ 解析 (ワールド推定) のターゲット選定に使う。
     /// </summary>
-    public Task<IReadOnlyList<(string photoPath, string timestamp)>> GetUnknownWorldPhotosAsync(
-        string target, CancellationToken ct = default)
+    public Task<IReadOnlyList<(string photoPath, string timestamp)>> GetUnknownWorldPhotosAsync(string target, CancellationToken ct = default)
     {
         AppLogger.Trace($"AlpheratzDb.GetUnknownWorldPhotosAsync: enter target={target}");
         try
@@ -1699,8 +1638,7 @@ ORDER BY timestamp";
     /// 差分更新ではなく完全置換にしているのは、ログパーサが完全な真実源で、
     /// 差分マージのコストより置換が安く正しい結果になるため。
     /// </summary>
-    public Task UpsertArchiveWorldVisitsAsync(
-        IEnumerable<ArchiveWorldVisitData> visits, CancellationToken ct = default)
+    public Task UpsertArchiveWorldVisitsAsync(IEnumerable<ArchiveWorldVisitData> visits, CancellationToken ct = default)
     {
         AppLogger.Trace("AlpheratzDb.UpsertArchiveWorldVisitsAsync: enter");
         try
@@ -1736,9 +1674,7 @@ ORDER BY timestamp";
     /// 1 件ずつ INSERT すると数千件で数百 ms オーダーの遅延になるため、
     /// VALUES 句を多重化して 1 コマンドで複数行投入する。
     /// </summary>
-    private static void BulkInsertArchiveVisits(
-        SqliteConnection conn, SqliteTransaction tx,
-        List<ArchiveWorldVisitData> visits, CancellationToken ct)
+    private static void BulkInsertArchiveVisits(SqliteConnection conn, SqliteTransaction tx, List<ArchiveWorldVisitData> visits, CancellationToken ct)
     {
         if (visits.Count == 0) return;
         const int ChunkSize = 200;
@@ -1771,8 +1707,7 @@ ORDER BY timestamp";
     /// join_time &lt;= ts &lt;= leave_time の区間に該当する直近 1 件を返す
     /// （複数 join に挟まれる場合は ORDER BY join_time DESC で最新を採用）。
     /// </summary>
-    public Task<string?> LookupWorldNameFromArchiveAsync(
-        string timestamp, CancellationToken ct = default)
+    public Task<string?> LookupWorldNameFromArchiveAsync(string timestamp, CancellationToken ct = default)
     {
         AppLogger.Trace($"AlpheratzDb.LookupWorldNameFromArchiveAsync: enter ts={timestamp}");
         try
@@ -1851,8 +1786,7 @@ WHERE photos.is_missing = 0
     /// source 写真のワールド情報 (world_id / world_name) を target にコピーし、match_source は phash にする。
     /// 「同じワールドで撮影されたっぽい写真」を手動で結びつける操作の DB 側実装。
     /// </summary>
-    public Task ApplyWorldMatchFromPhotoAsync(
-        string targetPhotoPath, string sourcePhotoPath, CancellationToken ct = default)
+    public Task ApplyWorldMatchFromPhotoAsync(string targetPhotoPath, string sourcePhotoPath, CancellationToken ct = default)
     {
         AppLogger.Trace($"AlpheratzDb.ApplyWorldMatchFromPhotoAsync: enter target={targetPhotoPath} source={sourcePhotoPath}");
         try
@@ -1884,8 +1818,7 @@ WHERE photo_path = @tgt";
     /// フィルタパネルのワールド候補リスト。撮影枚数の多い順に並べる。
     /// world_name=NULL の行は除外せず、UI 側で「不明」として扱えるようにそのまま含める。
     /// </summary>
-    public Task<IReadOnlyList<WorldFilterOptionDto>> GetWorldFilterOptionsAsync(
-        CancellationToken ct = default)
+    public Task<IReadOnlyList<WorldFilterOptionDto>> GetWorldFilterOptionsAsync(CancellationToken ct = default)
     {
         AppLogger.Trace("AlpheratzDb.GetWorldFilterOptionsAsync: enter");
         try
@@ -1911,11 +1844,7 @@ ORDER BY cnt DESC, normalized_world_name COLLATE NOCASE ASC";
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
-                list.Add(new WorldFilterOptionDto
-                {
-                    world_name = NullableString(r, 0),
-                    count      = r.GetInt64(1),
-                });
+                list.Add(new WorldFilterOptionDto { world_name = NullableString(r, 0), count      = r.GetInt64(1), });
             }
             AppLogger.Trace($"AlpheratzDb.GetWorldFilterOptionsAsync: exit count={list.Count}");
             return Task.FromResult<IReadOnlyList<WorldFilterOptionDto>>(list);
@@ -1963,9 +1892,7 @@ GROUP BY t.name";
         }
     }
 
-    // -----------------------------------------------------------------------
     // PDQ 類似マッチ用クエリ。ワールド既知の参照集合と、ワールド不明な対象集合を分離して返す。
-    // -----------------------------------------------------------------------
 
     /// <summary>ワールド既知 + phash 持ち写真の参照行（マッチング source）。</summary>
     public sealed record KnownWorldRow(string PhotoPath, string PhotoFilename, string WorldName, string? WorldId, string Phash, long SourceSlot);
@@ -2024,8 +1951,7 @@ GROUP BY t.name";
     /// PDQ 比較の対象側（ワールド不明だが phash は計算済みの写真）を返す。
     /// このセットを KnownWorldRow と総当たりして最小 Hamming 距離のワールドを推定する。
     /// </summary>
-    public Task<IReadOnlyList<UnknownPhashRow>> GetUnknownWorldPhotosWithPhashAsync(CancellationToken ct = default)
-        => GetUnknownWorldPhotosWithPhashAsync("all", ct);
+    public Task<IReadOnlyList<UnknownPhashRow>> GetUnknownWorldPhotosWithPhashAsync(CancellationToken ct = default) => GetUnknownWorldPhotosWithPhashAsync("all", ct);
 
     public Task<IReadOnlyList<UnknownPhashRow>> GetUnknownWorldPhotosWithPhashAsync(string target, CancellationToken ct)
     {
@@ -2089,10 +2015,8 @@ GROUP BY t.name";
         }
     }
 
-    // -----------------------------------------------------------------------
     // phash 未計算写真のバッチ処理向けクエリ。バックグラウンドワーカが進捗表示と
     // 区切り処理のために count → batch → update のサイクルで使う。
-    // -----------------------------------------------------------------------
 
     /// <summary>phash 未計算（NULL または空文字列）かつ is_missing=0 の枚数を返す。進捗表示用。</summary>
     public Task<int> GetPendingPhashCountAsync(CancellationToken ct = default)
@@ -2119,7 +2043,7 @@ GROUP BY t.name";
 
     /// <summary>
     /// phash 未計算写真のうち、新しい順に limit 件を返す。
-    /// 新しい写真から計算するのは、ユーザが直近の撮影を優先的に閲覧する傾向に合わせるため。
+    /// 新しい写真から計算するのは、ユーザーが直近の撮影を優先的に閲覧する傾向に合わせるため。
     /// </summary>
     public Task<IReadOnlyList<PendingPhashItem>> GetPendingPhashBatchAsync(int limit, CancellationToken ct = default)
     {
@@ -2175,7 +2099,7 @@ GROUP BY t.name";
         }
     }
 
-    /// <summary>計算済み phash をトランザクション内でまとめて保存する。</summary>
+    /// <summary>計算済み phash をtransaction内でまとめて保存する。</summary>
     public Task UpdatePhotoPhashesAsync(IReadOnlyList<PhotoPhashUpdate> updates, CancellationToken ct = default)
     {
         AppLogger.Trace($"AlpheratzDb.UpdatePhotoPhashesAsync: enter count={updates.Count}");
@@ -2215,11 +2139,9 @@ GROUP BY t.name";
         }
     }
 
-    // -----------------------------------------------------------------------
     // orientation / image_width / image_height 未確定写真の補完用クエリ。
     // 「未確定」の判定は orientation IS NULL / 空 / 'unknown' のいずれか、または寸法が
     // 入っていないこと。ワーカが count → batch → update のループで埋めていく。
-    // -----------------------------------------------------------------------
 
     /// <summary>orientation か寸法が欠落している（is_missing=0 の）写真の枚数。</summary>
     public Task<int> GetPendingOrientationCountAsync(CancellationToken ct = default)
@@ -2268,10 +2190,7 @@ GROUP BY t.name";
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
-                items.Add(new PendingOrientationItem(
-                    r.GetInt64(0),
-                    r.GetString(1),
-                    r.GetString(2)));
+                items.Add(new PendingOrientationItem(r.GetInt64(0), r.GetString(1), r.GetString(2)));
             }
             AppLogger.Trace($"AlpheratzDb.GetPendingOrientationBatchAsync: exit count={items.Count}");
             return Task.FromResult<IReadOnlyList<PendingOrientationItem>>(items);
@@ -2312,13 +2231,11 @@ GROUP BY t.name";
         }
     }
 
-    // -----------------------------------------------------------------------
-    // Private filesystem helpers
-    // -----------------------------------------------------------------------
+    // 内部の filesystem 処理
 
     /// <summary>
-    /// <paramref name="dir"/> 自体は残し、その中のファイルとサブディレクトリだけを削除する。
-    /// キャッシュの保存先ディレクトリを保持したまま中身を作り直すために使う。
+    /// <paramref name="dir"/> 自体は残し、その中のファイルとサブdirectoryだけを削除する。
+    /// cacheの保存先directoryを保持したまま中身を作り直すために使う。
     /// </summary>
     private static void ClearDirectoryContents(string dir)
     {

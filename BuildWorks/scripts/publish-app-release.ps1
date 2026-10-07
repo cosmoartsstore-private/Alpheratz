@@ -10,8 +10,8 @@ if (Test-Path $AppPublishRoot) {
     Remove-Item -LiteralPath $AppPublishRoot -Recurse -Force
 }
 
-# Build a self-contained frontend package.
-# The CLI flag keeps the script explicit even when the project file already sets it.
+# self-contained の Frontend 配布物を生成する。
+# project 設定に依存せず、CLI 引数でも self-contained を明示する。
 & dotnet publish $FrontendProjectPath -c Release -p:Platform=x64 -r win-x64 --self-contained true -o $AppPublishRoot
 if ($LASTEXITCODE -ne 0) {
     throw "Frontend の publish に失敗しました。終了コード: $LASTEXITCODE"
@@ -22,11 +22,11 @@ if (!(Test-Path $FrontendExe)) {
     throw "Missing frontend executable: $FrontendExe"
 }
 
-# dotnet publish does not copy XBF/XAML files for WinExe projects.
-# WinUI3 unpackaged apps resolve ms-appx:/// URIs from the file system. Generated
-# LoadComponent calls use root-relative ms-appx:/// paths, so mirror XBF files
-# into the publish root. Keep the assembly-name subdirectory as a compatibility
-# copy for older outputs that referenced ms-appx:///{AssemblyName}/ paths.
+# WinExe project の dotnet publish は XBF/XAML をコピーしない。
+# unpackaged WinUI 3 は ms-appx:/// URI を filesystem から解決する。生成された
+# LoadComponent は root 相対の ms-appx:/// を使うため、XBF を publish root へ配置する。
+# 旧出力が参照する assembly 名の subdirectory にも互換用コピーを残す。
+# 対象は ms-appx:///{AssemblyName}/ を参照する旧生成コードである。
 $AssemblyName = "Alpheratz.Frontend"
 $rootCopiedCount = 0
 $xbfFiles = Get-ChildItem $XbfSourceRoot -Recurse -Filter "*.xbf"
@@ -63,9 +63,9 @@ if (!(Test-Path $ControlsPri)) {
     throw "Missing WinUI controls PRI: $ControlsPri"
 }
 
-# Do not generate a custom app PRI here. The app XAML is resolved from loose XBF
-# files, but XamlControlsResources looks up Microsoft.UI.Xaml theme XBF through
-# the app root resources.pri name in this unpackaged layout.
+# 独自の app PRI は生成しない。アプリの XAML は個別配置した XBF から解決するが、
+# XamlControlsResources は Microsoft.UI.Xaml の テーマ XBF を、
+# この unpackaged 配置では app root の resources.pri 名を介して解決する。
 $AppPri = Join-Path $AppPublishRoot "resources.pri"
 Copy-Item $ControlsPri $AppPri -Force
 Write-Host "Copied Microsoft.UI.Xaml.Controls.pri to resources.pri"

@@ -9,10 +9,7 @@ namespace Alpheratz.Features.Gallery;
 internal static class GalleryPageLogic
 {
     /// <summary>マルチセレクト状態と直前表示状態から、バルク操作バーの次の操作を決める。</summary>
-    public static BulkOperationBarState ComputeBulkOperationBarState(
-        bool isMultiSelectMode,
-        bool wasVisible,
-        int selectedCount)
+    public static BulkOperationBarState ComputeBulkOperationBarState(bool isMultiSelectMode, bool wasVisible, int selectedCount)
     {
         var transition = (isMultiSelectMode, wasVisible) switch
         {
@@ -20,10 +17,7 @@ internal static class GalleryPageLogic
             (false, true) => BulkOperationBarTransition.Hide,
             _ => BulkOperationBarTransition.None,
         };
-        return new BulkOperationBarState(
-            transition,
-            isMultiSelectMode,
-            getMsg("GalleryPage.selectionLabel", ("count", selectedCount)));
+        return new BulkOperationBarState(transition, isMultiSelectMode, getMsg("GalleryPage.selectionLabel", ("count", selectedCount)));
     }
 
     /// <summary>表示中の先頭写真インデックスに対応する月グループのインデックスを返す。</summary>
@@ -52,7 +46,4 @@ internal enum BulkOperationBarTransition
 }
 
 /// <summary>バルク操作バー同期後の状態。</summary>
-internal sealed record BulkOperationBarState(
-    BulkOperationBarTransition Transition,
-    bool NextWasVisible,
-    string SelectionLabel);
+internal sealed record BulkOperationBarState(BulkOperationBarTransition Transition, bool NextWasVisible, string SelectionLabel);

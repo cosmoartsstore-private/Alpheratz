@@ -28,22 +28,14 @@ internal static class PhotoGridItemsLayoutLogic
         if (availableWidth <= 0) return null;
         var usable = availableWidth - GridPadding;
         if (usable <= 0) return null;
-        var columns = Math.Clamp(
-            (int)Math.Floor(usable / (MinImageWidth + CardMarginHorizontal)),
-            1,
-            MaxColumns);
+        var columns = Math.Clamp((int)Math.Floor(usable / (MinImageWidth + CardMarginHorizontal)), 1, MaxColumns);
         var itemWidth = Math.Max(1, Math.Floor(usable / columns));
         var cardWidth = Math.Max(1, itemWidth - CardMarginHorizontal);
-        return new PhotoGridCardLayout(
-            cardWidth,
-            itemWidth,
-            Math.Floor(cardWidth * ImageAspectHeight + InfoHeight) + CardMarginVertical,
-            columns);
+        return new PhotoGridCardLayout(cardWidth, itemWidth, Math.Floor(cardWidth * ImageAspectHeight + InfoHeight) + CardMarginVertical, columns);
     }
 
     /// <summary>スクロール位置が追加読み込みを促す終端近くかを返す。</summary>
-    public static bool IsNearBottom(double scrollableHeight, double verticalOffset)
-        => scrollableHeight - verticalOffset < NearBottomThreshold;
+    public static bool IsNearBottom(double scrollableHeight, double verticalOffset) => scrollableHeight - verticalOffset < NearBottomThreshold;
 
     /// <summary>スクロール位置から最初に見えているとみなす写真インデックスを概算する。</summary>
     public static int? EstimateFirstVisibleIndex(double scrollTop, double itemHeight, int maximumRowsOrColumns)
@@ -63,25 +55,20 @@ internal static class PhotoGridItemsLayoutLogic
     }
 
     /// <summary>カード幅から shimmer ハイライト幅を計算する。</summary>
-    public static double CalculateShimmerHighlightWidth(double cardWidth)
-        => cardWidth * ShimmerWidthRatio;
+    public static double CalculateShimmerHighlightWidth(double cardWidth) => cardWidth * ShimmerWidthRatio;
 
     /// <summary>初期レイアウトに使う幅を、GridView 実測値、直近幅の優先順で決める。</summary>
     public static double ResolveInitialGridWidth(double actualWidth, double lastKnownWidth)
         => actualWidth > 0 ? actualWidth : lastKnownWidth;
 
     /// <summary>指定インデックスが ItemsSource の範囲内かを返す。</summary>
-    public static bool IsValidItemIndex(int index, int itemCount)
-        => index >= 0 && index < itemCount;
+    public static bool IsValidItemIndex(int index, int itemCount) => index >= 0 && index < itemCount;
 
     /// <summary>先頭表示インデックスが前回通知値から変わっているかを返す。</summary>
-    public static bool ShouldNotifyFirstVisibleIndex(int? firstIndex, int lastReportedFirstVisible)
-        => firstIndex.HasValue && firstIndex.Value != lastReportedFirstVisible;
+    public static bool ShouldNotifyFirstVisibleIndex(int? firstIndex, int lastReportedFirstVisible) => firstIndex.HasValue && firstIndex.Value != lastReportedFirstVisible;
 
     /// <summary>画像差し替えに関係する PhotoThumbnailItem のプロパティ名かを返す。</summary>
-    public static bool IsImageSourceProperty(string? propertyName)
-        => propertyName is nameof(PhotoThumbnailItem.GridThumbPath)
-            or nameof(PhotoThumbnailItem.EffectiveSourcePath);
+    public static bool IsImageSourceProperty(string? propertyName) => propertyName is nameof(PhotoThumbnailItem.GridThumbPath) or nameof(PhotoThumbnailItem.EffectiveSourcePath);
 
     /// <summary>写真からグリッド表示に使う画像ソースパスを取得する。</summary>
     public static string? ResolveImageSourcePath(PhotoThumbnailItem photo) => photo.EffectiveSourcePath;
@@ -101,39 +88,14 @@ internal static class PhotoGridItemsLayoutLogic
             : null;
     }
 
-    /// <summary>カード Border の通常/hover 表示に使うテーマリソースキーと移動量を返す。</summary>
+    /// <summary>カード Border の通常/hover 表示に使うテーマresourceキーと移動量を返す。</summary>
     public static GridCardVisual CardVisual(GridCardVisualState state)
         => state == GridCardVisualState.Hover
             ? new GridCardVisual("ABorderStrong", "ASurfaceHover", -2, 180)
             : new GridCardVisual("ABorder", "ASurface", 0, 180);
 
     /// <summary>画像ロード状態に応じて shimmer とエラー表示をどう扱うかを返す。</summary>
-    public static GridImageLoadVisual ImageLoadVisual(GridImageLoadState state)
-        => state switch
-        {
-            GridImageLoadState.Reset => new GridImageLoadVisual(
-                ImageOpacity: 0,
-                ShimmerBaseOpacity: 1,
-                ShimmerHighlightOpacity: 1,
-                ErrorVisible: false,
-                StartShimmer: true,
-                StopShimmer: false),
-            GridImageLoadState.Opened => new GridImageLoadVisual(
-                ImageOpacity: 1,
-                ShimmerBaseOpacity: 0,
-                ShimmerHighlightOpacity: 0,
-                ErrorVisible: false,
-                StartShimmer: false,
-                StopShimmer: true),
-            GridImageLoadState.Failed => new GridImageLoadVisual(
-                ImageOpacity: 0,
-                ShimmerBaseOpacity: 1,
-                ShimmerHighlightOpacity: 0,
-                ErrorVisible: true,
-                StartShimmer: false,
-                StopShimmer: true),
-            _ => throw new ArgumentOutOfRangeException(nameof(state), state, null),
-        };
+    public static GridImageLoadVisual ImageLoadVisual(GridImageLoadState state) => state switch { GridImageLoadState.Reset => new GridImageLoadVisual(ImageOpacity: 0, ShimmerBaseOpacity: 1, ShimmerHighlightOpacity: 1, ErrorVisible: false, StartShimmer: true, StopShimmer: false), GridImageLoadState.Opened => new GridImageLoadVisual(ImageOpacity: 1, ShimmerBaseOpacity: 0, ShimmerHighlightOpacity: 0, ErrorVisible: false, StartShimmer: false, StopShimmer: true), GridImageLoadState.Failed => new GridImageLoadVisual(ImageOpacity: 0, ShimmerBaseOpacity: 1, ShimmerHighlightOpacity: 0, ErrorVisible: true, StartShimmer: false, StopShimmer: true), _ => throw new ArgumentOutOfRangeException(nameof(state), state, null), };
 
     /// <summary>shimmer アニメーションに使うハイライト幅と開始/終了オフセットを返す。</summary>
     public static ShimmerAnimationMetrics CalculateShimmerMetrics(double cardWidth)
@@ -143,16 +105,11 @@ internal static class PhotoGridItemsLayoutLogic
     }
 
     /// <summary>表示中カードの shimmer 幅を再計算すべき Border かを返す。</summary>
-    public static bool ShouldRefreshShimmerWidth(string name, double opacity)
-        => name == "ShimmerHighlight" && opacity > 0;
+    public static bool ShouldRefreshShimmerWidth(string name, double opacity) => name == "ShimmerHighlight" && opacity > 0;
 }
 
 /// <summary>PhotoGridItemsView のカード寸法計算結果。</summary>
-internal sealed record PhotoGridCardLayout(
-    double ImageWidth,
-    double ItemWidth,
-    double ItemHeight,
-    int Columns);
+internal sealed record PhotoGridCardLayout(double ImageWidth, double ItemWidth, double ItemHeight, int Columns);
 
 /// <summary>標準グリッド画像のロード要求。</summary>
 internal sealed record GridImageRequest(string SourcePath, int DecodePixelWidth);
@@ -176,13 +133,7 @@ internal enum GridImageLoadState
 }
 
 /// <summary>画像ロード状態に応じた opacity と shimmer/error 表示。</summary>
-internal sealed record GridImageLoadVisual(
-    double ImageOpacity,
-    double ShimmerBaseOpacity,
-    double ShimmerHighlightOpacity,
-    bool ErrorVisible,
-    bool StartShimmer,
-    bool StopShimmer);
+internal sealed record GridImageLoadVisual(double ImageOpacity, double ShimmerBaseOpacity, double ShimmerHighlightOpacity, bool ErrorVisible, bool StartShimmer, bool StopShimmer);
 
 /// <summary>shimmer ハイライトの幅と横移動範囲。</summary>
 internal sealed record ShimmerAnimationMetrics(double HighlightWidth, double StartOffset, double EndOffset);

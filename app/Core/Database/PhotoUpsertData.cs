@@ -1,8 +1,6 @@
 namespace Alpheratz.Core.Database;
 
-// ---------------------------------------------------------------------------
-// Data bag used when upserting a photo from the scanner.
-// ---------------------------------------------------------------------------
+// scanner が写真を upsert するための入力データ。
 public sealed class PhotoUpsertData
 {
     public string PhotoPath { get; init; } = "";

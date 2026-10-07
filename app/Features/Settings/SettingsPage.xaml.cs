@@ -9,6 +9,7 @@ using Alpheratz.Features.TagMaster;
 using Alpheratz.Features.Template;
 using Alpheratz.Models.Events;
 using Alpheratz.Services;
+using Alpheratz.Shared.Animations;
 using Alpheratz.Shared.Models;
 using Alpheratz.Shared.Services;
 using Microsoft.UI.Xaml;
@@ -86,9 +87,7 @@ public sealed partial class SettingsPage : Page
     /// <summary>テンプレート選択 (アクティブテンプレートの切替)。</summary>
     public Func<string, Task>? OnSelectTemplate { get; set; }
 
-    public SettingsPage(
-        SettingsCompositeViewModel viewModel,
-        DuplicatePhotosViewModel? duplicatePhotosViewModel = null)
+    public SettingsPage(SettingsCompositeViewModel viewModel, DuplicatePhotosViewModel? duplicatePhotosViewModel = null)
     {
         AppLogger.Trace("SettingsPage.ctor: enter");
         try
@@ -105,7 +104,7 @@ public sealed partial class SettingsPage : Page
         DataContext = viewModel;
         SimilarPhotosSection.DataContext = duplicatePhotosViewModel;
 
-        // ShellPage は SettingsPage インスタンスをキャッシュして使い回すため、
+        // ShellPage は SettingsPage インスタンスをcacheして使い回すため、
         // モーダル開閉ごとに Loaded/Unloaded が繰り返し発火する。サブスクリプションは
         // Loaded で張り、Unloaded で剥がす対称形にしておかないと、
         // 「Unloaded で剥がしたあと再 Loaded したときに張り直されない」バグが入る。
@@ -141,12 +140,7 @@ public sealed partial class SettingsPage : Page
 
     private void ApplyWorldAnalysisState()
     {
-        var display = SettingsPageLogic.WorldAnalysisProgress(
-            worldAnalysisProgress.done,
-            worldAnalysisProgress.total,
-            worldAnalysisProgress.current,
-            worldAnalysisRunning,
-            worldAnalysisEnabled);
+        var display = SettingsPageLogic.WorldAnalysisProgress(worldAnalysisProgress.done, worldAnalysisProgress.total, worldAnalysisProgress.current, worldAnalysisRunning, worldAnalysisEnabled);
 
         StartWorldAnalysisButton.IsEnabled = worldAnalysisEnabled;
         StartWorldAnalysisButton.Opacity = worldAnalysisEnabled ? 1.0 : 0.55;
@@ -164,12 +158,12 @@ public sealed partial class SettingsPage : Page
         try
         {
             if (SettingsPageLogic.IsKnownSection(section))
-                ShowSettingsSection(section);
+                ShowSettingsSection(section, animate: IsLoaded);
         }
         catch (Exception ex) { AppLogger.Error($"SettingsPage.ShowSection: threw: {ex}"); }
     }
 
-    /// <summary>設定モーダルの幅に合わせて、2カラム/1カラム配置を切り替える。</summary>
+    /// <summary>設定モーダルの幅に合わせて、2column/1column配置を切り替える。</summary>
     private void SettingsContentGrid_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         try
@@ -212,7 +206,7 @@ public sealed partial class SettingsPage : Page
             UpdateEditorState();
             UpdateTemplateValidationState();
             UpdateThemeSwitchVisual();
-            ShowSettingsSection(activeSettingsSection);
+            ShowSettingsSection(activeSettingsSection, animate: false);
         }
         catch (Exception ex) { AppLogger.Error($"SettingsPage.SettingsPage_Loaded: threw: {ex}"); }
     }
@@ -240,7 +234,7 @@ public sealed partial class SettingsPage : Page
             RefreshSettingsNavVisuals();
             UpdateThemeSwitchVisual();
             DispatcherQueue?.TryEnqueue(RefreshTemplateCardVisuals);
-            DispatcherQueue?.TryEnqueue(RefreshSettingsNavVisuals);
+            DispatcherQueue?.TryEnqueue(() => RefreshSettingsNavVisuals());
             DispatcherQueue?.TryEnqueue(() => UpdateThemeSwitchVisual());
         }
         catch (Exception ex) { AppLogger.Error($"SettingsPage.OnActualThemeChanged: {ex}"); }
@@ -258,52 +252,75 @@ public sealed partial class SettingsPage : Page
         try
         {
             if ((sender as FrameworkElement)?.Tag is string section)
-                ShowSettingsSection(section);
+                ShowSettingsSection(section, animate: true);
         }
         catch (Exception ex) { AppLogger.Error($"SettingsPage.SettingsNav_Click: threw: {ex}"); }
     }
 
-    private void ShowSettingsSection(string section)
+    private void ShowSettingsSection(string section, bool animate)
     {
+        var previousSection = activeSettingsSection;
+        var changed = !string.Equals(previousSection, section, StringComparison.Ordinal);
+        var previousButton = GetSettingsSectionButton(previousSection);
+        var nextButton = GetSettingsSectionButton(section);
+
         activeSettingsSection = section;
         GeneralSection.Visibility = section == "general" ? Visibility.Visible : Visibility.Collapsed;
         SimilarPhotosSection.Visibility = section == "similar" ? Visibility.Visible : Visibility.Collapsed;
         TagMasterSection.Visibility = section == "tags" ? Visibility.Visible : Visibility.Collapsed;
         TemplateSection.Visibility = section == "templates" ? Visibility.Visible : Visibility.Collapsed;
         CreditsSection.Visibility = section == "credits" ? Visibility.Visible : Visibility.Collapsed;
-        RefreshSettingsNavVisuals();
+        RefreshSettingsNavVisuals(syncSelectionState: !animate || !changed || !IsLoaded);
+
+        if (!animate || !changed || !IsLoaded) return;
+        SettingsNavSelectionSurface.Height = nextButton.ActualHeight > 0
+            ? nextButton.ActualHeight
+            : SettingsNavSelectionSurface.Height;
+        AnimationHelper.MoveSelectionSurface(SettingsNavSelectionSurface, SettingsNavButtonOffset(previousButton), SettingsNavButtonOffset(nextButton));
     }
 
-    private void RefreshSettingsNavVisuals()
+    private void RefreshSettingsNavVisuals(bool syncSelectionState = true)
     {
-        ApplySettingsNavButtonStyle(GeneralNavButton, activeSettingsSection == "general");
-        ApplySettingsNavButtonStyle(SimilarPhotosNavButton, activeSettingsSection == "similar");
-        ApplySettingsNavButtonStyle(TagMasterNavButton, activeSettingsSection == "tags");
-        ApplySettingsNavButtonStyle(TemplateNavButton, activeSettingsSection == "templates");
-        ApplySettingsNavButtonStyle(CreditsNavButton, activeSettingsSection == "credits");
+        ApplySettingsNavButtonStyle(GeneralNavButton, GeneralNavContent, activeSettingsSection == "general");
+        ApplySettingsNavButtonStyle(SimilarPhotosNavButton, SimilarPhotosNavContent, activeSettingsSection == "similar");
+        ApplySettingsNavButtonStyle(TagMasterNavButton, TagMasterNavContent, activeSettingsSection == "tags");
+        ApplySettingsNavButtonStyle(TemplateNavButton, TemplateNavContent, activeSettingsSection == "templates");
+        ApplySettingsNavButtonStyle(CreditsNavButton, CreditsNavContent, activeSettingsSection == "credits");
+
+        if (!syncSelectionState) return;
+        var currentButton = GetSettingsSectionButton(activeSettingsSection);
+        SettingsNavSelectionSurface.Height = currentButton.ActualHeight > 0
+            ? currentButton.ActualHeight
+            : SettingsNavSelectionSurface.Height;
+        AnimationHelper.SetSelectionSurfacePosition(SettingsNavSelectionSurface, SettingsNavButtonOffset(currentButton));
     }
 
-    private static void ApplySettingsNavButtonStyle(Button button, bool active)
+    private static void ApplySettingsNavButtonStyle(Button button, StackPanel content, bool active)
     {
         var fg = ThemeHelper.Brush(button, active ? "AText" : "ATextDim")
             ?? new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-        button.Background = active
-            ? ThemeHelper.Brush(button, "ASurfaceHover") ?? new SolidColorBrush(Microsoft.UI.Colors.Transparent)
-            : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        button.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         button.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         button.Foreground = fg;
 
-        if (button.Content is StackPanel stack)
+        foreach (var child in content.Children)
         {
-            foreach (var child in stack.Children)
-            {
-                if (child is Alpheratz.Shared.Controls.AppIcon icon)
-                    icon.Foreground = fg;
-                else if (child is TextBlock text)
-                    text.Foreground = fg;
-            }
+            if (child is Alpheratz.Shared.Controls.AppIcon icon)
+                icon.Foreground = fg;
+            else if (child is TextBlock text)
+                text.Foreground = fg;
         }
     }
+
+    private float SettingsNavButtonOffset(Button button)
+    {
+        if (!SettingsNavHost.IsLoaded || !button.IsLoaded) return 0;
+        var point = button.TransformToVisual(SettingsNavHost)
+            .TransformPoint(new Windows.Foundation.Point(0, 0));
+        return (float)point.Y;
+    }
+
+    private Button GetSettingsSectionButton(string section) => section switch { "general" => GeneralNavButton, "similar" => SimilarPhotosNavButton, "tags" => TagMasterNavButton, "templates" => TemplateNavButton, "credits" => CreditsNavButton, _ => throw new ArgumentOutOfRangeException(nameof(section), section, "未定義の設定セクションです。"), };
 
     /// <summary>背景タップで設定モーダルのクローズ要求を発行する。</summary>
     private void Backdrop_Tapped(object sender, TappedRoutedEventArgs e)
@@ -432,10 +449,7 @@ public sealed partial class SettingsPage : Page
         AppLogger.Trace("SettingsPage.RegisterStellaRecord_Click: enter");
         try
         {
-            var request = SettingsPageLogic.StellaRecordRegistration(
-                StellaRecordRegistration.IsStellaRecordAvailable(),
-                Environment.ProcessPath,
-                AppContext.BaseDirectory);
+            var request = SettingsPageLogic.StellaRecordRegistration(StellaRecordRegistration.IsStellaRecordAvailable(), Environment.ProcessPath, AppContext.BaseDirectory);
             if (request is null)
             {
                 AppLogger.Trace("SettingsPage.RegisterStellaRecord_Click: StellaRecord not available");
@@ -463,17 +477,13 @@ public sealed partial class SettingsPage : Page
     /// <summary>現在の全写真からお気に入りとタグのバックアップ作成を要求する。</summary>
     private async void CreatePhotoUserDataBackup_Click(object sender, RoutedEventArgs e)
     {
-        await RunPhotoUserDataBackupActionAsync(
-            nameof(CreatePhotoUserDataBackup_Click),
-            OnCreatePhotoUserDataBackup);
+        await RunPhotoUserDataBackupActionAsync(nameof(CreatePhotoUserDataBackup_Click), OnCreatePhotoUserDataBackup);
     }
 
     /// <summary>保存済みのお気に入りとタグをファイル名一致で復元する。</summary>
     private async void RestorePhotoUserDataBackup_Click(object sender, RoutedEventArgs e)
     {
-        await RunPhotoUserDataBackupActionAsync(
-            nameof(RestorePhotoUserDataBackup_Click),
-            OnRestorePhotoUserDataBackup);
+        await RunPhotoUserDataBackupActionAsync(nameof(RestorePhotoUserDataBackup_Click), OnRestorePhotoUserDataBackup);
     }
 
     /// <summary>バックアップ操作の多重実行を防ぎ、2つの操作ボタンと進捗表示を同期する。</summary>
@@ -574,8 +584,7 @@ public sealed partial class SettingsPage : Page
         var draft = viewModel.TagMaster.TagDraft;
         var normalized = draft.Trim();
         var duplicate = normalized.Length > 0
-            && viewModel.TagMaster.masterTags.Any(existing =>
-                string.Equals(existing, normalized, StringComparison.OrdinalIgnoreCase));
+            && viewModel.TagMaster.masterTags.Any(existing => string.Equals(existing, normalized, StringComparison.OrdinalIgnoreCase));
         var tooLong = draft.Length > TagMasterViewModel.MaxTagLength;
         var atLimit = draft.Length >= TagMasterViewModel.MaxTagLength;
 
@@ -584,9 +593,7 @@ public sealed partial class SettingsPage : Page
         TagValidationText.Text = duplicate
             ? getMsg("TagMasterViewModel.tagAlreadyExists")
             : atLimit
-                ? getMsg(
-                    "SettingsPage.tagLengthLimitReached",
-                    ("maxLength", TagMasterViewModel.MaxTagLength))
+                ? getMsg("SettingsPage.tagLengthLimitReached", ("maxLength", TagMasterViewModel.MaxTagLength))
                 : string.Empty;
         TagValidationText.Visibility = TagValidationText.Text.Length > 0
             ? Visibility.Visible
@@ -693,16 +700,11 @@ public sealed partial class SettingsPage : Page
             && (viewModel.Template.EditingTweetTemplate is null || changesExisting);
 
         SaveButton.IsEnabled = normalized.Length > 0 && inputWithinLimit && !duplicate;
-        TemplateCharacterCountText.Text = getMsg(
-            "SettingsPage.templateLengthCount",
-            ("count", count),
-            ("max", TemplatePageViewModel.StandardPostCharacterLimit));
+        TemplateCharacterCountText.Text = getMsg("SettingsPage.templateLengthCount", ("count", count), ("max", TemplatePageViewModel.StandardPostCharacterLimit));
         string validationMessage;
         if (templateInputLimitReached || !inputWithinLimit)
         {
-            validationMessage = getMsg(
-                "SettingsPage.templateLengthLimitReached",
-                ("max", TemplatePageViewModel.StandardPostCharacterLimit));
+            validationMessage = getMsg("SettingsPage.templateLengthLimitReached", ("max", TemplatePageViewModel.StandardPostCharacterLimit));
         }
         else if (duplicate)
         {
@@ -710,9 +712,7 @@ public sealed partial class SettingsPage : Page
         }
         else if (placeholderMayOverflow)
         {
-            validationMessage = getMsg(
-                "SettingsPage.templatePlaceholderMayOverflow",
-                ("remaining", remaining));
+            validationMessage = getMsg("SettingsPage.templatePlaceholderMayOverflow", ("remaining", remaining));
         }
         else
         {
@@ -741,10 +741,7 @@ public sealed partial class SettingsPage : Page
         var token = getMsg("SettingsPage.worldNameToken");
         var current = TemplateInputBox.Text ?? string.Empty;
         var selectionStart = Math.Clamp(TemplateInputBox.SelectionStart, 0, current.Length);
-        var selectionLength = Math.Clamp(
-            TemplateInputBox.SelectionLength,
-            0,
-            current.Length - selectionStart);
+        var selectionLength = Math.Clamp(TemplateInputBox.SelectionLength, 0, current.Length - selectionStart);
         var next = current.Remove(selectionStart, selectionLength).Insert(selectionStart, token);
 
         if (!TemplatePageViewModel.isTemplateInputWithinLimit(next))
@@ -819,9 +816,7 @@ public sealed partial class SettingsPage : Page
             {
                 await OnDeleteTemplate(template).ConfigureAwait(false);
             }
-            else if (SettingsPageLogic.ShouldRemoveTemplateLocally(
-                hasDeleteCallback: false,
-                templateExists: viewModel.Template.tweetTemplates.Contains(template)))
+            else if (SettingsPageLogic.ShouldRemoveTemplateLocally(hasDeleteCallback: false, templateExists: viewModel.Template.tweetTemplates.Contains(template)))
             {
                 AppLogger.Warn("SettingsPage.DeleteTemplate_Click: OnDeleteTemplate not wired; collection-only delete");
                 viewModel.Template.tweetTemplates.Remove(template);

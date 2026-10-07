@@ -17,16 +17,13 @@ namespace Alpheratz.Shared.Controls;
 public sealed partial class AppIcon : UserControl
 {
     public static readonly DependencyProperty IconNameProperty =
-        DependencyProperty.Register("IconName", typeof(string), typeof(AppIcon),
-            new PropertyMetadata(string.Empty, OnNameChanged));
+        DependencyProperty.Register("IconName", typeof(string), typeof(AppIcon), new PropertyMetadata(string.Empty, OnNameChanged));
 
     public static readonly DependencyProperty IconSizeProperty =
-        DependencyProperty.Register(nameof(IconSize), typeof(double), typeof(AppIcon),
-            new PropertyMetadata(16.0));
+        DependencyProperty.Register(nameof(IconSize), typeof(double), typeof(AppIcon), new PropertyMetadata(16.0));
 
     public new static readonly DependencyProperty ForegroundProperty =
-        DependencyProperty.Register(nameof(Foreground), typeof(Brush), typeof(AppIcon),
-            new PropertyMetadata(new SolidColorBrush(Colors.Black)));
+        DependencyProperty.Register(nameof(Foreground), typeof(Brush), typeof(AppIcon), new PropertyMetadata(new SolidColorBrush(Colors.Black)));
 
     public string IconName
     {

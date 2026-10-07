@@ -1,8 +1,6 @@
 namespace Alpheratz.Core.Database;
 
-// ---------------------------------------------------------------------------
-// A single parsed world-visit entry from the Polaris archive log.
-// ---------------------------------------------------------------------------
+// Polaris の archive ログから解析した1件のワールド訪問記録。
 public sealed class ArchiveWorldVisitData
 {
     public string SourceLogName { get; init; } = "";

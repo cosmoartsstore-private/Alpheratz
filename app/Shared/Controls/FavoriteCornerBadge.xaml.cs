@@ -14,20 +14,16 @@ namespace Alpheratz.Shared.Controls;
 public sealed partial class FavoriteCornerBadge : UserControl
 {
     public static readonly DependencyProperty LikedProperty =
-        DependencyProperty.Register(nameof(Liked), typeof(bool), typeof(FavoriteCornerBadge),
-            new PropertyMetadata(false, OnVisualPropertyChanged));
+        DependencyProperty.Register(nameof(Liked), typeof(bool), typeof(FavoriteCornerBadge), new PropertyMetadata(false, OnVisualPropertyChanged));
 
     public static readonly DependencyProperty InteractiveProperty =
-        DependencyProperty.Register(nameof(Interactive), typeof(bool), typeof(FavoriteCornerBadge),
-            new PropertyMetadata(false, OnInteractiveChanged));
+        DependencyProperty.Register(nameof(Interactive), typeof(bool), typeof(FavoriteCornerBadge), new PropertyMetadata(false, OnInteractiveChanged));
 
     public static readonly DependencyProperty BadgeSizeProperty =
-        DependencyProperty.Register(nameof(BadgeSize), typeof(double), typeof(FavoriteCornerBadge),
-            new PropertyMetadata(36.0));
+        DependencyProperty.Register(nameof(BadgeSize), typeof(double), typeof(FavoriteCornerBadge), new PropertyMetadata(36.0));
 
     public static readonly DependencyProperty IconSizeProperty =
-        DependencyProperty.Register(nameof(IconSize), typeof(double), typeof(FavoriteCornerBadge),
-            new PropertyMetadata(12.0));
+        DependencyProperty.Register(nameof(IconSize), typeof(double), typeof(FavoriteCornerBadge), new PropertyMetadata(12.0));
 
     public bool Liked
     {
@@ -111,11 +107,9 @@ public sealed partial class FavoriteCornerBadge : UserControl
         InteractiveButton.IsTabStop = Interactive;
     }
 
-    private static Brush ActiveFill()
-        => new SolidColorBrush(Windows.UI.Color.FromArgb(0xF4, 0xF5, 0x9E, 0x0B));
+    private static Brush ActiveFill() => new SolidColorBrush(Windows.UI.Color.FromArgb(0xF4, 0xF5, 0x9E, 0x0B));
 
-    private static Brush InactiveFill()
-        => new SolidColorBrush(Windows.UI.Color.FromArgb(0xD9, 0x6B, 0x72, 0x80));
+    private static Brush InactiveFill() => new SolidColorBrush(Windows.UI.Color.FromArgb(0xD9, 0x6B, 0x72, 0x80));
 
     private void InteractiveButton_Click(object sender, RoutedEventArgs e)
     {

@@ -3,9 +3,7 @@ using Alpheratz.Models;
 
 namespace Alpheratz.Core.Database;
 
-// ---------------------------------------------------------------------------
-// Paginated photo result.
-// ---------------------------------------------------------------------------
+// ページ単位で取得した写真の結果。
 public sealed class PhotoPage
 {
     public IReadOnlyList<PhotoRecordDto> Items { get; init; } = [];

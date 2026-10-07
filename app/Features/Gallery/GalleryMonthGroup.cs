@@ -35,13 +35,7 @@ public static class GalleryMonthsCalculator
             {
                 if (currentKey.Length > 0)
                 {
-                    groups.Add(new GalleryMonthGroup(
-                        currentKey,
-                        pendingYear,
-                        pendingMonth,
-                        getMsg("GalleryMonthGroup.monthLabel", ("month", pendingMonth)),
-                        pendingFirstIndex,
-                        pendingCount));
+                    groups.Add(new GalleryMonthGroup(currentKey, pendingYear, pendingMonth, getMsg("GalleryMonthGroup.monthLabel", ("month", pendingMonth)), pendingFirstIndex, pendingCount));
                 }
                 currentKey = key;
                 pendingYear = year;
@@ -56,13 +50,7 @@ public static class GalleryMonthsCalculator
         }
         if (currentKey.Length > 0)
         {
-            groups.Add(new GalleryMonthGroup(
-                currentKey,
-                pendingYear,
-                pendingMonth,
-                getMsg("GalleryMonthGroup.monthLabel", ("month", pendingMonth)),
-                pendingFirstIndex,
-                pendingCount));
+            groups.Add(new GalleryMonthGroup(currentKey, pendingYear, pendingMonth, getMsg("GalleryMonthGroup.monthLabel", ("month", pendingMonth)), pendingFirstIndex, pendingCount));
         }
 
         return groups;

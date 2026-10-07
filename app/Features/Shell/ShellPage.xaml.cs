@@ -62,9 +62,7 @@ public sealed partial class ShellPage : Page
                 // 標準グリッドへ戻してからグループ化を適用する。masonry はグループ化非対応。
                 if (mode != GroupingMode.none && viewModel.ViewMode == ViewMode.gallery)
                     await viewModel.handleSetViewMode(ViewMode.standard).ConfigureAwait(true);
-                viewModel.galleryViewModel.displayState.prepareGroupingModeChange(
-                    viewModel.galleryViewModel.filtersState.GroupingMode, mode,
-                    m => viewModel.galleryViewModel.filtersState.GroupingMode = m);
+                viewModel.galleryViewModel.displayState.prepareGroupingModeChange(viewModel.galleryViewModel.filtersState.GroupingMode, mode, m => viewModel.galleryViewModel.filtersState.GroupingMode = m);
                 HeaderBar.SetGroupingMode(mode);
             };
             HeaderBar.OnViewModeChange = async modeStr =>
@@ -75,10 +73,7 @@ public sealed partial class ShellPage : Page
                 if (mode == ViewMode.gallery
                     && viewModel.galleryViewModel.filtersState.GroupingMode != GroupingMode.none)
                 {
-                    viewModel.galleryViewModel.displayState.prepareGroupingModeChange(
-                        viewModel.galleryViewModel.filtersState.GroupingMode,
-                        GroupingMode.none,
-                        groupingMode => viewModel.galleryViewModel.filtersState.GroupingMode = groupingMode);
+                    viewModel.galleryViewModel.displayState.prepareGroupingModeChange(viewModel.galleryViewModel.filtersState.GroupingMode, GroupingMode.none, groupingMode => viewModel.galleryViewModel.filtersState.GroupingMode = groupingMode);
                 }
                 await viewModel.handleSetViewMode(mode).ConfigureAwait(true);
             };
@@ -98,7 +93,7 @@ public sealed partial class ShellPage : Page
             //     photosState.photos と displayItems に加えて drillDownPhotos も走査して
             //     同じ photo_path の項目を見つけて更新する。
             //   - drill-down を抜けたら drillDownPhotos = null になるので参照ループは切れる。
-            // delegate 経由にしているのは、ViewModel が UI レイヤ (drillDownPhotos の存在自体) を
+            // delegate 経由にしているのは、ViewModel が UI レイヤー (drillDownPhotos の存在自体) を
             // 知らずに済むようにするため。
             viewModel.galleryViewModel.drillDownPhotosProvider = () => drillDownPhotos;
 
@@ -165,10 +160,7 @@ public sealed partial class ShellPage : Page
 
     private void SyncSettingsWorldAnalysisState()
     {
-        settingsPage?.SetWorldAnalysisProgress(
-            viewModel.PdqProgress,
-            viewModel.IsPdqRunning,
-            viewModel.CanStartWorldResolve);
+        settingsPage?.SetWorldAnalysisProgress(viewModel.PdqProgress, viewModel.IsPdqRunning, viewModel.CanStartWorldResolve);
     }
 
     private void OnShellViewModelChanged(object? sender, PropertyChangedEventArgs e)
@@ -214,7 +206,7 @@ public sealed partial class ShellPage : Page
     private Control? confirmPreviousFocus;
 
     /// <summary>
-    /// アプリ独自デザインの確認モーダルを表示し、ユーザの選択を待つ。
+    /// アプリ独自デザインの確認モーダルを表示し、ユーザーの選択を待つ。
     /// WinUI 標準 ContentDialog はデフォルト Fluent のままアプリと馴染まないため、
     /// ASurface カード + AOverlay 背景の自前オーバーレイで統一する。
     /// 戻り値: true=はい / false=いいえ / null=キャンセル（背景タップ・ESC）。
@@ -268,7 +260,7 @@ public sealed partial class ShellPage : Page
     // 本文タップを背景タップへ伝播させない。
     private void ConfirmContent_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e) => e.Handled = true;
 
-    // フォルダ変更前にキャッシュリセットの確認を取り、承認時だけ変更を適用する。
+    // フォルダ変更前にcacheリセットの確認を取り、承認時だけ変更を適用する。
     private async Task ShowFolderChangeConfirmAsync()
     {
         AppLogger.Trace($"ShellPage.ShowFolderChangeConfirmAsync: enter pending={viewModel.PendingFolderPath}");
@@ -278,11 +270,7 @@ public sealed partial class ShellPage : Page
         var folderName = slot == 1
             ? getMsg("ShellPage.primaryPhotoFolder")
             : getMsg("ShellPage.secondaryPhotoFolder");
-        var answer = await ShowConfirmDialogAsync(
-            title: getMsg("ShellPage.folderChangeTitle"),
-            message: getMsg("ShellPage.folderChangeMessage", ("folder", folderName), ("path", newPath)),
-            yesText: getMsg("common.change"),
-            noText: getMsg("common.cancel")).ConfigureAwait(true);
+        var answer = await ShowConfirmDialogAsync(title: getMsg("ShellPage.folderChangeTitle"), message: getMsg("ShellPage.folderChangeMessage", ("folder", folderName), ("path", newPath)), yesText: getMsg("common.change"), noText: getMsg("common.cancel")).ConfigureAwait(true);
         if (answer != true) { viewModel.PendingFolderPath = null; return; }
         await viewModel.applyFolderChange(slot, newPath).ConfigureAwait(false);
     }
@@ -296,11 +284,7 @@ public sealed partial class ShellPage : Page
         var folderName = request.slot == 1
             ? getMsg("ShellPage.primaryPhotoFolder")
             : getMsg("ShellPage.secondaryPhotoFolder");
-        var answer = await ShowConfirmDialogAsync(
-            title: getMsg("ShellPage.folderResetTitle"),
-            message: getMsg("ShellPage.folderResetMessage", ("folder", folderName)),
-            yesText: getMsg("common.reset"),
-            noText: getMsg("common.cancel")).ConfigureAwait(true);
+        var answer = await ShowConfirmDialogAsync(title: getMsg("ShellPage.folderResetTitle"), message: getMsg("ShellPage.folderResetMessage", ("folder", folderName)), yesText: getMsg("common.reset"), noText: getMsg("common.cancel")).ConfigureAwait(true);
         if (answer != true) { viewModel.PendingResetRequest = null; return; }
         await viewModel.executeResetFolder(request.slot, request.path).ConfigureAwait(false);
     }
@@ -342,30 +326,24 @@ public sealed partial class ShellPage : Page
     private Control? middleModalPreviousFocus;
     /// <summary>
     /// 中位モーダル (Stage.ModalContent) が現在開いているかのフラグ。
-    /// PhotoModal は最上位レイヤを使うため別管理 (isModalOpen)。
+    /// PhotoModal は最上位レイヤーを使うため別管理 (isModalOpen)。
     /// </summary>
     private bool isMiddleModalOpen;
 
     /// <summary>
-    /// ShellPage が保持する分散フラグを、純粋ロジックへ渡す単一の overlay 状態にまとめる。
-    /// Confirm は Esc 優先順位と新規 overlay 起動の抑止に使い、MultiSelect は Esc 優先順位に使う。
+    /// ShellPage が保持する分散フラグを、純粋ロジックへ渡す単一の オーバーレイ 状態にまとめる。
+    /// Confirm は Esc 優先順位と新規 オーバーレイ 起動の抑止に使い、MultiSelect は Esc 優先順位に使う。
     /// ヘッダー dim は PhotoModal / 中位モーダル / Filter の表示状態だけで決める。
     /// </summary>
-    private ShellOverlayState currentOverlayState()
-        => new(
-            isModalOpen,
-            isMiddleModalOpen,
-            isFilterOpen,
-            ConfirmOverlay.Visibility == Visibility.Visible,
-            viewModel.galleryViewModel.selectionState.IsMultiSelectMode,
-            galleryPage?.IsBulkTagConfirmationOpen == true);
+    private ShellOverlayState currentOverlayState() => new(isModalOpen, isMiddleModalOpen, isFilterOpen, ConfirmOverlay.Visibility == Visibility.Visible, viewModel.galleryViewModel.selectionState.IsMultiSelectMode, galleryPage?.IsBulkTagConfirmationOpen == true);
 
     /// <summary>中位モーダルを表示し、初回オープン元のフォーカスを復元用に保持する。</summary>
-    private void OpenMiddleModal(Control content)
+    private void OpenMiddleModal(Control content, bool blurBackground = false)
     {
         if (!isMiddleModalOpen)
             middleModalPreviousFocus = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot) as Control;
 
+        Stage.UseBlurredModalBackdrop = blurBackground;
         Stage.ModalContent = content;
         Stage.ModalVisibility = Visibility.Visible;
         isMiddleModalOpen = true;
@@ -406,7 +384,7 @@ public sealed partial class ShellPage : Page
     /// グループカードに保持された写真一覧をメインと同じ PhotoGrid で描画する。
     /// GroupPhotos が保持されていないカードだけ DB から取り直す。
     /// 中位モーダル (Stage.ModalContent) として表示し、内部の写真クリックで
-    /// PhotoModal が最上位レイヤに重なる 2 段スタック構造になる。
+    /// PhotoModal が最上位レイヤーに重なる 2 段スタック構造になる。
     /// </summary>
     private async Task ShowGroupDrillDown(PhotoGridItem groupItem)
     {
@@ -451,8 +429,8 @@ public sealed partial class ShellPage : Page
 
     /// <summary>
     /// 中位モーダル (Settings / GroupDrillDown / WorldResolve) を閉じる。
-    /// 最上位の PhotoModal が残っている場合でも中位レイヤだけを閉じ、
-    /// ヘッダー状態は残りの最上位レイヤに合わせて再同期する。
+    /// 最上位の PhotoModal が残っている場合でも中位レイヤーだけを閉じ、
+    /// ヘッダー状態は残りの最上位レイヤーに合わせて再同期する。
     /// </summary>
     private void CloseMiddleModal() => _ = CloseMiddleModalAsync();
 
@@ -499,18 +477,14 @@ public sealed partial class ShellPage : Page
     /// <summary>
     /// 各設定セクションを統合した SettingsPage を Stage.ModalContent 経由で重ねる。
     /// Gallery は背景に残ったまま。
-    /// インスタンスは初回生成時にキャッシュし、以降の表示は再ハイドレートで使い回す。
+    /// インスタンスは初回生成時にcacheし、以降の表示は再ハイドレートで使い回す。
     /// </summary>
     public void ShowSettings() => ShowSettings(null);
 
     /// <summary>以前のバックアップを置き換える前に確認し、承認時だけ現在の写真情報を保存する。</summary>
     private async Task CreatePhotoUserDataBackupWithConfirmationAsync()
     {
-        var answer = await ShowConfirmDialogAsync(
-            title: getMsg("SettingsPage.photoUserDataBackupConfirmTitle"),
-            message: getMsg("SettingsPage.photoUserDataBackupConfirmMessage"),
-            yesText: getMsg("SettingsPage.photoUserDataBackupConfirmButton"),
-            noText: getMsg("common.cancel")).ConfigureAwait(true);
+        var answer = await ShowConfirmDialogAsync(title: getMsg("SettingsPage.photoUserDataBackupConfirmTitle"), message: getMsg("SettingsPage.photoUserDataBackupConfirmMessage"), yesText: getMsg("SettingsPage.photoUserDataBackupConfirmButton"), noText: getMsg("common.cancel")).ConfigureAwait(true);
         if (answer != true) return;
 
         await viewModel.createPhotoUserDataBackup().ConfigureAwait(false);
@@ -519,11 +493,7 @@ public sealed partial class ShellPage : Page
     /// <summary>ファイル名一致によるお気に入り・タグの一括反映を確認し、承認時だけ復元する。</summary>
     private async Task RestorePhotoUserDataBackupWithConfirmationAsync()
     {
-        var answer = await ShowConfirmDialogAsync(
-            title: getMsg("SettingsPage.photoUserDataRestoreConfirmTitle"),
-            message: getMsg("SettingsPage.photoUserDataRestoreConfirmMessage"),
-            yesText: getMsg("SettingsPage.photoUserDataRestoreConfirmButton"),
-            noText: getMsg("common.cancel")).ConfigureAwait(true);
+        var answer = await ShowConfirmDialogAsync(title: getMsg("SettingsPage.photoUserDataRestoreConfirmTitle"), message: getMsg("SettingsPage.photoUserDataRestoreConfirmMessage"), yesText: getMsg("SettingsPage.photoUserDataRestoreConfirmButton"), noText: getMsg("common.cancel")).ConfigureAwait(true);
         if (answer != true) return;
 
         await viewModel.restorePhotoUserDataBackup().ConfigureAwait(false);
@@ -536,14 +506,7 @@ public sealed partial class ShellPage : Page
         if (!duplicates.CanDeleteSelected || duplicates.SelectedCount == 0)
             return;
 
-        var answer = await ShowConfirmDialogAsync(
-            title: getMsg("SettingsPage.deleteDuplicatePhotosConfirmTitle"),
-            message: getMsg(
-                "SettingsPage.deleteDuplicatePhotosConfirmMessage",
-                ("count", duplicates.SelectedCount),
-                ("size", duplicates.SelectedSizeLabel)),
-            yesText: getMsg("common.delete"),
-            noText: getMsg("common.cancel")).ConfigureAwait(true);
+        var answer = await ShowConfirmDialogAsync(title: getMsg("SettingsPage.deleteDuplicatePhotosConfirmTitle"), message: getMsg("SettingsPage.deleteDuplicatePhotosConfirmMessage", ("count", duplicates.SelectedCount), ("size", duplicates.SelectedSizeLabel)), yesText: getMsg("common.delete"), noText: getMsg("common.cancel")).ConfigureAwait(true);
         if (answer != true)
             return;
 
@@ -557,16 +520,13 @@ public sealed partial class ShellPage : Page
     {
         AppLogger.Trace("ShellPage.ShowSettings: enter");
         // モーダル多重化防止: 何らかのオーバーレイ (最上位/中位モーダル/検索条件/確認) が開いている間は
-        // Settings の新規オープンを no-op にする。Confirm は前面 overlay とこのガードで多重化を防ぐ。
+        // Settings の新規オープンを no-op にする。Confirm は前面 オーバーレイ とこのガードで多重化を防ぐ。
         if (!ShellPageInteractionLogic.CanOpenSettingsModal(currentOverlayState())) return;
         try
         {
             if (settingsPage is null)
             {
-                var compositeVm = new SettingsCompositeViewModel(
-                    viewModel.settingsViewModel,
-                    viewModel.tagMasterViewModel,
-                    viewModel.templatePageViewModel);
+                var compositeVm = new SettingsCompositeViewModel(viewModel.settingsViewModel, viewModel.tagMasterViewModel, viewModel.templatePageViewModel);
 
                 settingsPage = new SettingsPage(compositeVm, viewModel.duplicatePhotosViewModel)
                 {
@@ -625,16 +585,16 @@ public sealed partial class ShellPage : Page
             SyncSettingsWorldAnalysisState();
             if (initialSection is not null)
                 settingsPage.ShowSection(initialSection);
-            OpenMiddleModal(settingsPage);
+            OpenMiddleModal(settingsPage, blurBackground: true);
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShowSettings: threw: {ex}"); }
         AppLogger.Trace("ShellPage.ShowSettings: exit");
     }
 
     /// <summary>
-    /// 写真詳細モーダルを表示する。最上位レイヤ (Stage.TopModalContent) に出すことで、
+    /// 写真詳細モーダルを表示する。最上位レイヤー (Stage.TopModalContent) に出すことで、
     /// 中位モーダル (GroupDrillDown / Settings 等) の上にさらに重ねられる構造になる。
-    /// 毎回新しく生成する。キャッシュした Page に ViewModel だけ差し替える方式だと、visual tree から
+    /// 毎回新しく生成する。cacheした Page に ViewModel だけ差し替える方式だと、visual tree から
     /// detach されている間に親の RequestedTheme が変わってもページが追従せず、
     /// 再オープン時に古いテーマの {ThemeResource} が残ってしまう問題があったため。
     /// </summary>
@@ -674,8 +634,7 @@ public sealed partial class ShellPage : Page
                     return false;
                 return await viewModel.templatePageViewModel.openTweetIntent(selectedPhoto).ConfigureAwait(false);
             };
-            page.SetTweetAvailable(!string.IsNullOrWhiteSpace(
-                viewModel.templatePageViewModel.ActiveTweetTemplate));
+            page.SetTweetAvailable(!string.IsNullOrWhiteSpace(viewModel.templatePageViewModel.ActiveTweetTemplate));
             page.OnGoBack = () => modalViewModel.goBackPhoto();
             page.OnGoPrev = () => modalViewModel.state.goPrevPhoto(throttleRepeatedInput: true);
             page.OnGoNext = () => modalViewModel.state.goNextPhoto(throttleRepeatedInput: true);
@@ -736,9 +695,7 @@ public sealed partial class ShellPage : Page
             };
             page.OnApplied = async () =>
             {
-                await Task.WhenAll(
-                    viewModel.galleryViewModel.photosState.loadPhotos(),
-                    viewModel.galleryViewModel.loadWorldFilterOptions()).ConfigureAwait(false);
+                await Task.WhenAll(viewModel.galleryViewModel.photosState.loadPhotos(), viewModel.galleryViewModel.loadWorldFilterOptions()).ConfigureAwait(false);
                 viewModel.toastService.addToast(getMsg("ShellPage.worldInfoApplied"));
             };
             OpenMiddleModal(page);
@@ -800,7 +757,7 @@ public sealed partial class ShellPage : Page
         try
         {
             // 開く側のみガード: モーダル (最上位/中位) または確認 UI の表示中は検索条件パネルを開かない。
-            // 既に検索条件が開いている場合の閉じる操作は、残留 overlay を解消するため許可する。
+            // 既に検索条件が開いている場合の閉じる操作は、残留 オーバーレイ を解消するため許可する。
             if (!ShellPageInteractionLogic.CanToggleFilter(currentOverlayState())) return;
             isFilterOpen = !isFilterOpen;
             SetFilterOverlayOpen(isFilterOpen);
@@ -851,17 +808,18 @@ public sealed partial class ShellPage : Page
     ///   - Left  → 前の写真へ (ShowPhotoModal で結線したのと同じ OnGoPrev = goPrevPhoto())
     ///   - Right → 次の写真へ (同 OnGoNext = goNextPhoto())
     ///   - Esc   → 写真モーダルを閉じる (同 OnClose = closePhotoModal()+CloseModal())
-    /// TextBox にフォーカスがあるとき、または PhotoModal 内側 overlay が表示されているときはスキップする。
+    /// TextBox にフォーカスがあるとき、または PhotoModal 内側 オーバーレイ が表示されているときはスキップする。
     /// Shell 側で処理したキーは Handled 済みにするので、PhotoModalPage.Page_KeyDown・ShellPage_KeyDown
-    /// (bubbling)・背後 GridView のいずれにも届かない。内側 overlay 表示中のキーは
-    /// PhotoModalPage 側へ渡し、内側 overlay の close または背面操作の抑止として処理する。
+    /// (bubbling)・背後 GridView のいずれにも届かない。内側 オーバーレイ 表示中のキーは
+    /// PhotoModalPage 側へ渡し、内側 オーバーレイ の close または背面操作の抑止として処理する。
     /// Enter (タグ一括追加) や Backspace (戻る) はここでは扱わず、従来通り PhotoModalPage 側が処理する。
     /// </summary>
     private void ShellPage_PreviewKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
         try
         {
-            switch (ShellPageInteractionLogic.ResolveShellPreviewKey(currentOverlayState(), e.Key))
+            var overlayState = currentOverlayState();
+            switch (ShellPageInteractionLogic.ResolveShellPreviewKey(overlayState, e.Key))
             {
                 case ShellPreviewKeyAction.CloseConfirm:
                     CloseConfirmDialog(null);
@@ -872,12 +830,9 @@ public sealed partial class ShellPage : Page
                     return;
             }
 
-            var action = ShellPageInteractionLogic.ResolvePhotoModalPreviewKey(
-                isPhotoModalOpen: isModalOpen,
-                hasActivePhotoModal: activePhotoModalPage is not null,
-                hasPhotoModalInnerOverlay: activePhotoModalPage?.HasBlockingInnerOverlayOpen == true,
-                isTextInputFocused: Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot) is TextBox,
-                key: e.Key);
+            var focusedElement = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot);
+            var isTextInputFocused = focusedElement is TextBox or PasswordBox or RichEditBox;
+            var action = ShellPageInteractionLogic.ResolvePhotoModalPreviewKey(isPhotoModalOpen: isModalOpen, hasActivePhotoModal: activePhotoModalPage is not null, hasPhotoModalInnerOverlay: activePhotoModalPage?.HasBlockingInnerOverlayOpen == true, isTextInputFocused: isTextInputFocused, key: e.Key);
             switch (action)
             {
                 case PhotoModalKeyAction.GoPrevious:
@@ -893,6 +848,15 @@ public sealed partial class ShellPage : Page
                     activePhotoModalPage?.OnClose?.Invoke();
                     break;
             }
+
+            if (e.Handled
+                || !ShellPageInteractionLogic.CanAdjustGallerySize(overlayState, viewModel.galleryViewModel.displayState.ViewMode == ViewMode.gallery, isTextInputFocused))
+                return;
+
+            var columnDelta = ShellPageInteractionLogic.ResolveGalleryColumnDelta(e.Key);
+            if (columnDelta == 0) return;
+            galleryPage?.AdjustGalleryPhotoSize(columnDelta);
+            e.Handled = true;
         }
         catch (Exception ex) { AppLogger.Error($"ShellPage.ShellPage_PreviewKeyDown: threw: {ex}"); }
     }
@@ -901,9 +865,9 @@ public sealed partial class ShellPage : Page
     /// シェルレベルの bubbling キーボードショートカット。
     /// PhotoModal の ←/→/Esc と Confirm 表示中の Esc は ShellPage_PreviewKeyDown が先に処理する。
     /// ここでは通常のギャラリー / 設定 / タグマスタ画面の操作と、preview へ届かなかった場合の
-    /// overlay fallback を扱う。
-    ///   - Esc       → 検索条件 overlay を閉じる / マルチセレクトを解除 / 確認 UI の fallback close
-    ///   - Ctrl+F    → 検索条件 overlay を開く
+    /// オーバーレイ fallback を扱う。
+    ///   - Esc       → 検索条件 オーバーレイ を閉じる / マルチセレクトを解除 / 確認 UI の fallback close
+    ///   - Ctrl+F    → 検索条件 オーバーレイ を開く
     ///   - Ctrl+,    → 設定画面を開く（一般的な「設定」ショートカット）
     /// </summary>
     private void ShellPage_KeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)

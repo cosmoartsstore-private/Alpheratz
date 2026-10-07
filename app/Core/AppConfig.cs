@@ -19,7 +19,7 @@ public sealed class AppConfig
     private readonly object _lock = new();
     private readonly string? settingDir;
 
-    // テストや移行処理では設定ディレクトリを明示できるようにし、通常実行では AppPaths を使う。
+    // テストや移行処理では設定directoryを明示できるようにし、通常実行では AppPaths を使う。
     public AppConfig(string? settingDir = null)
     {
         this.settingDir = settingDir;
@@ -71,16 +71,10 @@ public sealed class AppConfig
                 tempPath = Path.Combine(dir, $"setting.{Guid.NewGuid():N}.tmp");
 
                 // 最終ファイルへ直接書くと、プロセス終了や書込み失敗で既存設定まで破損する。
-                // 同一ディレクトリの作業ファイルをディスクへ反映してから rename し、
+                // 同一directoryの作業ファイルをディスクへ反映してから rename し、
                 // 読込側には常に旧版か新版のどちらか一方だけを見せる。
                 var bytes = System.Text.Encoding.UTF8.GetBytes(json);
-                using (var stream = new FileStream(
-                    tempPath,
-                    FileMode.CreateNew,
-                    FileAccess.Write,
-                    FileShare.None,
-                    bufferSize: 4096,
-                    FileOptions.WriteThrough))
+                using (var stream = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, bufferSize: 4096, FileOptions.WriteThrough))
                 {
                     stream.Write(bytes);
                     stream.Flush(flushToDisk: true);
@@ -115,7 +109,7 @@ public sealed class AppConfig
     {
         AppLogger.Trace("AppConfig.GetStartupPreference: enter");
         var s = LoadSetting();
-        // 明示保存先はテスト・移行用なので Windows レジストリへ触れず、保存値を返す。
+        // 明示保存先はテスト・移行用なので Windows registryへ触れず、保存値を返す。
         // 通常実行では、画面上の状態を実際の Run 登録へ合わせる。
         var enabled = string.IsNullOrWhiteSpace(settingDir)
             ? IsStartupRegistrationCurrent()
@@ -158,10 +152,7 @@ public sealed class AppConfig
                 }
                 catch (Exception restoreException)
                 {
-                    throw new AggregateException(
-                        "自動起動設定の更新と以前の登録への復元に失敗しました",
-                        updateException,
-                        restoreException);
+                    throw new AggregateException("自動起動設定の更新と以前の登録への復元に失敗しました", updateException, restoreException);
                 }
                 throw;
             }
@@ -180,16 +171,12 @@ public sealed class AppConfig
         AppLogger.Trace($"AppConfig.SetStartupEnabled: enter enabled={enabled}");
         try
         {
-            using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(
-                StartupRegistryKeyPath, writable: true)
+            using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(StartupRegistryKeyPath, writable: true)
                 ?? throw new InvalidOperationException("Windows の自動起動設定を開けません");
             if (enabled)
             {
                 var launcherPath = ResolveStartupExecutablePath();
-                key.SetValue(
-                    StartupRegistryValueName,
-                    QuoteExecutablePath(launcherPath),
-                    Microsoft.Win32.RegistryValueKind.String);
+                key.SetValue(StartupRegistryValueName, QuoteExecutablePath(launcherPath), Microsoft.Win32.RegistryValueKind.String);
             }
             else
             {
@@ -210,10 +197,7 @@ public sealed class AppConfig
         try
         {
             using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(StartupRegistryKeyPath, writable: false);
-            var registered = key?.GetValue(
-                StartupRegistryValueName,
-                defaultValue: null,
-                options: Microsoft.Win32.RegistryValueOptions.DoNotExpandEnvironmentNames) as string;
+            var registered = key?.GetValue(StartupRegistryValueName, defaultValue: null, options: Microsoft.Win32.RegistryValueOptions.DoNotExpandEnvironmentNames) as string;
             if (registered is null)
                 return false;
 
@@ -237,7 +221,7 @@ public sealed class AppConfig
                 return installedLauncher;
         }
 
-        // レジストリが利用できない開発配置でも、app\Alpheratz.Frontend.exe の1階層上を確認する。
+        // registryが利用できない開発配置でも、app\Alpheratz.Frontend.exe の1階層上を確認する。
         var processPath = Environment.ProcessPath;
         var runtimeDirectory = string.IsNullOrWhiteSpace(processPath)
             ? null
@@ -258,19 +242,13 @@ public sealed class AppConfig
 
     private static string QuoteExecutablePath(string path) => $"\"{path}\"";
 
-    private readonly record struct StartupRegistrationSnapshot(
-        bool Exists,
-        object? Value,
-        Microsoft.Win32.RegistryValueKind Kind);
+    private readonly record struct StartupRegistrationSnapshot(bool Exists, object? Value, Microsoft.Win32.RegistryValueKind Kind);
 
     /// <summary>更新失敗時に Run 登録を正確に戻せるよう、値と型を保存する。</summary>
     private static StartupRegistrationSnapshot CaptureStartupRegistration()
     {
         using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(StartupRegistryKeyPath, writable: false);
-        var value = key?.GetValue(
-            StartupRegistryValueName,
-            defaultValue: null,
-            options: Microsoft.Win32.RegistryValueOptions.DoNotExpandEnvironmentNames);
+        var value = key?.GetValue(StartupRegistryValueName, defaultValue: null, options: Microsoft.Win32.RegistryValueOptions.DoNotExpandEnvironmentNames);
         return value is null
             ? new StartupRegistrationSnapshot(false, null, Microsoft.Win32.RegistryValueKind.String)
             : new StartupRegistrationSnapshot(true, value, key!.GetValueKind(StartupRegistryValueName));
@@ -278,8 +256,7 @@ public sealed class AppConfig
 
     private static void RestoreStartupRegistration(StartupRegistrationSnapshot snapshot)
     {
-        using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(
-            StartupRegistryKeyPath, writable: true)
+        using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(StartupRegistryKeyPath, writable: true)
             ?? throw new InvalidOperationException("Windows の自動起動設定を復元できません");
         if (snapshot.Exists)
             key.SetValue(StartupRegistryValueName, snapshot.Value!, snapshot.Kind);

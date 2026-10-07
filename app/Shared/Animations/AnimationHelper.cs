@@ -9,14 +9,17 @@ namespace Alpheratz.Shared.Animations;
 
 /// <summary>
 /// Composition API ベースのアニメーションヘルパー。
-/// CSS transition 相当の軽量アニメーションを WinUI で再現する。
+/// 視覚効果ではなく状態変化の理解を助けるため、次の原則を共通化する。
+/// ・操作への応答は原則120～240ms、画面遷移は220～360msで短く完結させる。
+/// ・レイアウトを動かさず、TransformとOpacityを中心に使う。
+/// ・状態を表す面を主役にし、周辺要素を同時に大きく動かさない。
+/// ・行き過ぎ表現は小さく一度だけ使い、必ず静止位置へ戻す。
+/// ・進捗表現を除いて常時動かさず、操作や状態変化が起きたときだけ再生する。
 /// </summary>
 [ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public static class AnimationHelper
 {
-    // -----------------------------------------------------------------------
-    // Opacity fade
-    // -----------------------------------------------------------------------
+    // Opacity のフェード
 
     /// <summary>要素の Opacity を 1 へフェードインさせる。</summary>
     public static void FadeIn(UIElement element, int durationMs = 200, int delayMs = 0)
@@ -93,9 +96,7 @@ public static class AnimationHelper
         };
     }
 
-    // -----------------------------------------------------------------------
-    // Slide (TranslateX / TranslateY via Offset)
-    // -----------------------------------------------------------------------
+    // Offset による TranslateX / TranslateY の移動
 
     /// <summary>指定オフセットから現在位置へスライドしながら表示する。</summary>
     public static void SlideIn(UIElement element, float fromX = 0, float fromY = 0, int durationMs = 180)
@@ -145,9 +146,7 @@ public static class AnimationHelper
             batch.Completed += (_, _) => onCompleted();
     }
 
-    // -----------------------------------------------------------------------
-    // Scale (bounce / pop) — modal open/close style
-    // -----------------------------------------------------------------------
+    // モーダルの開閉に使う拡大縮小
 
     /// <summary>小さめのスケールから拡大しながら表示する。</summary>
     public static void ScaleIn(UIElement element, float fromScale = 0.88f, int durationMs = 350)
@@ -201,11 +200,51 @@ public static class AnimationHelper
             batch.Completed += (_, _) => onCompleted();
     }
 
-    // -----------------------------------------------------------------------
-    // Combined: slide-up + fade (for toasts, overlays)
-    // -----------------------------------------------------------------------
+    // 共通の選択面を移動させ、状態の連続性を伝える。
 
-    /// <summary>モーダルを下から上へスライドしながら表示する。HTML デモの slide-up と同じ移動量・時間を使う。</summary>
+    /// <summary>
+    /// 選択面を現在位置から次の位置へ移動し、進行方向へわずかに行き過ぎて静止させる。
+    /// レイアウト位置は変えず、連続する選択肢の関係だけを短い動きで示す。
+    /// </summary>
+    public static void MoveSelectionSurface(UIElement surface, float fromY, float toY, int durationMs = 220)
+    {
+        surface.Opacity = 1;
+        ElementCompositionPreview.SetIsTranslationEnabled(surface, true);
+        var visual = ElementCompositionPreview.GetElementVisual(surface);
+        visual.StopAnimation("Translation");
+
+        if (Math.Abs(toY - fromY) < 0.1f)
+        {
+            visual.Properties.InsertVector3("Translation", new Vector3(0, toY, 0));
+            return;
+        }
+
+        var compositor = visual.Compositor;
+        var travelEase = compositor.CreateCubicBezierEasingFunction(new Vector2(0.22f, 0.72f), new Vector2(0.2f, 1f));
+        var settleEase = compositor.CreateCubicBezierEasingFunction(new Vector2(0.2f, 0.8f), new Vector2(0.25f, 1f));
+
+        var direction = Math.Sign(toY - fromY);
+        visual.Properties.InsertVector3("Translation", new Vector3(0, fromY, 0));
+        var translationAnimation = compositor.CreateVector3KeyFrameAnimation();
+        translationAnimation.InsertKeyFrame(0.8f, new Vector3(0, toY + (1.25f * direction), 0), travelEase);
+        translationAnimation.InsertKeyFrame(1f, new Vector3(0, toY, 0), settleEase);
+        translationAnimation.Duration = TimeSpan.FromMilliseconds(durationMs);
+        visual.StartAnimation("Translation", translationAnimation);
+    }
+
+    /// <summary>選択面を、アニメーションを行わず現在位置へ同期する。</summary>
+    public static void SetSelectionSurfacePosition(UIElement surface, float y)
+    {
+        surface.Opacity = 1;
+        ElementCompositionPreview.SetIsTranslationEnabled(surface, true);
+        var visual = ElementCompositionPreview.GetElementVisual(surface);
+        visual.StopAnimation("Translation");
+        visual.Properties.InsertVector3("Translation", new Vector3(0, y, 0));
+    }
+
+    // 通知と オーバーレイ に使う上方向の移動とフェード
+
+    /// <summary>モーダルを下から上へスライドしながら表示する。</summary>
     public static void ModalSlideUpIn(UIElement element, float fromY = 48f, int durationMs = 300)
     {
         var visual = ElementCompositionPreview.GetElementVisual(element);
@@ -230,9 +269,7 @@ public static class AnimationHelper
         visual.StartAnimation("Opacity", opacityAnim);
     }
 
-    // -----------------------------------------------------------------------
     // アニメーション完了後の表示状態を即時に初期化する。
-    // -----------------------------------------------------------------------
 
     /// <summary>Opacity、Offset、Scale を通常表示状態へ戻す。</summary>
     public static void ResetVisual(UIElement element)
@@ -251,4 +288,5 @@ public static class AnimationHelper
         visual.StopAnimation("Offset");
         visual.StopAnimation("Scale");
     }
+
 }

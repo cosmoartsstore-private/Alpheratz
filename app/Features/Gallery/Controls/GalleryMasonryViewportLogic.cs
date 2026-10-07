@@ -5,7 +5,7 @@ namespace Alpheratz.Features.Gallery.Controls;
 
 /// <summary>
 /// GalleryMasonryView の仮想化判定を UI 要素から切り離して扱う補助ロジック。
-/// カラム数、表示対象、解放対象、先頭表示インデックスの計算だけを持つ。
+/// column数、表示対象、解放対象、先頭表示インデックスの計算だけを持つ。
 /// </summary>
 internal static class GalleryMasonryViewportLogic
 {
@@ -13,37 +13,40 @@ internal static class GalleryMasonryViewportLogic
     public const int ShimmerDurationMilliseconds = 1500;
     public const int ImageLoadRetryDelayMilliseconds = 500;
     public const int MaxImageLoadRetries = 2;
+    public const int DefaultRequestedColumnCount = 5;
+    public const int MinRequestedColumnCount = 2;
+    public const int MaxRequestedColumnCount = 10;
 
-    /// <summary>コントロール幅と指定カラム数から、内部幅と実効カラム数を算出する。</summary>
-    public static (double InnerWidth, int EffectiveColumns) ComputeColumns(
-        double actualWidth,
-        double scrollHostWidth,
-        int? requestedColumnCount)
+    /// <summary>コントロール幅と指定column数から、内部幅と実効column数を算出する。</summary>
+    public static (double InnerWidth, int EffectiveColumns) ComputeColumns(double actualWidth, double scrollHostWidth, int? requestedColumnCount)
     {
         var availableWidth = actualWidth;
         if (availableWidth <= 0) availableWidth = scrollHostWidth;
         var inner = Math.Max(0, availableWidth - 28);
         var autoCols = inner > 0
+            ? Math.Max(1, (int)Math.Floor((inner + GalleryMasonryLayout.Gap) / (GalleryMasonryLayout.PreferredColumnWidth + GalleryMasonryLayout.Gap)))
+            : 1;
+        var maxFitCols = inner > 0
             ? Math.Max(1, (int)Math.Floor((inner + GalleryMasonryLayout.Gap) / (GalleryMasonryLayout.MinColumnWidth + GalleryMasonryLayout.Gap)))
             : 1;
         var effectiveCols = requestedColumnCount.HasValue
-            ? Math.Max(1, Math.Min(requestedColumnCount.Value, autoCols))
+            ? Math.Clamp(requestedColumnCount.Value, 1, maxFitCols)
             : autoCols;
         return (inner, effectiveCols);
     }
 
-    /// <summary>外部指定カラム数を、0 以下なら自動計算指定へ正規化する。</summary>
-    public static int? ResolveRequestedColumnCount(int count) => count > 0 ? count : null;
+    /// <summary>外部指定column数を、0 以下なら自動計算指定へ正規化する。</summary>
+    public static int? ResolveRequestedColumnCount(int count)
+        => count > 0 ? Math.Clamp(count, MinRequestedColumnCount, MaxRequestedColumnCount) : null;
+
+    /// <summary>現在の実効column数へ増減を適用し、手動操作の許容範囲へ収める。</summary>
+    public static int AdjustRequestedColumnCount(int currentCount, int delta) => Math.Clamp(currentCount + delta, MinRequestedColumnCount, MaxRequestedColumnCount);
 
     /// <summary>コレクション変更時に、全再構築ではなく座標再計算だけで済ませるかを返す。</summary>
-    public static bool ShouldReuseCardsForCollectionChange(NotifyCollectionChangedAction action)
-        => action == NotifyCollectionChangedAction.Add;
+    public static bool ShouldReuseCardsForCollectionChange(NotifyCollectionChangedAction action) => action == NotifyCollectionChangedAction.Add;
 
     /// <summary>MasonryLayoutResult から Canvas の幅と高さを算出する。</summary>
-    public static MasonryCanvasSize CanvasSize(MasonryLayoutResult layout)
-        => new(
-            layout.ColumnCount * layout.ColumnWidth + (layout.ColumnCount - 1) * layout.Gap,
-            layout.TotalHeight);
+    public static MasonryCanvasSize CanvasSize(MasonryLayoutResult layout) => new(layout.ColumnCount * layout.ColumnWidth + (layout.ColumnCount - 1) * layout.Gap, layout.TotalHeight);
 
     /// <summary>レイアウトアイテムのインデックスを Top 昇順に並べる。</summary>
     public static int[] BuildSortedIndex(IReadOnlyList<MasonryItem> items)
@@ -55,13 +58,7 @@ internal static class GalleryMasonryViewportLogic
     }
 
     /// <summary>現在のスクロール位置で生成または維持すべきカードのレイアウトインデックスを返す。</summary>
-    public static IReadOnlyList<int> FindVisibleIndices(
-        IReadOnlyList<MasonryItem> items,
-        IReadOnlyList<int> sortedByTop,
-        double scrollTop,
-        double viewportHeight,
-        double overscanPx,
-        double maxCardHeight)
+    public static IReadOnlyList<int> FindVisibleIndices(IReadOnlyList<MasonryItem> items, IReadOnlyList<int> sortedByTop, double scrollTop, double viewportHeight, double overscanPx, double maxCardHeight)
     {
         if (items.Count == 0 || sortedByTop.Count == 0) return [];
         var bottom = scrollTop + viewportHeight;
@@ -84,11 +81,7 @@ internal static class GalleryMasonryViewportLogic
     }
 
     /// <summary>カードが即時解放すべき範囲外に出ているかを判定する。</summary>
-    public static bool IsOutsideReleaseRange(
-        MasonryItem item,
-        double scrollTop,
-        double viewportHeight,
-        double releaseMarginPx)
+    public static bool IsOutsideReleaseRange(MasonryItem item, double scrollTop, double viewportHeight, double releaseMarginPx)
     {
         var bottom = scrollTop + viewportHeight;
         var releaseTop = scrollTop - releaseMarginPx;
@@ -97,14 +90,10 @@ internal static class GalleryMasonryViewportLogic
     }
 
     /// <summary>サムネイル要求済み登録の結果と写真状態から、生成キューへ積むべきかを返す。</summary>
-    public static bool ShouldQueueThumbnailAfterRequestRegistered(bool wasNewRequest, string photoPath, string? gridThumbPath)
-        => wasNewRequest && string.IsNullOrEmpty(gridThumbPath) && !string.IsNullOrEmpty(photoPath);
+    public static bool ShouldQueueThumbnailAfterRequestRegistered(bool wasNewRequest, string photoPath, string? gridThumbPath) => wasNewRequest && string.IsNullOrEmpty(gridThumbPath) && !string.IsNullOrEmpty(photoPath);
 
     /// <summary>現在のスクロール位置から、月ナビゲーションへ通知する先頭写真インデックスを返す。</summary>
-    public static int? FindFirstVisibleIndex(
-        IReadOnlyList<MasonryItem> items,
-        IReadOnlyList<int> sortedByTop,
-        double scrollTop)
+    public static int? FindFirstVisibleIndex(IReadOnlyList<MasonryItem> items, IReadOnlyList<int> sortedByTop, double scrollTop)
     {
         if (items.Count == 0 || sortedByTop.Count == 0) return null;
         var startPos = LowerBoundByTop(items, sortedByTop, scrollTop);
@@ -114,12 +103,10 @@ internal static class GalleryMasonryViewportLogic
     }
 
     /// <summary>先頭表示インデックスが前回通知値から変わっているかを返す。</summary>
-    public static bool ShouldNotifyFirstVisibleIndex(int? firstIndex, int lastReportedFirstVisible)
-        => firstIndex.HasValue && firstIndex.Value != lastReportedFirstVisible;
+    public static bool ShouldNotifyFirstVisibleIndex(int? firstIndex, int lastReportedFirstVisible) => firstIndex.HasValue && firstIndex.Value != lastReportedFirstVisible;
 
     /// <summary>画像デコード時の幅指定を、1 以上の整数に丸める。</summary>
-    public static int DecodePixelWidth(double containerWidth)
-        => Math.Max(1, (int)containerWidth);
+    public static int DecodePixelWidth(double containerWidth) => Math.Max(1, (int)containerWidth);
 
     /// <summary>写真とカード幅から、BitmapImage に渡すソースパスとデコード幅を返す。ソース空なら null。</summary>
     public static MasonryImageRequest? ImageRequest(PhotoThumbnailItem photo, double containerWidth)
@@ -138,22 +125,12 @@ internal static class GalleryMasonryViewportLogic
     }
 
     /// <summary>画像差し替えに関係する PhotoThumbnailItem のプロパティ名かを返す。</summary>
-    public static bool IsImageSourceProperty(string? propertyName)
-        => propertyName is nameof(PhotoThumbnailItem.EffectiveSourcePath)
-            or nameof(PhotoThumbnailItem.GridThumbPath)
-            or nameof(PhotoThumbnailItem.ResolvedPhotoPath);
+    public static bool IsImageSourceProperty(string? propertyName) => propertyName is nameof(PhotoThumbnailItem.EffectiveSourcePath) or nameof(PhotoThumbnailItem.GridThumbPath) or nameof(PhotoThumbnailItem.ResolvedPhotoPath);
 
     /// <summary>新しい画像パスが現在ロード済みのパスと異なるかを返す。</summary>
-    public static bool ShouldReloadImage(string newPath, string loadedPath)
-        => newPath != loadedPath;
+    public static bool ShouldReloadImage(string newPath, string loadedPath) => newPath != loadedPath;
 
-    public static bool IsCurrentImageLoadCallback(
-        int callbackVersion,
-        int currentVersion,
-        string callbackPath,
-        string loadingPath)
-        => callbackVersion == currentVersion
-            && string.Equals(callbackPath, loadingPath, StringComparison.OrdinalIgnoreCase);
+    public static bool IsCurrentImageLoadCallback(int callbackVersion, int currentVersion, string callbackPath, string loadingPath) => callbackVersion == currentVersion && string.Equals(callbackPath, loadingPath, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>未ロードカードが現在の overscan 範囲内にあるかを返す。</summary>
     public static bool IsInsideOverscan(double cardTop, double cardHeight, double scrollTop, double viewportHeight, double overscanPx)
@@ -165,19 +142,13 @@ internal static class GalleryMasonryViewportLogic
     }
 
     /// <summary>画像ロード失敗後に、同じカードへ自動再試行を予約するかを返す。</summary>
-    public static bool ShouldRetryImageLoad(int failureCount, bool isInsideOverscan)
-        => isInsideOverscan && failureCount > 0 && failureCount <= MaxImageLoadRetries;
+    public static bool ShouldRetryImageLoad(int failureCount, bool isInsideOverscan) => isInsideOverscan && failureCount > 0 && failureCount <= MaxImageLoadRetries;
 
     /// <summary>写真の選択状態から、選択リングとチェックバッジを表示するかを返す。</summary>
     public static SelectionVisual SelectionVisual(bool isSelected) => new(isSelected);
 
     /// <summary>PhotoThumbnailItem の変更通知から、Masonry カード側で行う処理を返す。</summary>
-    public static MasonryPhotoChangeAction PhotoChangeAction(
-        string? propertyName,
-        string newPath,
-        string loadedPath,
-        bool isLoaded,
-        bool isInsideOverscan)
+    public static MasonryPhotoChangeAction PhotoChangeAction(string? propertyName, string newPath, string loadedPath, bool isLoaded, bool isInsideOverscan)
     {
         if (propertyName == nameof(PhotoThumbnailItem.IsSelected))
             return MasonryPhotoChangeAction.UpdateSelection;
@@ -193,10 +164,7 @@ internal static class GalleryMasonryViewportLogic
     }
 
     /// <summary>Top が threshold 以上になる最初の sortedByTop 位置を二分探索で返す。</summary>
-    private static int LowerBoundByTop(
-        IReadOnlyList<MasonryItem> items,
-        IReadOnlyList<int> sortedByTop,
-        double threshold)
+    private static int LowerBoundByTop(IReadOnlyList<MasonryItem> items, IReadOnlyList<int> sortedByTop, double threshold)
     {
         var lo = 0;
         var hi = sortedByTop.Count - 1;

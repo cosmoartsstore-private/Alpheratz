@@ -34,6 +34,5 @@ public sealed class ThumbnailSourceConverter : IValueConverter
     }
 
     /// <summary>逆変換は非対応。</summary>
-    public object ConvertBack(object value, Type targetType, object parameter, string language)
-        => throw new NotSupportedException();
+    public object ConvertBack(object value, Type targetType, object parameter, string language) => throw new NotSupportedException();
 }

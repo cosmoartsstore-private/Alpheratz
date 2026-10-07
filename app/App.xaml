@@ -1,12 +1,9 @@
-<Application
-    x:Class="Alpheratz.App"
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+<Application x:Class="Alpheratz.App" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <!-- Order matters: tokens & brushes feed into typography/buttons/containers. -->
+                <!-- Typography、Buttons、Containers が参照するため、Tokens と Brushes を先に読み込む。 -->
                 <ResourceDictionary Source="Themes/Tokens.xaml"/>
                 <ResourceDictionary Source="Themes/Brushes.xaml"/>
                 <ResourceDictionary Source="Themes/Typography.xaml"/>

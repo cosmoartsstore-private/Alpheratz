@@ -17,7 +17,7 @@ namespace Alpheratz.Features.PhotoModal;
 /// PhotoModal（写真詳細モーダル）のステート。
 /// 選択写真の管理・前後ナビゲーション・メモ保存・補助データの遅延取得を担当する。
 /// </summary>
-#pragma warning disable CS0162 // Unreachable code (DETACH flags are compile-time constants for debug)
+#pragma warning disable CS0162 // DETACH flag は Debug 用の compile-time constant のため、到達不能コードを許容する。
 public partial class PhotoModalState : UiThreadSafeObservableObject
 {
     // true にするとランタイムデータの取得・保存を全てスキップする（デバッグ用）。
@@ -198,11 +198,7 @@ public partial class PhotoModalState : UiThreadSafeObservableObject
     /// <summary>キーボード長押しによる連続画像差し替えを一定間隔に抑える。</summary>
     private bool TryAcceptNavigation(PhotoModalNavigationDirection direction)
     {
-        var decision = PhotoModalPageLogic.NavigationGate(
-            Environment.TickCount64,
-            lastNavigationAcceptedTicks,
-            navigationBurstStartedTicks,
-            lastNavigationDirection == direction);
+        var decision = PhotoModalPageLogic.NavigationGate(Environment.TickCount64, lastNavigationAcceptedTicks, navigationBurstStartedTicks, lastNavigationDirection == direction);
         navigationBurstStartedTicks = decision.BurstStartedTicks;
         lastNavigationAcceptedTicks = decision.LastAcceptedTicks;
         if (decision.Allowed)

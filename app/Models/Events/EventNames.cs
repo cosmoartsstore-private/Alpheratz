@@ -13,7 +13,7 @@ namespace Alpheratz.Models.Events;
 /// </summary>
 public static class EventNames
 {
-    // ===== Scan (PhotoScanner) =====
+    // スキャン（PhotoScanner）
     /// <summary>スキャン進捗。payload = ScanProgressDto。</summary>
     public const string ScanProgress = "scan:progress";
     /// <summary>スキャン完了 (写真メタデータの取込/更新が一段落)。payload = null。</summary>
@@ -30,7 +30,7 @@ public static class EventNames
     /// <summary>スキャン中のエラー。payload = string (エラーメッセージ)。</summary>
     public const string ScanError = "scan:error";
 
-    // ===== Phash (PhashService) =====
+    // 知覚ハッシュ（PhashService）
     /// <summary>PDQ ハッシュ計算の進捗。payload = PhashProgressEvent。</summary>
     public const string PhashProgress = "phash_progress";
     /// <summary>PDQ ハッシュ計算完了。payload = null。</summary>
@@ -38,7 +38,7 @@ public static class EventNames
     /// <summary>PDQ ハッシュ計算エラー。payload = string (エラーメッセージ)。</summary>
     public const string PhashError = "phash_error";
 
-    // ===== Orientation (OrientationService) =====
+    // 写真の向き（OrientationService）
     /// <summary>orientation / 寸法補完の進捗。payload = OrientationProgressEvent。</summary>
     public const string OrientationProgress = "orientation_progress";
     /// <summary>orientation / 寸法補完の完了。payload = null。</summary>

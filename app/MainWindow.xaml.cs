@@ -41,8 +41,7 @@ public partial class MainWindow : Window
         var hwnd = WindowNative.GetWindowHandle(this);
         var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
         var appWindow = AppWindow.GetFromWindowId(windowId);
-        var iconPath = System.IO.Path.GetFullPath(
-            System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "icon.ico"));
+        var iconPath = System.IO.Path.GetFullPath(System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "icon.ico"));
         if (System.IO.File.Exists(iconPath))
             appWindow.SetIcon(iconPath);
         else

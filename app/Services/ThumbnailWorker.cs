@@ -13,7 +13,7 @@ public sealed record ThumbnailResult(string PhotoPath, long SourceSlot, string T
 
 /// <summary>
 /// グリッド/表示サムネイルをバックグラウンドで一括生成するワーカー。
-/// ThumbnailService.EnsureGridThumbAsync はキャッシュ済みなら即返するため、
+/// ThumbnailService.EnsureGridThumbAsync はcache済みなら即返するため、
 /// 重複バッチ (ビューポート遷移時の同じ写真への再リクエスト) を投げてもコストは低い。
 /// </summary>
 public sealed class ThumbnailWorker
@@ -44,10 +44,7 @@ public sealed class ThumbnailWorker
     /// 各生成完了時に onReady をワーカースレッドから呼ぶ。
     /// UI 更新は呼び出し元が UiThread.Run 経由で行うこと。
     /// </summary>
-    public Task GenerateGridAsync(
-        IReadOnlyList<(string path, long slot)> targets,
-        Action<ThumbnailResult> onReady,
-        CancellationToken ct = default)
+    public Task GenerateGridAsync(IReadOnlyList<(string path, long slot)> targets, Action<ThumbnailResult> onReady, CancellationToken ct = default)
     {
         CancellationTokenSource operationCts;
         Task operation;
@@ -59,22 +56,16 @@ public sealed class ThumbnailWorker
             operationCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             // 実処理を別タスクへ送ることで、外部コールバックを gate の内側で実行しない。
             // gate を解放する前に登録するため、停止処理は開始直後の書込みも必ず捕捉できる。
-            operation = Task.Run(
-                () => RunAsync("Grid", targets, thumbnailService.EnsureGridThumbAsync, onReady, operationCts.Token),
-                CancellationToken.None);
+            operation = Task.Run(() => RunAsync("Grid", targets, thumbnailService.EnsureGridThumbAsync, onReady, operationCts.Token), CancellationToken.None);
             activeOperations.Add(operation, operationCts);
         }
 
-        _ = operation.ContinueWith(
-            completeOperation,
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
+        _ = operation.ContinueWith(completeOperation, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         return operation;
     }
 
     /// <summary>
-    /// すべてのサムネイル生成を停止し、キャッシュへの書込みが終了するまで待つ。
+    /// すべてのサムネイル生成を停止し、cacheへの書込みが終了するまで待つ。
     /// ResumeOperations を呼ぶまでは新しい生成要求を受け付けない。
     /// </summary>
     public async Task SuspendOperationsAndWaitAsync()
@@ -128,12 +119,7 @@ public sealed class ThumbnailWorker
     /// 対象数と同数の待機 Task を作らず、大規模一覧のキャンセル待ちと GC 負荷を抑える。
     /// 個別の失敗はログに記録してスキップし、バッチ全体をキャンセルしない。
     /// </summary>
-    private async Task RunAsync(
-        string kindLabel,
-        IReadOnlyList<(string path, long slot)> targets,
-        Func<string, long, CancellationToken, Task<string>> ensure,
-        Action<ThumbnailResult> onReady,
-        CancellationToken ct)
+    private async Task RunAsync(string kindLabel, IReadOnlyList<(string path, long slot)> targets, Func<string, long, CancellationToken, Task<string>> ensure, Action<ThumbnailResult> onReady, CancellationToken ct)
     {
         AppLogger.Trace($"ThumbnailWorker.Run({kindLabel}): enter count={targets.Count}");
         if (targets.Count == 0)

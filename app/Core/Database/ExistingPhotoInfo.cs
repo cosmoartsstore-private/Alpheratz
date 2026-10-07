@@ -1,9 +1,7 @@
 namespace Alpheratz.Core.Database;
 
-// ---------------------------------------------------------------------------
-// Snapshot of an existing photo row, used by the scanner to decide what to
-// refresh.
-// ---------------------------------------------------------------------------
+// scanner が更新対象を判断するために読み込む既存写真行の snapshot。
+//
 public sealed class ExistingPhotoInfo
 {
     public string PhotoFilename { get; init; } = "";

@@ -23,7 +23,7 @@ namespace Alpheratz.Features.Shell.Controls;
 /// 画面上部のヘッダーバー。
 /// 構成：
 ///   [検索条件] [検索 TextBox] [ギャラリーモード] [写真をまとめる] [複数選択] [設定]
-/// 表示モードとグループ化は文言付きスイッチで示し、複数選択はアイコンボタンで切り替える。
+/// 表示モードとグループ化は文言付きスイッチで示し、全操作をアイコンと文字で識別できるようにする。
 /// masonry (ViewMode.gallery) 表示中はグループ化を無効化する。
 /// </summary>
 [ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
@@ -101,9 +101,7 @@ public sealed partial class ShellHeaderBar : UserControl
     }
 
 
-    // -----------------------------------------------------------------------
     // 状態同期 API (ShellPage から呼ばれる)
-    // -----------------------------------------------------------------------
 
     /// <summary>複数選択モードのトグル状態を反映する。</summary>
     public void SetMultiSelectActive(bool active)
@@ -211,9 +209,7 @@ public sealed partial class ShellHeaderBar : UserControl
         catch (Exception ex) { AppLogger.Error($"ShellHeaderBar.OnWorldOptionsChanged: threw: {ex}"); }
     }
 
-    // -----------------------------------------------------------------------
     // ボタンクリックハンドラ
-    // -----------------------------------------------------------------------
 
     private void FilterButton_Click(object sender, RoutedEventArgs e)
     {
@@ -273,13 +269,14 @@ public sealed partial class ShellHeaderBar : UserControl
         }
     }
 
-    // -----------------------------------------------------------------------
     // 状態 → 見た目の同期 (active 配色 / disabled の dim)
-    // -----------------------------------------------------------------------
 
     private void SyncMultiSelectStyle()
     {
         ApplyActiveStyle(MultiSelectBtn, MultiSelectIcon, isMultiSelectActive);
+        MultiSelectLabel.Text = getMsg(isMultiSelectActive
+            ? "ShellHeaderBar.multiSelectEndLabel"
+            : "ShellHeaderBar.multiSelectLabel");
         AutomationProperties.SetName(
             MultiSelectBtn,
             getMsg(isMultiSelectActive ? "ShellHeaderBar.multiSelectEnd" : "ShellHeaderBar.multiSelectStart"));
@@ -317,9 +314,7 @@ public sealed partial class ShellHeaderBar : UserControl
                 : "ShellHeaderBar.viewModeToGallery"));
     }
 
-    /// <summary>
-    /// 複数選択ボタンのアイコン色を、選択中はヘッダー用アクセント、通常時は弱い文字色へ戻す。
-    /// </summary>
+    /// <summary>複数選択ボタンのアイコン色を、選択中はヘッダー用アクセント、通常時は弱い文字色へ戻す。</summary>
     private void ApplyActiveStyle(Button button, Shared.Controls.AppIcon icon, bool active)
     {
         try
@@ -382,8 +377,7 @@ public sealed partial class ShellHeaderBar : UserControl
         SyncSearchBoxChrome(IsSearchBoxFocused());
     }
 
-    private bool IsSearchBoxFocused()
-        => isSearchTextBoxFocused || SearchTextBox.FocusState != FocusState.Unfocused;
+    private bool IsSearchBoxFocused() => isSearchTextBoxFocused || SearchTextBox.FocusState != FocusState.Unfocused;
 
     private void SyncSearchBoxChrome(bool focused)
     {

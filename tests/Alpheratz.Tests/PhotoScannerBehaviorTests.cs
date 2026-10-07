@@ -229,7 +229,9 @@ public sealed class PhotoScannerBehaviorTests : IDisposable
         Directory.CreateDirectory(cache);
         Directory.CreateDirectory(hidden);
         File.WriteAllText(Path.Combine(root, "a.png"), "");
-        File.WriteAllText(Path.Combine(nested, "b.webp"), "");
+        File.WriteAllText(Path.Combine(nested, "b.jpg"), "");
+        File.WriteAllText(Path.Combine(nested, "c.JPEG"), "");
+        File.WriteAllText(Path.Combine(nested, "unsupported.webp"), "");
         File.WriteAllText(Path.Combine(root, "memo.txt"), "");
         File.WriteAllText(Path.Combine(cache, "ignored.jpg"), "");
         File.WriteAllText(Path.Combine(hidden, "ignored.png"), "");
@@ -240,7 +242,7 @@ public sealed class PhotoScannerBehaviorTests : IDisposable
 
         var names = files.Select(f => f.filename).OrderBy(x => x).ToArray();
         Assert.True(isComplete);
-        Assert.Equal(["a.png", "b.webp"], names);
+        Assert.Equal(["a.png", "b.jpg", "c.JPEG"], names);
         Assert.All(files, f => Assert.Equal(7, f.slot));
     }
 

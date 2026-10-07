@@ -94,7 +94,7 @@ public sealed partial class PhotoScanner
     private async Task DoScanAsync(CancellationToken ct)
     {
         AppLogger.Trace("PhotoScanner.DoScanAsync: enter");
-        // Resolve photo dirs
+        // 写真 directory の解決
         var setting = _config.LoadSetting();
         var photoDirs = new List<(long slot, string path)>();
 
@@ -124,9 +124,7 @@ public sealed partial class PhotoScanner
         if (photoDirs.Count == 2
             && AppPaths.AreOverlappingDirectories(photoDirs[0].path, photoDirs[1].path))
         {
-            await _bus.PublishAsync(
-                EventNames.ScanError,
-                getMsg("PhotoScanner.foldersOverlap")).ConfigureAwait(false);
+            await _bus.PublishAsync(EventNames.ScanError, getMsg("PhotoScanner.foldersOverlap")).ConfigureAwait(false);
             return;
         }
 
@@ -135,7 +133,7 @@ public sealed partial class PhotoScanner
         // 既存 DB 情報を読み、再スキャン時に保持できるメタデータを判断する。
         var existing = await _db.GetExistingPhotosAsync(ct).ConfigureAwait(false);
 
-        // シンボリックリンクなどで同じディレクトリへ戻る経路があるため、
+        // シンボリックリンクなどで同じdirectoryへ戻る経路があるため、
         // 訪問済みの正規化フルパスを持って無限再帰を防ぐ。
         var foundFiles = new List<(long slot, string filename, string path)>();
         var visitedDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -160,7 +158,7 @@ public sealed partial class PhotoScanner
         }
 
         // root 全体を例外なく走査できたスロットだけ、ディスク上に存在しなくなった写真を消す。
-        // 一部のディレクトリを読めなかったスロットは、読み取れなかった写真を欠落と誤認しないよう
+        // 一部のdirectoryを読めなかったスロットは、読み取れなかった写真を欠落と誤認しないよう
         // 今回の削除対象から外し、次回の完全な走査まで削除を延期する。
         if (completedSlots.Count > 0)
             await _db.DeleteMissingPhotosAsync(foundPathSet, completedSlots.ToArray(), ct).ConfigureAwait(false);
@@ -206,11 +204,7 @@ public sealed partial class PhotoScanner
         var processed = 0;
         var currentWorld = getMsg("common.unknownWorld");
         using var progressCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        var progressTask = PublishScanProgressAsync(
-            total,
-            () => Volatile.Read(ref processed),
-            () => Volatile.Read(ref currentWorld),
-            progressCts.Token);
+        var progressTask = PublishScanProgressAsync(total, () => Volatile.Read(ref processed), () => Volatile.Read(ref currentWorld), progressCts.Token);
 
         try
         {
@@ -223,10 +217,7 @@ public sealed partial class PhotoScanner
                 await Task.Run(() =>
                 {
                     Parallel.For(0, batchLength, new ParallelOptions
-                    {
-                        CancellationToken = ct,
-                        MaxDegreeOfParallelism = ScanAnalysisParallelism,
-                    }, offset =>
+                    { CancellationToken = ct, MaxDegreeOfParallelism = ScanAnalysisParallelism, }, offset =>
                     {
                         var (slot, filename, path, kind) = candidates[batchStart + offset];
                         var normalizedPath = AppPaths.NormalizePathForDb(path);
@@ -245,13 +236,7 @@ public sealed partial class PhotoScanner
 
             if (total > 0)
             {
-                await _bus.PublishAsync(EventNames.ScanProgress, new ScanProgressDto
-                {
-                    processed = total,
-                    total = total,
-                    current_world = Volatile.Read(ref currentWorld),
-                    phase = "scan"
-                }).ConfigureAwait(false);
+                await _bus.PublishAsync(EventNames.ScanProgress, new ScanProgressDto { processed = total, total = total, current_world = Volatile.Read(ref currentWorld), phase = "scan" }).ConfigureAwait(false);
             }
         }
         finally
@@ -272,18 +257,13 @@ public sealed partial class PhotoScanner
         await _bus.PublishAsync(EventNames.ScanCompleted, null).ConfigureAwait(false);
     }
 
-    private static string FormatSourceSlot(long slot)
-        => getMsg("PhotoScanner.sourceSlot", ("slot", slot));
+    private static string FormatSourceSlot(long slot) => getMsg("PhotoScanner.sourceSlot", ("slot", slot));
 
     /// <summary>
     /// 解析件数の変化を一定時間ごとに通知する。件数刻みではなく時間刻みにすることで、
     /// 高速な走査でも UI 更新を増やしすぎず、バーが大きく飛ぶ見え方を避ける。
     /// </summary>
-    private async Task PublishScanProgressAsync(
-        int total,
-        Func<int> getProcessed,
-        Func<string> getCurrentWorld,
-        CancellationToken ct)
+    private async Task PublishScanProgressAsync(int total, Func<int> getProcessed, Func<string> getCurrentWorld, CancellationToken ct)
     {
         if (total <= 0)
             return;
@@ -296,13 +276,7 @@ public sealed partial class PhotoScanner
             if (current <= lastPublished)
                 continue;
 
-            await _bus.PublishAsync(EventNames.ScanProgress, new ScanProgressDto
-            {
-                processed = current,
-                total = total,
-                current_world = getCurrentWorld(),
-                phase = "scan"
-            }).ConfigureAwait(false);
+            await _bus.PublishAsync(EventNames.ScanProgress, new ScanProgressDto { processed = current, total = total, current_world = getCurrentWorld(), phase = "scan" }).ConfigureAwait(false);
             lastPublished = current;
         }
     }
@@ -380,8 +354,7 @@ public sealed partial class PhotoScanner
         };
     }
 
-    internal static (string? worldName, string? worldId, string? matchSource) ResolveWorldInfo(
-        string normalizedPath, string filename, string path, ExistingPhotoInfo? existing)
+    internal static (string? worldName, string? worldId, string? matchSource) ResolveWorldInfo(string normalizedPath, string filename, string path, ExistingPhotoInfo? existing)
     {
         if (filename.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
         {
@@ -398,8 +371,7 @@ public sealed partial class PhotoScanner
         return (null, null, "unresolved");
     }
 
-    public static (string? orientation, long? width, long? height) ProbeImageDimensions(string path)
-        => ResolveImageDimensions(path);
+    public static (string? orientation, long? width, long? height) ProbeImageDimensions(string path) => ResolveImageDimensions(path);
 
     private static (string? orientation, long? width, long? height) ResolveImageDimensions(string path)
     {
@@ -428,10 +400,10 @@ public sealed partial class PhotoScanner
 
     private static (long w, long h) ReadPngSize(Stream stream)
     {
-        // PNG: 8-byte sig + IHDR chunk (4 len + 4 type + 4 width + 4 height)
+        // PNG は8 byte の signature に続き、IHDR の長さ・種別・幅・高さを各4 byte で持つ。
         var buf = new byte[24];
         if (stream.Read(buf, 0, 24) < 24) return (0, 0);
-        // Signature: 8 bytes, IHDR length: 4 bytes, type IHDR: 4 bytes, width: 4 bytes, height: 4 bytes
+        // signature は8 byte、IHDR の長さ・種別・幅・高さは各4 byte。
         if (buf[0] != 0x89 || buf[1] != 0x50) return (0, 0);
         long w = (buf[16] << 24) | (buf[17] << 16) | (buf[18] << 8) | buf[19];
         long h = (buf[20] << 24) | (buf[21] << 16) | (buf[22] << 8) | buf[23];
@@ -482,7 +454,7 @@ public sealed partial class PhotoScanner
             }
             else if (IsJpegStartOfFrameMarker(marker) && payloadLength >= 5)
             {
-                _ = stream.ReadByte(); // sample precision
+                _ = stream.ReadByte(); // JPEG の標本精度を読み飛ばす。
                 var heightHigh = stream.ReadByte();
                 var heightLow = stream.ReadByte();
                 var widthHigh = stream.ReadByte();
@@ -506,11 +478,7 @@ public sealed partial class PhotoScanner
             : (width, height);
     }
 
-    private static bool IsJpegStartOfFrameMarker(int marker)
-        => marker is 0xC0 or 0xC1 or 0xC2 or 0xC3
-            or 0xC5 or 0xC6 or 0xC7
-            or 0xC9 or 0xCA or 0xCB
-            or 0xCD or 0xCE or 0xCF;
+    private static bool IsJpegStartOfFrameMarker(int marker) => marker is 0xC0 or 0xC1 or 0xC2 or 0xC3 or 0xC5 or 0xC6 or 0xC7 or 0xC9 or 0xCA or 0xCB or 0xCD or 0xCE or 0xCF;
 
     /// <summary>APP1 Exif の IFD0 から orientation を読み、未設定・破損時は通常向きの1を返す。</summary>
     private static int ReadExifOrientation(ReadOnlySpan<byte> segment)
@@ -578,7 +546,7 @@ public sealed partial class PhotoScanner
             return $"{m.Groups[1].Value} {m.Groups[2].Value.Replace('-', ':')}";
         try
         {
-            // ファイルシステムから読んだローカル時刻を InvariantCulture で format することで、
+            // filesystemから読んだローカル時刻を InvariantCulture で format することで、
             // PC の地域設定（区切り文字や曜日表記）に依存しない決定的な文字列にする。
             // DB 内の比較は文字列ベースで行うため、format が環境ごとに揺れると並び順が壊れる。
             var modified = File.GetLastWriteTime(path);
@@ -683,8 +651,7 @@ public sealed partial class PhotoScanner
                 return true;
 
             var fileMtime = File.GetLastWriteTimeUtc(path);
-            if (!DateTime.TryParseExact(existing.LastModifiedUtc, "yyyy-MM-dd HH:mm:ss",
-                    CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var storedMtime))
+            if (!DateTime.TryParseExact(existing.LastModifiedUtc, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var storedMtime))
                 return true;
 
             return Math.Abs((fileMtime - storedMtime).TotalSeconds) > 1;
@@ -692,17 +659,12 @@ public sealed partial class PhotoScanner
         catch { return false; }
     }
 
-    internal static bool CollectPhotosRecursive(
-        long slot,
-        string dir,
-        List<(long, string, string)> files,
-        HashSet<string> visitedDirs,
-        CancellationToken ct)
+    internal static bool CollectPhotosRecursive(long slot, string dir, List<(long, string, string)> files, HashSet<string> visitedDirs, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
 
-        // シンボリックリンク循環や同一ディレクトリへの別経路で、再帰が終わらなくなるのを防ぐ。
-        // 訪問済みディレクトリは再度辿らない。
+        // シンボリックリンク循環や同一directoryへの別経路で、再帰が終わらなくなるのを防ぐ。
+        // 訪問済みdirectoryは再度辿らない。
         string canonical;
         try
         {
@@ -763,12 +725,9 @@ public sealed partial class PhotoScanner
         return isComplete;
     }
 
-    private static bool IsKnownDirectoryReadException(Exception ex)
-        => ex is IOException
-            or UnauthorizedAccessException
-            or System.Security.SecurityException;
+    private static bool IsKnownDirectoryReadException(Exception ex) => ex is IOException or UnauthorizedAccessException or System.Security.SecurityException;
 
-    // === World resolution from Polaris archive ===
+    // Polaris archive によるワールドの判定
 
     public async Task<int> ResolveUnknownWorldsFromArchiveAsync(CancellationToken ct = default)
     {
@@ -789,11 +748,7 @@ public sealed partial class PhotoScanner
         // 訪問履歴との照合と保存は DB 内で一括実行する。写真ごとの接続・検索・更新は、
         // 未解決写真が多い初回分析で待ち時間を線形以上に増やすため使用しない。
         var resolved = await _db.ResolveUnknownWorldsFromArchiveAsync(ct).ConfigureAwait(false);
-        AppLogger.Info(
-            $"Performance.WorldArchive visits={visits.Count} resolved={resolved} " +
-            $"archive_read_ms={archiveReadElapsed.TotalMilliseconds:F3} " +
-            $"database_ms={Stopwatch.GetElapsedTime(databaseStartedAt).TotalMilliseconds:F3} " +
-            $"total_ms={Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F3}");
+        AppLogger.Info($"Performance.WorldArchive visits={visits.Count} resolved={resolved} " + $"archive_read_ms={archiveReadElapsed.TotalMilliseconds:F3} " + $"database_ms={Stopwatch.GetElapsedTime(databaseStartedAt).TotalMilliseconds:F3} " + $"total_ms={Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F3}");
         AppLogger.Trace($"PhotoScanner.ResolveUnknownWorldsFromArchiveAsync: exit resolved={resolved}");
         return resolved;
     }
@@ -803,9 +758,7 @@ public sealed partial class PhotoScanner
     private static readonly Regex ReLogLeftRoom = new(@"\[Behaviour\] OnLeftRoom", RegexOptions.Compiled);
 
     /// <summary>Polaris archive 内の VRChat ログからワールド訪問履歴を読み込む。</summary>
-    internal static List<ArchiveWorldVisitData> LoadPolarisWorldVisits(
-        string archiveDir,
-        CancellationToken ct = default)
+    internal static List<ArchiveWorldVisitData> LoadPolarisWorldVisits(string archiveDir, CancellationToken ct = default)
     {
         var visits = new List<ArchiveWorldVisitData>();
         IEnumerable<string> logFiles;
@@ -826,9 +779,7 @@ public sealed partial class PhotoScanner
     /// File.ReadLines だと巨大行が 1 つでもあると LOH に乗って OOM することがあるため、
     /// 手動でストリームを舐めて長さ制限を効かせる。
     /// </summary>
-    internal static IEnumerable<string> ReadCappedLines(
-        string path,
-        CancellationToken ct = default)
+    internal static IEnumerable<string> ReadCappedLines(string path, CancellationToken ct = default)
     {
         using var sr = new StreamReader(path);
         var sb = new StringBuilder();
@@ -872,10 +823,7 @@ public sealed partial class PhotoScanner
     }
 
     /// <summary>1つの VRChat ログファイルから入退室イベントを読み取り、訪問区間へ変換する。</summary>
-    internal static void LoadVisitsFromLog(
-        string logPath,
-        List<ArchiveWorldVisitData> visits,
-        CancellationToken ct = default)
+    internal static void LoadVisitsFromLog(string logPath, List<ArchiveWorldVisitData> visits, CancellationToken ct = default)
     {
         string? currentWorld = null;
         string? currentJoinTime = null;
@@ -885,8 +833,7 @@ public sealed partial class PhotoScanner
             {
                 var timeMatch = ReLogTime.Match(line);
                 var lineTime = timeMatch.Success
-                    ? DateTime.TryParseExact(timeMatch.Groups[1].Value, "yyyy.MM.dd HH:mm:ss",
-                        CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt)
+                    ? DateTime.TryParseExact(timeMatch.Groups[1].Value, "yyyy.MM.dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt)
                         ? dt.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) : null
                     : null;
 

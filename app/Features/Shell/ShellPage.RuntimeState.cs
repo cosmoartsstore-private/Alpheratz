@@ -50,7 +50,7 @@ public sealed partial class ShellPage
         AppLogger.Trace("ShellPage.ShellPage_Loaded: exit");
     }
 
-    // 保存済みテーマを Shell と各キャッシュ済みページへ明示的に反映する。
+    // 保存済みテーマを Shell と各cache済みページへ明示的に反映する。
     private void ApplyTheme(ThemeMode mode)
     {
         AppLogger.Trace($"ShellPage.ApplyTheme: enter mode={mode}");
@@ -58,7 +58,7 @@ public sealed partial class ShellPage
         {
             // ShellPage と MainWindow.RootHost の RequestedTheme をセットすることで、
             // RootHost.Resources にマージされた Brushes.xaml の ThemeDictionaries が
-            // 要素の ActualTheme で解決される (構造的に theme 切替に追従する経路)。
+            // 要素の ActualTheme で解決される (構造的に テーマ 切替に追従する経路)。
             // Application.RequestedTheme は WinUI 3 では InitializeComponent 後に
             // 変更できないためここでは触らない。
             var theme = mode == ThemeMode.dark
@@ -73,13 +73,13 @@ public sealed partial class ShellPage
             if (App.MainWindowInstance is MainWindow mw)
                 mw.SetTheme(theme);
 
-            // 他のキャッシュページ (Settings / Gallery / GroupDrillDown) は閉じている間
+            // 他のcacheページ (Settings / Gallery / GroupDrillDown) は閉じている間
             // visual tree から外れていて親の RequestedTheme 変更を受け取れないため、
             // 直接 RequestedTheme をセットして再表示時に正しいテーマで解決されるようにする。
             if (settingsPage is not null) settingsPage.RequestedTheme = theme;
             if (galleryPage is not null) galleryPage.RequestedTheme = theme;
             if (drillDownPage is not null) drillDownPage.RequestedTheme = theme;
-            // PhotoModal は毎回 new で生成するためキャッシュは不要だが、表示中に切替
+            // PhotoModal は毎回 new で生成するためcacheは不要だが、表示中に切替
             // された場合は Page が ContentControl 経由でテーマを自動継承しないので
             // 直接セットして即時反映する。
             if (Stage.TopModalContent is Microsoft.UI.Xaml.FrameworkElement activeTopModal)
@@ -88,7 +88,7 @@ public sealed partial class ShellPage
                 activeMidModal.RequestedTheme = theme;
             // FilterPanel は FilterOverlay.Visibility=Collapsed 配下に常駐しており、
             // 親が Collapsed のときは ActualThemeChanged が確実に伝播しないことがあるため
-            // 明示的に RequestedTheme を直接セットして、Open 時に正しい theme で
+            // 明示的に RequestedTheme を直接セットして、Open 時に正しい テーマ で
             // 解決されるよう保険をかける。
             FilterPanel.ApplyThemeNow(theme);
         }

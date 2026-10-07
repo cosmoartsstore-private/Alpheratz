@@ -132,7 +132,7 @@ public sealed partial class AnimatedFavoriteStar : UserControl
         InteractiveButton.IsTabStop = interactive;
     }
 
-    // テーマリソースキーとフォールバック種別から実際の Brush を解決する。
+    // テーマresourceキーとフォールバック種別から実際の Brush を解決する。
     private Brush ResolveBrush(string? resourceKey, FavoriteStarBrushFallback fallback)
     {
         if (resourceKey is not null)
@@ -143,7 +143,7 @@ public sealed partial class AnimatedFavoriteStar : UserControl
         return FallbackBrush(fallback);
     }
 
-    // テーマリソースが取れないときの既定 Brush を返す。
+    // テーマresourceが取れないときの既定 Brush を返す。
     private static Brush FallbackBrush(FavoriteStarBrushFallback fallback)
         => fallback == FavoriteStarBrushFallback.Gray
             ? new SolidColorBrush(Colors.Gray)
@@ -186,11 +186,7 @@ public sealed partial class AnimatedFavoriteStar : UserControl
     }
 
     // plan の scalar keyframe から Composition アニメーションを作る。
-    private static ScalarKeyFrameAnimation CreateScalarAnimation(
-        Compositor compositor,
-        int durationMilliseconds,
-        IReadOnlyList<FavoriteStarScalarFrame> frames,
-        CompositionEasingFunction ease)
+    private static ScalarKeyFrameAnimation CreateScalarAnimation(Compositor compositor, int durationMilliseconds, IReadOnlyList<FavoriteStarScalarFrame> frames, CompositionEasingFunction ease)
     {
         var animation = compositor.CreateScalarKeyFrameAnimation();
         foreach (var frame in frames)
@@ -205,11 +201,7 @@ public sealed partial class AnimatedFavoriteStar : UserControl
     }
 
     // plan の Vector3 keyframe から Composition アニメーションを作る。
-    private static Vector3KeyFrameAnimation CreateVectorAnimation(
-        Compositor compositor,
-        int durationMilliseconds,
-        IReadOnlyList<FavoriteStarVectorFrame> frames,
-        CompositionEasingFunction ease)
+    private static Vector3KeyFrameAnimation CreateVectorAnimation(Compositor compositor, int durationMilliseconds, IReadOnlyList<FavoriteStarVectorFrame> frames, CompositionEasingFunction ease)
     {
         var animation = compositor.CreateVector3KeyFrameAnimation();
         foreach (var frame in frames)
@@ -224,13 +216,7 @@ public sealed partial class AnimatedFavoriteStar : UserControl
     }
 
     // 作成済みの星と光彩アニメーションを対象 Visual に開始する。
-    private static void StartFavoriteAnimations(
-        Visual starVisual,
-        Visual glowVisual,
-        Vector3KeyFrameAnimation starScale,
-        ScalarKeyFrameAnimation starOpacity,
-        ScalarKeyFrameAnimation glowOpacity,
-        Vector3KeyFrameAnimation glowScale)
+    private static void StartFavoriteAnimations(Visual starVisual, Visual glowVisual, Vector3KeyFrameAnimation starScale, ScalarKeyFrameAnimation starOpacity, ScalarKeyFrameAnimation glowOpacity, Vector3KeyFrameAnimation glowScale)
     {
         starVisual.StartAnimation("Scale", starScale);
         starVisual.StartAnimation("Opacity", starOpacity);

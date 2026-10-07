@@ -1,13 +1,7 @@
-<UserControl
-    x:Class="Alpheratz.Features.Shell.Controls.ShellStage"
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:controls="using:Alpheratz.Shared.Controls">
+<UserControl x:Class="Alpheratz.Features.Shell.Controls.ShellStage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:controls="using:Alpheratz.Shared.Controls">
 
     <Grid Background="{ThemeResource ASurface}">
-        <ContentControl x:Name="MainContentHost"
-                        HorizontalContentAlignment="Stretch"
-                        VerticalContentAlignment="Stretch"/>
+        <ContentControl x:Name="MainContentHost" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
 
         <!--
             Modal レイヤは 2 段スタック。
@@ -16,15 +10,13 @@
             GroupDrillDown 中に写真をクリックすると、中位の上にさらに PhotoModal が
             重なる構造になる。各レイヤーは独自の backdrop / scale アニメを持つ。
         -->
-        <Grid x:Name="ModalLayerHost" Background="{ThemeResource AOverlay}" Visibility="Collapsed">
-            <ContentControl x:Name="ModalContentHost"
-                            HorizontalContentAlignment="Stretch"
-                            VerticalContentAlignment="Stretch"/>
+        <Grid x:Name="ModalLayerHost" Background="Transparent" Visibility="Collapsed">
+            <Border x:Name="StandardModalBackdrop" Background="{ThemeResource AOverlay}" IsHitTestVisible="False"/>
+            <Border x:Name="BlurredModalBackdrop" Background="{ThemeResource ASettingsBackdrop}" IsHitTestVisible="False" Visibility="Collapsed"/>
+            <ContentControl x:Name="ModalContentHost" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
         </Grid>
         <Grid x:Name="TopModalLayerHost" Background="{ThemeResource AOverlay}" Visibility="Collapsed">
-            <ContentControl x:Name="TopModalContentHost"
-                            HorizontalContentAlignment="Stretch"
-                            VerticalContentAlignment="Stretch"/>
+            <ContentControl x:Name="TopModalContentHost" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
         </Grid>
         <controls:ScanningOverlay x:Name="ScanningOverlayControl" Visibility="Collapsed"/>
         <controls:ToastHost x:Name="ToastHostControl"/>

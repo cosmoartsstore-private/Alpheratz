@@ -29,8 +29,7 @@ public partial class TagMasterViewModel : UiThreadSafeObservableObject
     /// <summary>追加フォームの入力中文字列。</summary>
     [ObservableProperty] private string tagDraft = string.Empty;
 
-    private static Task RunDbWriteOffUiThread(Func<Task> write)
-        => Task.Run(async () => await write().ConfigureAwait(false));
+    private static Task RunDbWriteOffUiThread(Func<Task> write) => Task.Run(async () => await write().ConfigureAwait(false));
 
     public TagMasterViewModel(AlpheratzDb db, ToastService toastService, DispatcherService? dispatcherService = null)
     {
@@ -51,8 +50,7 @@ public partial class TagMasterViewModel : UiThreadSafeObservableObject
         try
         {
             var tags = await db.GetAllTagsAsync().ConfigureAwait(false);
-            await dispatcherService.RunOnUiThread(() =>
-                masterTags.ReplaceAll(tags.OrderBy(tag => tag).ToArray())).ConfigureAwait(false);
+            await dispatcherService.RunOnUiThread(() => masterTags.ReplaceAll(tags.OrderBy(tag => tag).ToArray())).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -81,9 +79,7 @@ public partial class TagMasterViewModel : UiThreadSafeObservableObject
         if (normalized.Length > MaxTagLength)
         {
             AppLogger.Trace("TagMasterViewModel.createTag: skip (too long)");
-            toastService.addToast(
-                getMsg("TagMasterViewModel.tagTooLong", ("maxLength", MaxTagLength)),
-                ToastType.error);
+            toastService.addToast(getMsg("TagMasterViewModel.tagTooLong", ("maxLength", MaxTagLength)), ToastType.error);
             return;
         }
 
@@ -143,8 +139,7 @@ public partial class TagMasterViewModel : UiThreadSafeObservableObject
                 AppLogger.Warn($"TagMasterViewModel.deleteTag: refresh failed after write: {refreshError.Message}");
                 await dispatcherService.RunOnUiThread(() =>
                 {
-                    var existing = masterTags.FirstOrDefault(current =>
-                        string.Equals(current, tag, StringComparison.OrdinalIgnoreCase));
+                    var existing = masterTags.FirstOrDefault(current => string.Equals(current, tag, StringComparison.OrdinalIgnoreCase));
                     if (existing is not null)
                         masterTags.Remove(existing);
                 }).ConfigureAwait(false);

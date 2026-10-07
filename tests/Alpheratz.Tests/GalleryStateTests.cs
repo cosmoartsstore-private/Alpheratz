@@ -197,10 +197,13 @@ public sealed class GalleryStateTests
 
         var result = GalleryMasonryLayout.Build(photos, panelWidth: 900, requestedColumnCount: 4);
 
-        Assert.Equal(2, result.ColumnCount);
+        Assert.Equal(4, result.ColumnCount);
         Assert.Equal(3, result.Items.Count);
         Assert.All(result.Items, item => Assert.Equal(result.ColumnWidth, item.Width));
         Assert.True(result.TotalHeight > 0);
+        var narrow = GalleryMasonryLayout.Build(photos, panelWidth: 400, requestedColumnCount: 4);
+        Assert.Equal(2, narrow.ColumnCount);
+        Assert.All(narrow.Items, item => Assert.True(item.Width >= 180));
     }
 
     /// <summary>

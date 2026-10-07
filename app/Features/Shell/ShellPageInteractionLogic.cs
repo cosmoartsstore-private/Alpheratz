@@ -17,12 +17,10 @@ internal static class ShellPageInteractionLogic
     }
 
     /// <summary>Settings モーダルを新規に開けるかを返す。</summary>
-    public static bool CanOpenSettingsModal(ShellOverlayState state)
-        => !state.HeaderDimOverlayOpen && !state.ConfirmOpen;
+    public static bool CanOpenSettingsModal(ShellOverlayState state) => !state.HeaderDimOverlayOpen && !state.ConfirmOpen;
 
     /// <summary>検索条件オーバーレイをトグルできるかを判定する。閉じる操作は常に許可する。</summary>
-    public static bool CanToggleFilter(ShellOverlayState state)
-        => state.FilterOpen || (!state.ModalOpen && !state.ConfirmOpen);
+    public static bool CanToggleFilter(ShellOverlayState state) => state.FilterOpen || (!state.ModalOpen && !state.ConfirmOpen);
 
     /// <summary>Shell ルートの tunneling キー入力を、子ページより先に処理する動作へ変換する。</summary>
     public static ShellPreviewKeyAction ResolveShellPreviewKey(ShellOverlayState state, VirtualKey key)
@@ -36,12 +34,7 @@ internal static class ShellPageInteractionLogic
     }
 
     /// <summary>写真モーダル表示中の tunneling キー入力を、写真移動またはクローズ動作へ変換する。</summary>
-    public static PhotoModalKeyAction ResolvePhotoModalPreviewKey(
-        bool isPhotoModalOpen,
-        bool hasActivePhotoModal,
-        bool hasPhotoModalInnerOverlay,
-        bool isTextInputFocused,
-        VirtualKey key)
+    public static PhotoModalKeyAction ResolvePhotoModalPreviewKey(bool isPhotoModalOpen, bool hasActivePhotoModal, bool hasPhotoModalInnerOverlay, bool isTextInputFocused, VirtualKey key)
     {
         if (!isPhotoModalOpen || !hasActivePhotoModal || hasPhotoModalInnerOverlay || isTextInputFocused)
             return PhotoModalKeyAction.None;
@@ -54,6 +47,12 @@ internal static class ShellPageInteractionLogic
             _ => PhotoModalKeyAction.None,
         };
     }
+
+    /// <summary>ギャラリーの写真サイズ変更を、背面操作にならない状態でだけ許可する。</summary>
+    public static bool CanAdjustGallerySize(ShellOverlayState state, bool isGalleryMode, bool isTextInputFocused) => isGalleryMode && !isTextInputFocused && !state.HeaderControlsBlocked;
+
+    /// <summary>写真サイズ操作キーを列数の増減へ変換する。負数は写真を大きくする。</summary>
+    public static int ResolveGalleryColumnDelta(VirtualKey key) => key switch { VirtualKey.W or VirtualKey.Up => -1, VirtualKey.S or VirtualKey.Down => 1, _ => 0, };
 
     /// <summary>Shell 全体の bubbling キー入力を、検索条件・設定・選択解除などの動作へ変換する。</summary>
     public static ShellKeyAction ResolveShellKey(ShellOverlayState state, bool ctrlDown, VirtualKey key)
@@ -77,10 +76,7 @@ internal static class ShellPageInteractionLogic
     }
 
     /// <summary>ヘッダー余白タップで閉じるべきモーダル階層を判定する。</summary>
-    public static ModalDismissAction ResolveModalDismiss(
-        long currentTick,
-        long lastModalOpenTick,
-        ShellOverlayState state)
+    public static ModalDismissAction ResolveModalDismiss(long currentTick, long lastModalOpenTick, ShellOverlayState state)
     {
         if (currentTick - lastModalOpenTick < 400) return ModalDismissAction.None;
         if (state.PhotoModalOpen) return ModalDismissAction.ClosePhotoModal;
@@ -91,16 +87,10 @@ internal static class ShellPageInteractionLogic
 
 /// <summary>
 /// ShellPage が扱うオーバーレイ状態を 1 つにまとめた純粋状態。
-/// Confirm はヘッダーを dim せず操作だけを抑止し、新規 overlay 起動も防ぐ。
+/// Confirm はヘッダーを dim せず操作だけを抑止し、新規 オーバーレイ 起動も防ぐ。
 /// MultiSelect は Esc 優先順位だけに使う。
 /// </summary>
-internal sealed record ShellOverlayState(
-    bool PhotoModalOpen,
-    bool MiddleModalOpen,
-    bool FilterOpen,
-    bool ConfirmOpen = false,
-    bool MultiSelectMode = false,
-    bool GalleryModalOpen = false)
+internal sealed record ShellOverlayState(bool PhotoModalOpen, bool MiddleModalOpen, bool FilterOpen, bool ConfirmOpen = false, bool MultiSelectMode = false, bool GalleryModalOpen = false)
 {
     /// <summary>写真モーダル、中位モーダル、ギャラリー内確認モーダルのいずれかが開いているかを返す。</summary>
     public bool ModalOpen => PhotoModalOpen || MiddleModalOpen || GalleryModalOpen;

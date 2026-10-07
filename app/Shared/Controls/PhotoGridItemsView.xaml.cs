@@ -201,7 +201,7 @@ public sealed partial class PhotoGridItemsView : UserControl
     }
 
     /// <summary>
-    /// 内部の ScrollViewer 参照。未取得なら一度だけ探索しキャッシュする。
+    /// 内部の ScrollViewer 参照。未取得なら一度だけ探索しcacheする。
     /// 見つからない場合に新しい ScrollViewer を作っても VisualTree には組み込まれないため、
     /// 取得失敗時は null を返して呼出側で何もしない。
     /// </summary>
@@ -341,10 +341,7 @@ public sealed partial class PhotoGridItemsView : UserControl
     private void ReportFirstVisibleIndex(double scrollTop)
     {
         if (wrapGrid is null) return;
-        var firstIdx = PhotoGridItemsLayoutLogic.EstimateFirstVisibleIndex(
-            scrollTop,
-            wrapGrid.ItemHeight,
-            wrapGrid.MaximumRowsOrColumns);
+        var firstIdx = PhotoGridItemsLayoutLogic.EstimateFirstVisibleIndex(scrollTop, wrapGrid.ItemHeight, wrapGrid.MaximumRowsOrColumns);
         if (!PhotoGridItemsLayoutLogic.ShouldNotifyFirstVisibleIndex(firstIdx, lastReportedFirstVisible)) return;
         var nextFirstVisible = firstIdx.GetValueOrDefault();
         lastReportedFirstVisible = nextFirstVisible;
@@ -496,17 +493,10 @@ public sealed partial class PhotoGridItemsView : UserControl
             return;
         }
         img.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage
-        {
-            CreateOptions = Microsoft.UI.Xaml.Media.Imaging.BitmapCreateOptions.IgnoreImageCache,
-            DecodePixelWidth = request.DecodePixelWidth,
-            DecodePixelType = Microsoft.UI.Xaml.Media.Imaging.DecodePixelType.Logical,
-            UriSource = new Uri(request.SourcePath, UriKind.Absolute),
-        };
+        { CreateOptions = Microsoft.UI.Xaml.Media.Imaging.BitmapCreateOptions.IgnoreImageCache, DecodePixelWidth = request.DecodePixelWidth, DecodePixelType = Microsoft.UI.Xaml.Media.Imaging.DecodePixelType.Logical, UriSource = new Uri(request.SourcePath, UriKind.Absolute), };
     }
 
-    /// <summary>
-    /// 画像ロード完了。マソンリーと同じく 200ms でフェードインしPulseを止める。
-    /// </summary>
+    /// <summary>画像ロード完了。マソンリーと同じく 200ms でフェードインしPulseを止める。</summary>
     private void ThumbImage_Opened(object sender, RoutedEventArgs e)
     {
         try

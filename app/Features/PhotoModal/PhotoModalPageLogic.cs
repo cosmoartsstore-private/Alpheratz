@@ -25,24 +25,16 @@ internal static class PhotoModalPageLogic
     public static string WorldActionDisabledTooltip => getMsg("PhotoModalPage.worldLinkUnavailableHelp");
 
     /// <summary>SelectedPhoto の変更だけを、モーダル表示全体の再同期対象として扱う。</summary>
-    public static bool ShouldSyncForPropertyChanged(string? propertyName)
-        => propertyName == nameof(PhotoModalState.SelectedPhoto);
+    public static bool ShouldSyncForPropertyChanged(string? propertyName) => propertyName == nameof(PhotoModalState.SelectedPhoto);
 
     /// <summary>選択中 PhotoThumbnailItem の内部変更で、コードビハインド表示を再同期すべきもの。</summary>
-    public static bool ShouldSyncForSelectedPhotoProperty(string? propertyName)
-        => propertyName is nameof(PhotoThumbnailItem.Tags)
-            or nameof(PhotoThumbnailItem.WorldName)
-            or nameof(PhotoThumbnailItem.WorldId)
-            or nameof(PhotoThumbnailItem.MatchSource)
-            or nameof(PhotoThumbnailItem.EffectiveDisplayPath);
+    public static bool ShouldSyncForSelectedPhotoProperty(string? propertyName) => propertyName is nameof(PhotoThumbnailItem.Tags) or nameof(PhotoThumbnailItem.WorldName) or nameof(PhotoThumbnailItem.WorldId) or nameof(PhotoThumbnailItem.MatchSource) or nameof(PhotoThumbnailItem.EffectiveDisplayPath);
 
     /// <summary>PhotoModal 画像として表示するパスとデコード幅を返す。パスが空なら null。</summary>
     public static PhotoModalImageRequest? ModalImageRequest(string? effectiveDisplayPath, char directorySeparatorChar)
     {
         if (string.IsNullOrEmpty(effectiveDisplayPath)) return null;
-        return new PhotoModalImageRequest(
-            effectiveDisplayPath.Replace('/', directorySeparatorChar),
-            ModalDecodePixelWidth);
+        return new PhotoModalImageRequest(effectiveDisplayPath.Replace('/', directorySeparatorChar), ModalDecodePixelWidth);
     }
 
     /// <summary>写真のワールド名が空の場合に、モーダル用の不明表示へ置き換える。</summary>
@@ -52,28 +44,11 @@ internal static class PhotoModalPageLogic
     /// <summary>ワールドリンクボタンの有効状態と表示を、world_id の有無から返す。</summary>
     public static WorldActionDisplay WorldAction(string? worldId)
         => string.IsNullOrWhiteSpace(worldId)
-            ? new WorldActionDisplay(
-                Enabled: false,
-                Label: WorldActionDisabledLabel,
-                Tooltip: WorldActionDisabledTooltip,
-                ForegroundKey: "ATextDisabled",
-                Opacity: 0.42)
-            : new WorldActionDisplay(
-                Enabled: true,
-                Label: WorldActionEnabledLabel,
-                Tooltip: WorldActionEnabledTooltip,
-                ForegroundKey: "ATextFaint",
-                Opacity: 1.0);
+            ? new WorldActionDisplay(Enabled: false, Label: WorldActionDisabledLabel, Tooltip: WorldActionDisabledTooltip, ForegroundKey: "ATextDisabled", Opacity: 0.42)
+            : new WorldActionDisplay(Enabled: true, Label: WorldActionEnabledLabel, Tooltip: WorldActionEnabledTooltip, ForegroundKey: "ATextFaint", Opacity: 1.0);
 
     /// <summary>match_source から補完元チップの表示可否とラベルを返す。</summary>
-    public static MatchSourceDisplay MatchSource(string? source)
-        => source switch
-        {
-            "polaris_archive" => new MatchSourceDisplay(true, getMsg("PhotoModalPage.archiveMatchSource")),
-            "phash" => new MatchSourceDisplay(true, getMsg("PhotoModalPage.similarPhotoMatchSource")),
-            "phash_confirmed" => new MatchSourceDisplay(true, getMsg("PhotoModalPage.confirmedSimilarPhotoMatchSource")),
-            _ => new MatchSourceDisplay(false, null),
-        };
+    public static MatchSourceDisplay MatchSource(string? source) => source switch { "polaris_archive" => new MatchSourceDisplay(true, getMsg("PhotoModalPage.archiveMatchSource")), "phash" => new MatchSourceDisplay(true, getMsg("PhotoModalPage.similarPhotoMatchSource")), "phash_confirmed" => new MatchSourceDisplay(true, getMsg("PhotoModalPage.confirmedSimilarPhotoMatchSource")), _ => new MatchSourceDisplay(false, null), };
 
     /// <summary>マスタタグのうち、現在の写真にまだ付いていないタグ数と追加欄の表示可否を返す。</summary>
     public static TagAddDisplay TagAddDisplay(IEnumerable<string>? masterTags, IReadOnlyCollection<string>? currentTags)
@@ -87,10 +62,7 @@ internal static class PhotoModalPageLogic
     }
 
     /// <summary>PhotoModalPage が処理または消費するキー操作を返す。</summary>
-    public static PhotoModalPageKeyAction ResolveKeyAction(
-        bool hasBlockingInnerOverlayOpen,
-        bool isTextInputFocused,
-        VirtualKey key)
+    public static PhotoModalPageKeyAction ResolveKeyAction(bool hasBlockingInnerOverlayOpen, bool isTextInputFocused, VirtualKey key)
     {
         if (hasBlockingInnerOverlayOpen)
         {
@@ -114,11 +86,7 @@ internal static class PhotoModalPageLogic
     }
 
     /// <summary>矢印キー長押し中の連続ナビゲーションを間引くための判定を返す。</summary>
-    public static PhotoModalNavigationGateDecision NavigationGate(
-        long nowTicks,
-        long lastAcceptedTicks,
-        long burstStartedTicks,
-        bool sameDirection)
+    public static PhotoModalNavigationGateDecision NavigationGate(long nowTicks, long lastAcceptedTicks, long burstStartedTicks, bool sameDirection)
     {
         var elapsedSinceLast = lastAcceptedTicks <= 0
             ? long.MaxValue

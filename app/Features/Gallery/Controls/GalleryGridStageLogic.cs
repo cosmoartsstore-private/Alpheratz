@@ -29,20 +29,11 @@ internal static class GalleryGridStageLogic
     }
 
     /// <summary>ロード完了後に写真が 0 件なら empty state を表示する。</summary>
-    public static bool ShouldShowEmpty(bool isLoading, int totalCount)
-        => !isLoading && totalCount == 0;
+    public static bool ShouldShowEmpty(bool isLoading, int totalCount) => !isLoading && totalCount == 0;
 }
 
 /// <summary>表示モード切替で適用する表示状態。</summary>
-internal sealed record GridStageDisplayState(
-    bool PhotoGridVisible,
-    bool MasonryVisible,
-    bool MonthNavVisible,
-    double MonthNavWidth);
+internal sealed record GridStageDisplayState(bool PhotoGridVisible, bool MasonryVisible, bool MonthNavVisible, double MonthNavWidth);
 
 /// <summary>ロード状態切替で適用する表示状態。</summary>
-internal sealed record GridStageLoadingDisplay(
-    bool LoadingVisible,
-    bool EmptyVisible,
-    bool MonthNavVisible,
-    double MonthNavWidth);
+internal sealed record GridStageLoadingDisplay(bool LoadingVisible, bool EmptyVisible, bool MonthNavVisible, double MonthNavWidth);

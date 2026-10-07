@@ -160,9 +160,7 @@ public sealed partial class WorldResolvePage : Page
 
     private string FormatLoadingStatus()
         => viewModel.SearchProgressTotal > 0
-            ? getMsg(
-                "WorldResolvePage.searchingCandidatesStatus",
-                ("progress", viewModel.SearchProgressText))
+            ? getMsg("WorldResolvePage.searchingCandidatesStatus", ("progress", viewModel.SearchProgressText))
             : viewModel.SearchProgressText;
 
     // 候補ピッカーで比較対象として表示する写真のサムネイルを差し替える。
@@ -174,15 +172,10 @@ public sealed partial class WorldResolvePage : Page
             return;
         }
         PickerTargetImage.Source = new BitmapImage
-        {
-            CreateOptions = BitmapCreateOptions.IgnoreImageCache,
-            DecodePixelWidth = 120,
-            DecodePixelType = DecodePixelType.Logical,
-            UriSource = new Uri(path, UriKind.Absolute),
-        };
+        { CreateOptions = BitmapCreateOptions.IgnoreImageCache, DecodePixelWidth = 120, DecodePixelType = DecodePixelType.Logical, UriSource = new Uri(path, UriKind.Absolute), };
     }
 
-    // --- Event handlers ---
+    // イベント処理
 
     // 候補ピッカー以外の背景タップではワールド解析モーダルを閉じる。
     private void Backdrop_Tapped(object sender, TappedRoutedEventArgs e)
@@ -288,12 +281,7 @@ public sealed partial class WorldResolvePage : Page
             previewPreviousFocus = FocusManager.GetFocusedElement(XamlRoot) as Control;
             PreviewFilename.Text = Path.GetFileName(path);
             PreviewImage.Source = new BitmapImage
-            {
-                CreateOptions = BitmapCreateOptions.IgnoreImageCache,
-                DecodePixelWidth = 1800,
-                DecodePixelType = DecodePixelType.Logical,
-                UriSource = new Uri(path, UriKind.Absolute),
-            };
+            { CreateOptions = BitmapCreateOptions.IgnoreImageCache, DecodePixelWidth = 1800, DecodePixelType = DecodePixelType.Logical, UriSource = new Uri(path, UriKind.Absolute), };
             ImagePreviewView.Visibility = Visibility.Visible;
             PreviewCloseButton.Focus(FocusState.Programmatic);
         }

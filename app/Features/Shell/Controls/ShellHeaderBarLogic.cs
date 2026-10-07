@@ -44,7 +44,7 @@ internal static class ShellHeaderBarLogic
             IconName: galleryActive ? "gallery" : "grid");
     }
 
-    /// <summary>検索ボックス枠のテーマリソースキーをフォーカス状態から返す。</summary>
+    /// <summary>検索ボックス枠のテーマresourceキーをフォーカス状態から返す。</summary>
     public static SearchBoxVisualKeys SearchBoxKeys(bool focused)
         => focused
             ? new SearchBoxVisualKeys("ABorderStrong", "ASurface")
@@ -54,14 +54,10 @@ internal static class ShellHeaderBarLogic
     public static bool ShouldSubmitSearch(VirtualKey key) => key == VirtualKey.Enter;
 
     /// <summary>候補リストを出す入力かを返す。空白や記号だけの入力では候補を出さない。</summary>
-    public static bool ShouldShowWorldSuggestions(string? query)
-        => (query ?? string.Empty).Trim().Any(char.IsLetterOrDigit);
+    public static bool ShouldShowWorldSuggestions(string? query) => (query ?? string.Empty).Trim().Any(char.IsLetterOrDigit);
 
     /// <summary>ヘッダー検索用のワールド名候補を、現在の入力に部分一致するものから最大件数だけ返す。</summary>
-    public static IReadOnlyList<HeaderWorldSuggestion> BuildWorldNameSuggestions(
-        IEnumerable<WorldFilterOptionDto> worlds,
-        string? query,
-        int maxCount = 5)
+    public static IReadOnlyList<HeaderWorldSuggestion> BuildWorldNameSuggestions(IEnumerable<WorldFilterOptionDto> worlds, string? query, int maxCount = 5)
     {
         if (maxCount <= 0) return [];
 
@@ -72,9 +68,7 @@ internal static class ShellHeaderBarLogic
             .Where(world => !string.IsNullOrWhiteSpace(world.world_name))
             .Where(world => world.world_name!.Contains(trimmed, StringComparison.OrdinalIgnoreCase))
             .Take(maxCount)
-            .Select(world => new HeaderWorldSuggestion(
-                world.world_name!,
-                getMsg("ShellHeaderBar.worldPhotoCount", ("count", world.count))))
+            .Select(world => new HeaderWorldSuggestion(world.world_name!, getMsg("ShellHeaderBar.worldPhotoCount", ("count", world.count))))
             .ToList();
     }
 }
@@ -82,7 +76,7 @@ internal static class ShellHeaderBarLogic
 /// <summary>ヘッダーのトグルボタン表示状態。</summary>
 internal sealed record HeaderToggleState(bool Active, bool Enabled, double Opacity, string? IconName);
 
-/// <summary>検索ボックスの枠線と背景に使うテーマリソースキー。</summary>
+/// <summary>検索ボックスの枠線と背景に使うテーマresourceキー。</summary>
 internal sealed record SearchBoxVisualKeys(string BorderKey, string FillKey);
 
 /// <summary>ヘッダー検索のワールド名候補表示。</summary>

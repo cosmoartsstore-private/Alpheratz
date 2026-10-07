@@ -24,11 +24,7 @@ internal static class Program
             }
 
             var startInfo = new ProcessStartInfo
-            {
-                FileName = runtimeExe,
-                WorkingDirectory = Path.GetDirectoryName(runtimeExe)!,
-                UseShellExecute = true,
-            };
+            { FileName = runtimeExe, WorkingDirectory = Path.GetDirectoryName(runtimeExe)!, UseShellExecute = true, };
 
             foreach (var arg in args)
             {
@@ -57,12 +53,7 @@ internal static class Program
         }
 
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        return Path.Combine(
-            localAppData,
-            "CosmoArtsStore",
-            AppName,
-            "app",
-            "Alpheratz.Frontend.exe");
+        return Path.Combine(localAppData, "CosmoArtsStore", AppName, "app", "Alpheratz.Frontend.exe");
     }
 
     private static string ResolveDataRoot()

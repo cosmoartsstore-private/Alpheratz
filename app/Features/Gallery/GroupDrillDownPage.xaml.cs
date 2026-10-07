@@ -15,8 +15,8 @@ namespace Alpheratz.Features.Gallery;
 /// メイン PhotoGrid と同一の共有コントロールを使うことで、カード寸法・サムネイル
 /// 表示・お気に入り操作・ホバーアニメをメインと揃える。
 ///
-/// 表示は ShellStage の中位モーダルレイヤ (ModalContent) に重ねる。
-/// 写真をクリックすると ShellPage が PhotoModal を最上位レイヤ (TopModalContent) に
+/// 表示は ShellStage の中位モーダルレイヤー (ModalContent) に重ねる。
+/// 写真をクリックすると ShellPage が PhotoModal を最上位レイヤー (TopModalContent) に
 /// 重ねて 2 段スタック表示する。
 /// </summary>
 [ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
@@ -69,10 +69,7 @@ public sealed partial class GroupDrillDownPage : UserControl
         AppLogger.Trace($"GroupDrillDownPage.SetGroupInfo: enter name={groupName} count={items.Count}");
         try
         {
-            GroupTitle.Text = getMsg(
-                "GroupDrillDownPage.title",
-                ("groupName", groupName),
-                ("count", items.Count));
+            GroupTitle.Text = getMsg("GroupDrillDownPage.title", ("groupName", groupName), ("count", items.Count));
             photos = items;
             var wrapped = items.Select(p => new PhotoGridItem { Photo = p }).ToArray();
             displayItems.ReplaceAll(wrapped);
@@ -90,9 +87,7 @@ public sealed partial class GroupDrillDownPage : UserControl
         AppLogger.Trace("GroupDrillDownPage.SetGroupInfo: exit");
     }
 
-    // -----------------------------------------------------------------------
     // モーダル開閉用ハンドラ
-    // -----------------------------------------------------------------------
 
     /// <summary>背景 (Backdrop) クリックで閉じる。内側のクリックは ModalContent_Tapped で止める。</summary>
     private void Backdrop_Tapped(object sender, TappedRoutedEventArgs e)

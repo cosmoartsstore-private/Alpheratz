@@ -3,9 +3,7 @@ using Alpheratz.Shared.Models;
 
 namespace Alpheratz.Core.Database;
 
-// ---------------------------------------------------------------------------
-// Query parameter bag for paginated photo queries.
-// ---------------------------------------------------------------------------
+// 写真をページ単位で取得する query の引数。
 public sealed class PhotoQueryParams
 {
     public string? StartDate { get; init; }

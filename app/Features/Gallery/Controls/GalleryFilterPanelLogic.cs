@@ -32,32 +32,10 @@ internal static class GalleryFilterPanelLogic
     ];
 
     /// <summary>GalleryFiltersState の変更通知から、再同期すべき UI 領域を返す。</summary>
-    public static FilterPanelSyncPlan SyncPlanForFilterProperty(string? propertyName)
-        => propertyName switch
-        {
-            nameof(GalleryFiltersState.OrientationFilter)
-                or nameof(GalleryFiltersState.SortMode)
-                or nameof(GalleryFiltersState.DisplayFolderMode)
-                or nameof(GalleryFiltersState.GroupingMode)
-                => new FilterPanelSyncPlan(ActiveStates: true),
-            nameof(GalleryFiltersState.ActiveFilterCount)
-                => new FilterPanelSyncPlan(Badge: true),
-            nameof(GalleryFiltersState.TagFilterCounts)
-                => new FilterPanelSyncPlan(TagChoices: true),
-            "BatchCompleted"
-                => FilterPanelSyncPlan.All,
-            nameof(GalleryFiltersState.DateFrom)
-                or nameof(GalleryFiltersState.DateTo)
-                or nameof(GalleryFiltersState.DatePreset)
-                => new FilterPanelSyncPlan(DateTrigger: true),
-            nameof(GalleryFiltersState.FavoritesOnly)
-                => new FilterPanelSyncPlan(FavoriteToggle: true),
-            _ => FilterPanelSyncPlan.None,
-        };
+    public static FilterPanelSyncPlan SyncPlanForFilterProperty(string? propertyName) => propertyName switch { nameof(GalleryFiltersState.OrientationFilter) or nameof(GalleryFiltersState.SortMode) or nameof(GalleryFiltersState.DisplayFolderMode) or nameof(GalleryFiltersState.GroupingMode) => new FilterPanelSyncPlan(ActiveStates: true), nameof(GalleryFiltersState.ActiveFilterCount) => new FilterPanelSyncPlan(Badge: true), nameof(GalleryFiltersState.TagFilterCounts) => new FilterPanelSyncPlan(TagChoices: true), "BatchCompleted" => FilterPanelSyncPlan.All, nameof(GalleryFiltersState.DateFrom) or nameof(GalleryFiltersState.DateTo) or nameof(GalleryFiltersState.DatePreset) => new FilterPanelSyncPlan(DateTrigger: true), nameof(GalleryFiltersState.FavoritesOnly) => new FilterPanelSyncPlan(FavoriteToggle: true), _ => FilterPanelSyncPlan.None, };
 
     /// <summary>タグ/ワールド選択コレクション変更時に必要な再同期領域を返す。</summary>
-    public static FilterPanelSyncPlan SyncPlanForSelectionCollectionChanged()
-        => new(Badge: true, TagSummary: true, WorldSummary: true, TagChoices: true, WorldChoices: true);
+    public static FilterPanelSyncPlan SyncPlanForSelectionCollectionChanged() => new(Badge: true, TagSummary: true, WorldSummary: true, TagChoices: true, WorldChoices: true);
 
     /// <summary>日付ドラフトまたは適用済み日付から、画面に表示する期間ラベルを作る。</summary>
     public static string FormatDateRangeLabel(string? from, string? to)
@@ -86,37 +64,18 @@ internal static class GalleryFilterPanelLogic
             : new FilterPanelButtonStyle("ASurfaceSoft", "ATextDim", null, 0, true);
 
     /// <summary>現在のフィルタ値から、各選択ボタンの active 状態を作る。</summary>
-    public static FilterPanelActiveState ActiveState(
-        string orientationFilter,
-        SortMode sortMode,
-        DisplayFolderMode displayFolderMode,
-        GroupingMode groupingMode)
-        => new(
-            OrientationAll: orientationFilter == "all",
-            OrientationPortrait: orientationFilter == "portrait",
-            OrientationLandscape: orientationFilter == "landscape",
-            SortDate: sortMode == SortMode.dateDesc,
-            SortWorld: sortMode == SortMode.worldAsc,
-            FolderAll: displayFolderMode == DisplayFolderMode.all,
-            FolderPrimary: displayFolderMode == DisplayFolderMode.primary,
-            FolderSecondary: displayFolderMode == DisplayFolderMode.secondary,
-            GroupNone: groupingMode == GroupingMode.none,
-            GroupWorld: groupingMode == GroupingMode.world);
+    public static FilterPanelActiveState ActiveState(string orientationFilter, SortMode sortMode, DisplayFolderMode displayFolderMode, GroupingMode groupingMode) => new(OrientationAll: orientationFilter == "all", OrientationPortrait: orientationFilter == "portrait", OrientationLandscape: orientationFilter == "landscape", SortDate: sortMode == SortMode.dateDesc, SortWorld: sortMode == SortMode.worldAsc, FolderAll: displayFolderMode == DisplayFolderMode.all, FolderPrimary: displayFolderMode == DisplayFolderMode.primary, FolderSecondary: displayFolderMode == DisplayFolderMode.secondary, GroupNone: groupingMode == GroupingMode.none, GroupWorld: groupingMode == GroupingMode.world);
 
-    /// <summary>active 状態からアイコンの前景色リソースキーを返す。</summary>
+    /// <summary>active 状態からアイコンの前景色resourceキーを返す。</summary>
     public static string IconForegroundKey(bool active) => active ? "ATextOnPrimary" : "ATextFaint";
 
     /// <summary>有効フィルタ数からバッジ表示状態を作る。</summary>
-    public static FilterBadgeDisplay Badge(int count)
-        => new(count > 0, count.ToString());
+    public static FilterBadgeDisplay Badge(int count) => new(count > 0, count.ToString());
 
     /// <summary>日付トリガーのラベルとクリアボタン表示状態を作る。</summary>
-    public static DateTriggerDisplay DateTrigger(string? from, string? to)
-        => new(
-            FormatDateRangeLabel(from, to),
-            !string.IsNullOrEmpty(from) || !string.IsNullOrEmpty(to));
+    public static DateTriggerDisplay DateTrigger(string? from, string? to) => new(FormatDateRangeLabel(from, to), !string.IsNullOrEmpty(from) || !string.IsNullOrEmpty(to));
 
-    /// <summary>お気に入りトグルの状態からテーマリソースキーを返す。</summary>
+    /// <summary>お気に入りトグルの状態からテーマresourceキーを返す。</summary>
     public static FavoriteToggleDisplay FavoriteToggle(bool active)
         => active
             ? new FavoriteToggleDisplay(true, "AFavoriteSolid", null, "ATextOnPrimary", "ATextOnPrimary", "FavoriteSelectedButtonStyle")
@@ -130,18 +89,10 @@ internal static class GalleryFilterPanelLogic
             FormatDateRangeLabel(from, to));
 
     /// <summary>日付ドラフトのプリセット選択状態を返す。</summary>
-    public static PresetActiveState PresetState(string preset)
-        => new(
-            Today: preset == "today",
-            Last7Days: preset == "last7days",
-            ThisMonth: preset == "thisMonth",
-            LastMonth: preset == "lastMonth",
-            HalfYear: preset == "halfYear",
-            OneYear: preset == "oneYear");
+    public static PresetActiveState PresetState(string preset) => new(Today: preset == "today", Last7Days: preset == "last7days", ThisMonth: preset == "thisMonth", LastMonth: preset == "lastMonth", HalfYear: preset == "halfYear", OneYear: preset == "oneYear");
 
     /// <summary>現在の開閉状態から、次のドロップダウン表示状態と開いた直後の再構築要否を返す。</summary>
-    public static DropdownToggleState ToggleDropdown(bool isOpen)
-        => new(IsOpen: !isOpen, ShouldResetSearchAndRebuild: !isOpen);
+    public static DropdownToggleState ToggleDropdown(bool isOpen) => new(IsOpen: !isOpen, ShouldResetSearchAndRebuild: !isOpen);
 
     /// <summary>日付プリセットを開始日・終了日・表示月へ展開する。未知プリセットは null。</summary>
     public static DateDraft? ApplyPresetToDraft(string preset, DateTime today)
@@ -178,11 +129,7 @@ internal static class GalleryFilterPanelLogic
                 return null;
         }
 
-        return new DateDraft(
-            from.ToString("yyyy-MM-dd"),
-            to.ToString("yyyy-MM-dd"),
-            preset,
-            new DateTime(from.Year, from.Month, 1));
+        return new DateDraft(from.ToString("yyyy-MM-dd"), to.ToString("yyyy-MM-dd"), preset, new DateTime(from.Year, from.Month, 1));
     }
 
     /// <summary>表示月を指定月数だけ移動する。許可範囲外なら元の月を維持する。</summary>
@@ -193,13 +140,7 @@ internal static class GalleryFilterPanelLogic
     }
 
     /// <summary>日付ドラフトの適用方法を、プリセット適用、解除、カスタム範囲に分類する。</summary>
-    public static DateApplyRequest ResolveDateApplyRequest(string preset, string from, string to)
-        => preset switch
-        {
-            DatePresetCustom => new DateApplyRequest(DateApplyKind.CustomRange, DatePresetCustom, from, to),
-            DatePresetNone => new DateApplyRequest(DateApplyKind.Preset, DatePresetNone, string.Empty, string.Empty),
-            _ => new DateApplyRequest(DateApplyKind.Preset, preset, string.Empty, string.Empty),
-        };
+    public static DateApplyRequest ResolveDateApplyRequest(string preset, string from, string to) => preset switch { DatePresetCustom => new DateApplyRequest(DateApplyKind.CustomRange, DatePresetCustom, from, to), DatePresetNone => new DateApplyRequest(DateApplyKind.Preset, DatePresetNone, string.Empty, string.Empty), _ => new DateApplyRequest(DateApplyKind.Preset, preset, string.Empty, string.Empty), };
 
     /// <summary>表示月と選択範囲から、カレンダーに必要な日付セル情報を作る。</summary>
     public static IReadOnlyList<CalendarDayCell> BuildCalendarDays(DateTime visibleMonth, string draftFrom, string draftTo)
@@ -223,14 +164,7 @@ internal static class GalleryFilterPanelLogic
                 && cellDate.Date >= activeStart.Value.Date
                 && cellDate.Date <= activeEnd.Value.Date;
 
-            cells.Add(new CalendarDayCell(
-                cellDate,
-                i / 7,
-                i % 7,
-                cellDate.Month == visibleMonth.Month && cellDate.Year == visibleMonth.Year,
-                isStart,
-                isEnd,
-                inRange));
+            cells.Add(new CalendarDayCell(cellDate, i / 7, i % 7, cellDate.Month == visibleMonth.Month && cellDate.Year == visibleMonth.Year, isStart, isEnd, inRange));
         }
 
         return cells;
@@ -263,22 +197,12 @@ internal static class GalleryFilterPanelLogic
     {
         if (cell.IsStart || cell.IsEnd)
         {
-            return new CalendarDayVisual(
-                BackgroundKey: "APrimary",
-                BackgroundTransparent: false,
-                ForegroundKey: null,
-                ForegroundWhite: true,
-                FontWeight: FilterPanelFontWeight.ExtraBold);
+            return new CalendarDayVisual(BackgroundKey: "APrimary", BackgroundTransparent: false, ForegroundKey: null, ForegroundWhite: true, FontWeight: FilterPanelFontWeight.ExtraBold);
         }
 
         if (cell.InRange)
         {
-            return new CalendarDayVisual(
-                BackgroundKey: "APrimarySoft",
-                BackgroundTransparent: false,
-                ForegroundKey: "AText",
-                ForegroundWhite: false,
-                FontWeight: FilterPanelFontWeight.SemiBold);
+            return new CalendarDayVisual(BackgroundKey: "APrimarySoft", BackgroundTransparent: false, ForegroundKey: "AText", ForegroundWhite: false, FontWeight: FilterPanelFontWeight.SemiBold);
         }
 
         return new CalendarDayVisual(
@@ -306,17 +230,11 @@ internal static class GalleryFilterPanelLogic
     }
 
     /// <summary>タグドロップダウンに表示するチェック行を作る。</summary>
-    public static FilterChoiceList BuildTagChoices(
-        IEnumerable<string> allTags,
-        string? query,
-        IEnumerable<string> selectedTags,
-        IReadOnlyDictionary<string, long> tagCounts)
+    public static FilterChoiceList BuildTagChoices(IEnumerable<string> allTags, string? query, IEnumerable<string> selectedTags, IReadOnlyDictionary<string, long> tagCounts)
     {
         var selected = selectedTags.ToHashSet(StringComparer.Ordinal);
         var rows = new List<FilterChoiceRow>
-        {
-            new(getMsg("GalleryFilterPanel.allTags"), null, selected.Count == 0, null),
-        };
+        { new(getMsg("GalleryFilterPanel.allTags"), null, selected.Count == 0, null), };
 
         foreach (var tag in FilterTags(allTags, query))
         {
@@ -326,9 +244,7 @@ internal static class GalleryFilterPanelLogic
             rows.Add(new FilterChoiceRow(tag, countText, selected.Contains(tag), tag));
         }
 
-        return new FilterChoiceList(
-            rows,
-            getMsg("GalleryFilterPanel.tagOptionCount", ("count", allTags.Count())));
+        return new FilterChoiceList(rows, getMsg("GalleryFilterPanel.tagOptionCount", ("count", allTags.Count())));
     }
 
     /// <summary>ワールド候補を表示名で絞り込む。検索語が空なら元の候補順を保つ。</summary>
@@ -343,37 +259,21 @@ internal static class GalleryFilterPanelLogic
     }
 
     /// <summary>ワールドドロップダウンに表示するチェック行を作る。</summary>
-    public static WorldChoiceList BuildWorldChoices(
-        IEnumerable<WorldFilterOptionDto> allWorlds,
-        string? query,
-        IEnumerable<string> selectedWorlds)
+    public static WorldChoiceList BuildWorldChoices(IEnumerable<WorldFilterOptionDto> allWorlds, string? query, IEnumerable<string> selectedWorlds)
     {
         var worlds = allWorlds.ToList();
         var selected = selectedWorlds.ToHashSet(StringComparer.Ordinal);
         var filtered = FilterWorldOptions(worlds, query);
         var rows = new List<FilterChoiceRow>
-        {
-            new(
-                getMsg("GalleryFilterPanel.allWorlds"),
-                getMsg("GalleryFilterPanel.photoCount", ("count", TotalWorldCount(worlds))),
-                selected.Count == 0,
-                null),
-        };
+        { new(getMsg("GalleryFilterPanel.allWorlds"), getMsg("GalleryFilterPanel.photoCount", ("count", TotalWorldCount(worlds))), selected.Count == 0, null), };
 
         foreach (var opt in filtered)
         {
             var filterValue = GetWorldFilterValue(opt.world_name);
-            rows.Add(new FilterChoiceRow(
-                GetWorldDisplayName(opt.world_name),
-                getMsg("GalleryFilterPanel.photoCount", ("count", opt.count)),
-                selected.Contains(filterValue),
-                filterValue));
+            rows.Add(new FilterChoiceRow(GetWorldDisplayName(opt.world_name), getMsg("GalleryFilterPanel.photoCount", ("count", opt.count)), selected.Contains(filterValue), filterValue));
         }
 
-        return new WorldChoiceList(
-            rows,
-            getMsg("GalleryFilterPanel.worldOptionCount", ("count", worlds.Count)),
-            filtered.Count > 0);
+        return new WorldChoiceList(rows, getMsg("GalleryFilterPanel.worldOptionCount", ("count", worlds.Count)), filtered.Count > 0);
     }
 
     /// <summary>DB の world_name 値をフィルタ内部値へ変換する。</summary>
@@ -385,16 +285,14 @@ internal static class GalleryFilterPanelLogic
         => string.IsNullOrWhiteSpace(worldName) ? UnknownWorldLabel : worldName;
 
     /// <summary>ワールド候補の写真枚数を合計する。</summary>
-    public static long TotalWorldCount(IEnumerable<WorldFilterOptionDto> allWorlds)
-        => allWorlds.Sum(world => world.count);
+    public static long TotalWorldCount(IEnumerable<WorldFilterOptionDto> allWorlds) => allWorlds.Sum(world => world.count);
 
     /// <summary>現在の選択状態から、個別フィルタを追加するか削除するかを返す。</summary>
     public static FilterToggleAction ToggleAction(IEnumerable<string> selectedValues, string value)
         => selectedValues.Contains(value) ? FilterToggleAction.Remove : FilterToggleAction.Add;
 
     /// <summary>全解除操作で削除対象にする値を、列挙中の変更に影響されない配列として返す。</summary>
-    public static IReadOnlyList<string> ValuesToClear(IEnumerable<string> selectedValues)
-        => selectedValues.ToArray();
+    public static IReadOnlyList<string> ValuesToClear(IEnumerable<string> selectedValues) => selectedValues.ToArray();
 
     /// <summary>チェックリスト 1 行のテーマキー、列位置、チェックマーク表示を返す。</summary>
     public static FilterCheckboxVisual CheckboxVisual(bool isChecked, bool hasCountText)
@@ -411,48 +309,17 @@ internal static class GalleryFilterPanelLogic
 }
 
 /// <summary>フィルタパネルで再同期すべき UI 領域。</summary>
-internal sealed record FilterPanelSyncPlan(
-    bool ActiveStates = false,
-    bool Badge = false,
-    bool DateTrigger = false,
-    bool FavoriteToggle = false,
-    bool TagSummary = false,
-    bool WorldSummary = false,
-    bool TagChoices = false,
-    bool WorldChoices = false)
+internal sealed record FilterPanelSyncPlan(bool ActiveStates = false, bool Badge = false, bool DateTrigger = false, bool FavoriteToggle = false, bool TagSummary = false, bool WorldSummary = false, bool TagChoices = false, bool WorldChoices = false)
 {
     public static readonly FilterPanelSyncPlan None = new();
-    public static readonly FilterPanelSyncPlan All = new(
-        ActiveStates: true,
-        Badge: true,
-        DateTrigger: true,
-        FavoriteToggle: true,
-        TagSummary: true,
-        WorldSummary: true,
-        TagChoices: true,
-        WorldChoices: true);
+    public static readonly FilterPanelSyncPlan All = new(ActiveStates: true, Badge: true, DateTrigger: true, FavoriteToggle: true, TagSummary: true, WorldSummary: true, TagChoices: true, WorldChoices: true);
 }
 
 /// <summary>active ボタンに適用するテーマキーと枠線幅。</summary>
-internal sealed record FilterPanelButtonStyle(
-    string BackgroundKey,
-    string ForegroundKey,
-    string? BorderKey,
-    double BorderThickness,
-    bool BorderTransparent);
+internal sealed record FilterPanelButtonStyle(string BackgroundKey, string ForegroundKey, string? BorderKey, double BorderThickness, bool BorderTransparent);
 
 /// <summary>フィルタパネル内の各選択ボタンの active 状態。</summary>
-internal sealed record FilterPanelActiveState(
-    bool OrientationAll,
-    bool OrientationPortrait,
-    bool OrientationLandscape,
-    bool SortDate,
-    bool SortWorld,
-    bool FolderAll,
-    bool FolderPrimary,
-    bool FolderSecondary,
-    bool GroupNone,
-    bool GroupWorld);
+internal sealed record FilterPanelActiveState(bool OrientationAll, bool OrientationPortrait, bool OrientationLandscape, bool SortDate, bool SortWorld, bool FolderAll, bool FolderPrimary, bool FolderSecondary, bool GroupNone, bool GroupWorld);
 
 /// <summary>有効フィルタ数バッジの表示状態。</summary>
 internal sealed record FilterBadgeDisplay(bool Visible, string Text);
@@ -460,26 +327,14 @@ internal sealed record FilterBadgeDisplay(bool Visible, string Text);
 /// <summary>日付トリガーボタンの表示状態。</summary>
 internal sealed record DateTriggerDisplay(string Label, bool ClearVisible);
 
-/// <summary>お気に入りトグルの表示に使うテーマリソースキー。</summary>
-internal sealed record FavoriteToggleDisplay(
-    bool Liked,
-    string BackgroundKey,
-    string? BorderKey,
-    string LabelForegroundKey,
-    string IconForegroundKey,
-    string ButtonStyleKey);
+/// <summary>お気に入りトグルの表示に使うテーマresourceキー。</summary>
+internal sealed record FavoriteToggleDisplay(bool Liked, string BackgroundKey, string? BorderKey, string LabelForegroundKey, string IconForegroundKey, string ButtonStyleKey);
 
 /// <summary>日付ドラフト入力欄の表示状態。</summary>
 internal sealed record DateDraftDisplay(string FromText, string ToText, string RangeLabel);
 
 /// <summary>日付プリセットボタンの active 状態。</summary>
-internal sealed record PresetActiveState(
-    bool Today,
-    bool Last7Days,
-    bool ThisMonth,
-    bool LastMonth,
-    bool HalfYear,
-    bool OneYear);
+internal sealed record PresetActiveState(bool Today, bool Last7Days, bool ThisMonth, bool LastMonth, bool HalfYear, bool OneYear);
 
 /// <summary>日付プリセット適用後のドラフト状態。</summary>
 internal sealed record DateDraft(string From, string To, string Preset, DateTime VisibleMonth);
@@ -498,22 +353,10 @@ internal enum DateApplyKind
 internal sealed record DateApplyRequest(DateApplyKind Kind, string Preset, string From, string To);
 
 /// <summary>カレンダーに表示する1日分の状態。</summary>
-internal sealed record CalendarDayCell(
-    DateTime Date,
-    int Row,
-    int Column,
-    bool InCurrentMonth,
-    bool IsStart,
-    bool IsEnd,
-    bool InRange);
+internal sealed record CalendarDayCell(DateTime Date, int Row, int Column, bool InCurrentMonth, bool IsStart, bool IsEnd, bool InRange);
 
 /// <summary>カレンダー日付セルに適用するテーマキーとフォント太さ。</summary>
-internal sealed record CalendarDayVisual(
-    string? BackgroundKey,
-    bool BackgroundTransparent,
-    string? ForegroundKey,
-    bool ForegroundWhite,
-    FilterPanelFontWeight FontWeight);
+internal sealed record CalendarDayVisual(string? BackgroundKey, bool BackgroundTransparent, string? ForegroundKey, bool ForegroundWhite, FilterPanelFontWeight FontWeight);
 
 /// <summary>フィルタパネル内で扱うフォント太さ。</summary>
 internal enum FilterPanelFontWeight
@@ -542,13 +385,4 @@ internal enum FilterToggleAction
 }
 
 /// <summary>チェックリスト 1 行に適用するテーマキーと列位置。</summary>
-internal sealed record FilterCheckboxVisual(
-    string NameForegroundKey,
-    string CountForegroundKey,
-    string CheckBorderKey,
-    string CheckBackgroundKey,
-    string? ItemBackgroundKey,
-    string? ItemBorderKey,
-    string CheckmarkForegroundKey,
-    int CheckColumn,
-    bool CheckmarkVisible);
+internal sealed record FilterCheckboxVisual(string NameForegroundKey, string CountForegroundKey, string CheckBorderKey, string CheckBackgroundKey, string? ItemBackgroundKey, string? ItemBorderKey, string CheckmarkForegroundKey, int CheckColumn, bool CheckmarkVisible);

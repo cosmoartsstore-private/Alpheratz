@@ -1,31 +1,9 @@
-<UserControl
-    x:Class="Alpheratz.Shared.Controls.CustomScrollbar"
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Width="12">
-    <Grid x:Name="Track"
-          Background="Transparent"
-          PointerEntered="Track_PointerEntered"
-          PointerExited="Track_PointerExited"
-          PointerPressed="Track_PointerPressed"
-          PointerMoved="Track_PointerMoved"
-          PointerReleased="Track_PointerReleased"
-          PointerCanceled="Track_PointerCanceled"
-          PointerCaptureLost="Track_PointerCaptureLost">
+<UserControl x:Class="Alpheratz.Shared.Controls.CustomScrollbar" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="12">
+    <Grid x:Name="Track" Background="Transparent" PointerEntered="Track_PointerEntered" PointerExited="Track_PointerExited" PointerPressed="Track_PointerPressed" PointerMoved="Track_PointerMoved" PointerReleased="Track_PointerReleased" PointerCanceled="Track_PointerCanceled" PointerCaptureLost="Track_PointerCaptureLost">
         <!-- WinUI の細いインジケーターを基準にした直線的なスクロールレール。 -->
-        <Border x:Name="TrackRail"
-                Width="8"
-                HorizontalAlignment="Center"
-                CornerRadius="1"
-                Background="{ThemeResource AScrollbarTrack}"
-                Opacity="0"/>
+        <Border x:Name="TrackRail" Width="8" HorizontalAlignment="Center" CornerRadius="1" Background="{ThemeResource AScrollbarTrack}" Opacity="0"/>
         <!-- 通常時は 2px、操作時だけ 6px に広がる。端を半円にはしない。 -->
-        <Border x:Name="Thumb"
-                Width="2"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Top"
-                CornerRadius="1"
-                Background="{ThemeResource AScrollbarThumb}">
+        <Border x:Name="Thumb" Width="2" HorizontalAlignment="Center" VerticalAlignment="Top" CornerRadius="1" Background="{ThemeResource AScrollbarThumb}">
             <Border.RenderTransform>
                 <TranslateTransform x:Name="ThumbTransform"/>
             </Border.RenderTransform>

@@ -40,10 +40,7 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
     private bool thumbnailStateDisposed;
     private long thumbnailSuspensionVersion;
 
-    private sealed record ThumbnailSuspension(
-        long Version,
-        Task[] Operations,
-        CancellationTokenSource[] Sources);
+    private sealed record ThumbnailSuspension(long Version, Task[] Operations, CancellationTokenSource[] Sources);
 
     private int transitionToken;
 
@@ -139,13 +136,7 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
         foreach (var s in summaries)
         {
             var key = $"{s.Year:D4}-{s.Month:D2}";
-            groups.Add(new GalleryMonthGroup(
-                key,
-                s.Year,
-                s.Month,
-                getMsg("GalleryMonthGroup.monthLabel", ("month", s.Month)),
-                runningIndex,
-                s.Count));
+            groups.Add(new GalleryMonthGroup(key, s.Year, s.Month, getMsg("GalleryMonthGroup.monthLabel", ("month", s.Month)), runningIndex, s.Count));
             runningIndex += s.Count;
         }
 
@@ -317,11 +308,7 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
             thumbnailOperations.Add(operation, cts);
         }
 
-        _ = operation.ContinueWith(
-            completeThumbnailOperation,
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
+        _ = operation.ContinueWith(completeThumbnailOperation, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
 
         if (previousCts is not null)
         {
@@ -400,13 +387,7 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
             retiredThumbnailSources.Add(thumbnailCts);
             thumbnailCts = null;
         }
-        return new ThumbnailSuspension(
-            suspensionVersion,
-            thumbnailOperations.Keys.ToArray(),
-            retiredThumbnailSources
-                .Concat(thumbnailOperations.Values)
-                .Distinct()
-                .ToArray());
+        return new ThumbnailSuspension(suspensionVersion, thumbnailOperations.Keys.ToArray(), retiredThumbnailSources.Concat(thumbnailOperations.Values).Distinct().ToArray());
     }
 
     private async Task waitThumbnailSuspension(ThumbnailSuspension suspension)
@@ -515,12 +496,7 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
                         : g.ToArray();
                     var representative = groupPhotos[0];
                     return new PhotoGridItem
-                    {
-                        Photo = representative,
-                        GroupCount = groupPhotos.Length,
-                        GroupKey = g.Key,
-                        GroupPhotos = groupPhotos,
-                    };
+                    { Photo = representative, GroupCount = groupPhotos.Length, GroupKey = g.Key, GroupPhotos = groupPhotos, };
                 })
                 .ToArray();
             items = groups;
@@ -632,11 +608,7 @@ public partial class GalleryPhotosState : UiThreadSafeObservableObject, IAsyncDi
 
             if (applied)
             {
-                AppLogger.Info(
-                    $"Performance.Gallery.Reload photos={allPhotos.Count} " +
-                    $"world_filters={filterSnapshot.worldFilters.Count} tag_filters={filterSnapshot.tagFilters.Count} " +
-                    $"query_ms={queryElapsed.TotalMilliseconds:F3} ui_apply_ms={uiApplyMilliseconds:F3} " +
-                    $"total_ms={Stopwatch.GetElapsedTime(loadStartedAt).TotalMilliseconds:F3}");
+                AppLogger.Info($"Performance.Gallery.Reload photos={allPhotos.Count} " + $"world_filters={filterSnapshot.worldFilters.Count} tag_filters={filterSnapshot.tagFilters.Count} " + $"query_ms={queryElapsed.TotalMilliseconds:F3} ui_apply_ms={uiApplyMilliseconds:F3} " + $"total_ms={Stopwatch.GetElapsedTime(loadStartedAt).TotalMilliseconds:F3}");
             }
         }
         catch (Exception err)

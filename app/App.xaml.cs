@@ -31,7 +31,7 @@ public partial class App : Application
     public static Window? MainWindowInstance => (Current as App)?.mainWindow;
     public static IServiceProvider? Services => (Current as App)?.serviceProvider;
 
-    // アプリケーションリソースを初期化する前に、保存済みテーマを可能な範囲で適用する。
+    // アプリケーションresourceを初期化する前に、保存済みテーマを可能な範囲で適用する。
     public App()
     {
         AppLogger.Trace("App.ctor: enter");
@@ -228,9 +228,7 @@ public partial class App : Application
                         else
                         {
                             var remaining = minSplash - elapsed;
-                            _ = Task.Delay(remaining).ContinueWith(_ =>
-                                dispatcherQueue.TryEnqueue(() => SwapToShell(win, shellViewModel, bootstrapPage)),
-                                TaskContinuationOptions.ExecuteSynchronously);
+                            _ = Task.Delay(remaining).ContinueWith(_ => dispatcherQueue.TryEnqueue(() => SwapToShell(win, shellViewModel, bootstrapPage)), TaskContinuationOptions.ExecuteSynchronously);
                         }
                     }
                 });
@@ -254,10 +252,10 @@ public partial class App : Application
 
         try
         {
-            // XamlControlsResources can fail-fast during App.InitializeComponent
-            // in this self-contained unpackaged build. OnLaunched runs after the
-            // WinUI desktop host is ready, while still before any page/control XAML
-            // is loaded.
+            // self-contained の unpackaged 配布では、App.InitializeComponent 中の
+            // XamlControlsResources 初期化が失敗する場合がある。OnLaunched は WinUI の
+            // desktop host 準備後、各 Page と Control の XAML 読込前に実行されるため、
+            // この段階で初期化する。
             Resources.MergedDictionaries.Insert(0, new XamlControlsResources());
             winUiResourcesInitialized = true;
             AppLogger.Trace("App.EnsureWinUiResources: XamlControlsResources installed");

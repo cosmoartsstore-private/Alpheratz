@@ -14,7 +14,7 @@ namespace Alpheratz.Services;
 /// <summary>
 /// DB に既に存在し phash 列が空の写真をバックグラウンドで埋めるワーカー。
 /// PDQ ハッシュ計算 (PdqHasher) → hex 文字列で UpdatePhotoPhashAsync で書き込む。
-/// DB スキーマに quality 列がないため、保存用の4方向ハッシュでは quality を計算しない。
+/// DB schemaに quality 列がないため、保存用の4方向ハッシュでは quality を計算しない。
 /// 進捗は "phash_progress" / 完了は "phash_complete" を LocalEventBus で発行する。
 /// </summary>
 public sealed class PhashService
@@ -56,8 +56,7 @@ public sealed class PhashService
     }
 
     /// <summary>現在 DB に残っている未計算 phash 件数を返す。</summary>
-    public Task<int> GetPendingPhashCountAsync(CancellationToken ct = default)
-        => db.GetPendingPhashCountAsync(ct);
+    public Task<int> GetPendingPhashCountAsync(CancellationToken ct = default) => db.GetPendingPhashCountAsync(ct);
 
     /// <summary>未計算 phash を新しい写真から順に補完する。多重起動中は何もせず戻る。</summary>
     public async Task StartPdqAnalysisAsync(CancellationToken ct = default)
@@ -101,10 +100,7 @@ public sealed class PhashService
 
                 var chunks = batch.Chunk(ChunkSize).Select(static chunk => chunk.ToArray()).ToArray();
                 await Parallel.ForEachAsync(chunks, new ParallelOptions
-                {
-                    CancellationToken = ct,
-                    MaxDegreeOfParallelism = parallelism,
-                }, async (chunk, token) =>
+                { CancellationToken = ct, MaxDegreeOfParallelism = parallelism, }, async (chunk, token) =>
                 {
                     var updates = new List<AlpheratzDb.PhotoPhashUpdate>(chunk.Length);
                     foreach (var item in chunk)
@@ -171,21 +167,14 @@ public sealed class PhashService
                 publications = progressPublicationCount;
                 finalSnapshot = currentProgress;
             }
-            AppLogger.Info(
-                $"Performance.Pdq total={measuredTotal} done={finalSnapshot.done} parallelism={parallelism} " +
-                $"progress_publications={publications} " +
-                $"elapsed_ms={Stopwatch.GetElapsedTime(analysisStartedAt).TotalMilliseconds:F3} " +
-                $"managed_delta_bytes={GC.GetTotalMemory(forceFullCollection: false) - managedBytesBefore} " +
-                $"working_set_delta_bytes={Environment.WorkingSet - workingSetBefore}");
+            AppLogger.Info($"Performance.Pdq total={measuredTotal} done={finalSnapshot.done} parallelism={parallelism} " + $"progress_publications={publications} " + $"elapsed_ms={Stopwatch.GetElapsedTime(analysisStartedAt).TotalMilliseconds:F3} " + $"managed_delta_bytes={GC.GetTotalMemory(forceFullCollection: false) - managedBytesBefore} " + $"working_set_delta_bytes={Environment.WorkingSet - workingSetBefore}");
         }
 
         AppLogger.Trace("PhashService.StartPdqAnalysisAsync: exit");
     }
 
     /// <summary>1枚の画像を読み込み、DBへ保存する phash 更新行へ変換する。</summary>
-    private static async Task<AlpheratzDb.PhotoPhashUpdate> BuildPhashUpdateAsync(
-        PendingPhashItem item,
-        CancellationToken ct)
+    private static async Task<AlpheratzDb.PhotoPhashUpdate> BuildPhashUpdateAsync(PendingPhashItem item, CancellationToken ct)
     {
         try
         {
@@ -214,12 +203,7 @@ public sealed class PhashService
     }
 
     /// <summary>進捗スナップショットを更新し、イベントバスへ通知する。</summary>
-    private void UpdateProgress(
-        int done,
-        int total,
-        string? current,
-        bool reset = false,
-        bool forcePublish = false)
+    private void UpdateProgress(int done, int total, string? current, bool reset = false, bool forcePublish = false)
     {
         lock (progressLock)
         {
@@ -245,11 +229,7 @@ public sealed class PhashService
 
             lastProgressPublishedAt = now;
             progressPublicationCount++;
-            progressPublishTail = progressPublishTail.ContinueWith(
-                _ => eventBus.PublishAsync(EventNames.PhashProgress, snapshot),
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default).Unwrap();
+            progressPublishTail = progressPublishTail.ContinueWith(_ => eventBus.PublishAsync(EventNames.PhashProgress, snapshot), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default).Unwrap();
         }
     }
 

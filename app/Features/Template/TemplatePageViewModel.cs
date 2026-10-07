@@ -29,9 +29,7 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
     /// <summary>置換後の超過へ注意を促す残り文字数。</summary>
     public const int PlaceholderWarningRemainingCharacters = 20;
     private const int ShortenedUrlLength = 23;
-    private static readonly Regex PostUrlPattern = new(
-        @"\b(?:https?://|www\.)\S+",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+    private static readonly Regex PostUrlPattern = new(@"\b(?:https?://|www\.)\S+", RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
     private static readonly char[] UrlTrailingPunctuation =
         ['.', ',', '!', '?', ';', ':', ')', ']', '}', '。', '、', '！', '？', '）', '］', '｝', '】', '」', '』'];
     private static readonly string[] SupportedPostTemplateTokens =
@@ -122,14 +120,10 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
     }
 
     /// <summary>入力欄へ保持できる文字列かを、実文字数と X の加重文字数の両方で判定する。</summary>
-    public static bool isTemplateInputWithinLimit(string? text)
-        => (text?.Length ?? 0) <= StandardPostCharacterLimit
-            && countPostCharacters(text) <= StandardPostCharacterLimit;
+    public static bool isTemplateInputWithinLimit(string? text) => (text?.Length ?? 0) <= StandardPostCharacterLimit && countPostCharacters(text) <= StandardPostCharacterLimit;
 
     /// <summary>投稿時に内容が展開されるプレースホルダーを含むかを返す。</summary>
-    public static bool containsPostPlaceholder(string? text)
-        => !string.IsNullOrEmpty(text)
-            && SupportedPostTemplateTokens.Any(token => text.Contains(token, StringComparison.Ordinal));
+    public static bool containsPostPlaceholder(string? text) => !string.IsNullOrEmpty(text) && SupportedPostTemplateTokens.Any(token => text.Contains(token, StringComparison.Ordinal));
 
     private static int countWeightedText(string text)
     {
@@ -240,12 +234,7 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
             if (postLength > StandardPostCharacterLimit)
             {
                 AppLogger.Trace($"TemplatePageViewModel.openTweetIntent: skip (expanded text too long: {postLength})");
-                toastService.addToast(
-                    getMsg(
-                        "TemplatePageViewModel.postTextTooLong",
-                        ("count", postLength),
-                        ("max", StandardPostCharacterLimit)),
-                    ToastType.error);
+                toastService.addToast(getMsg("TemplatePageViewModel.postTextTooLong", ("count", postLength), ("max", StandardPostCharacterLimit)), ToastType.error);
                 return false;
             }
 
@@ -414,12 +403,7 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
         if (!isTemplateInputWithinLimit(normalized))
         {
             AppLogger.Trace("TemplatePageViewModel.saveTemplate: skip (too long)");
-            toastService.addToast(
-                getMsg(
-                    "TemplatePageViewModel.templateTooLong",
-                    ("count", weightedLength),
-                    ("max", StandardPostCharacterLimit)),
-                ToastType.error);
+            toastService.addToast(getMsg("TemplatePageViewModel.templateTooLong", ("count", weightedLength), ("max", StandardPostCharacterLimit)), ToastType.error);
             return;
         }
         var changesToExistingTemplate = EditingTweetTemplate is not null
@@ -442,11 +426,7 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
         AppLogger.Trace($"TemplatePageViewModel.saveTemplates: enter count={tweetTemplates.Count}");
         try
         {
-            await settingsService.SaveSettingAsync(new AlpheratzSettingDto
-            {
-                tweetTemplates = tweetTemplates,
-                activeTweetTemplate = ActiveTweetTemplate,
-            }).ConfigureAwait(false);
+            await settingsService.SaveSettingAsync(new AlpheratzSettingDto { tweetTemplates = tweetTemplates, activeTweetTemplate = ActiveTweetTemplate, }).ConfigureAwait(false);
             toastService.addToast(getMsg("TemplatePageViewModel.templateSaved"));
         }
         catch (Exception ex)

@@ -21,10 +21,7 @@ public sealed class SettingsCompositeViewModel : UiThreadSafeObservableObject
     public TagMasterViewModel TagMaster { get; }
     public TemplatePageViewModel Template { get; }
 
-    public SettingsCompositeViewModel(
-        SettingsViewModel settings,
-        TagMasterViewModel tagMaster,
-        TemplatePageViewModel template)
+    public SettingsCompositeViewModel(SettingsViewModel settings, TagMasterViewModel tagMaster, TemplatePageViewModel template)
     {
         Settings = settings;
         TagMaster = tagMaster;

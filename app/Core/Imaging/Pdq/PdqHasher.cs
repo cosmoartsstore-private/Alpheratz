@@ -65,11 +65,7 @@ public static class PdqHasher
     /// 距離計算用に 256 ビットを 4 個の整数へ展開した PDQ ハッシュ。
     /// DB 保存形式の文字列は入出力境界に残し、大量比較ではこの形式を使う。
     /// </summary>
-    internal readonly record struct PackedHash256(
-        ulong Part0,
-        ulong Part1,
-        ulong Part2,
-        ulong Part3);
+    internal readonly record struct PackedHash256(ulong Part0, ulong Part1, ulong Part2, ulong Part3);
 
     /// <summary>
     /// PDQ ハッシュとクオリティを返すパブリックエントリポイント。
@@ -102,8 +98,7 @@ public static class PdqHasher
     /// 式 (oldDim + 2*newDim - 1) / (2*newDim) は PDQ 仕様（Facebook 公開リファレンス実装）由来。
     /// 直感的には「old/new の倍率の半分 ± 端数調整」で、奇数化することで対称な窓になる。
     /// </summary>
-    public static int ComputeJaroszFilterWindowSize(int oldDim, int newDim)
-        => (oldDim + 2 * newDim - 1) / (2 * newDim);
+    public static int ComputeJaroszFilterWindowSize(int oldDim, int newDim) => (oldDim + 2 * newDim - 1) / (2 * newDim);
 
     /// <summary>
     /// 2 軸 (rows / cols) で Box フィルタを reps 回適用する。
@@ -117,14 +112,7 @@ public static class PdqHasher
     }
 
     /// <summary>呼出側が確保した一時領域を使って Jarosz フィルタを適用する。</summary>
-    private static void JaroszFilter(
-        float[] buffer,
-        float[] tmp,
-        int rows,
-        int cols,
-        int winRows,
-        int winCols,
-        int reps)
+    private static void JaroszFilter(float[] buffer, float[] tmp, int rows, int cols, int winRows, int winCols, int reps)
     {
         for (var r = 0; r < reps; r++)
         {
@@ -172,7 +160,7 @@ public static class PdqHasher
         var currentWin = 0f;
 
         var phase1End = oiOff + inStartOffset;
-        // PHASE 1: accumulate first sum, no writes
+        // 第1段階: 初期の合計を算出し、まだ書き込まない。
         for (var ri = inStartOffset; ri < phase1End; ri += stride)
         {
             sum += inv[ri];
@@ -180,7 +168,7 @@ public static class PdqHasher
         }
 
         var phase2End = fullWin * stride + inStartOffset;
-        // PHASE 2: initial writes with growing window
+        // 第2段階: window を広げながら先頭部分へ書き込む。
         for (var ri = phase1End; ri < phase2End; ri += stride)
         {
             var oi = ri - oiOff;
@@ -190,7 +178,7 @@ public static class PdqHasher
         }
 
         var phase3End = vectorLen * stride + inStartOffset;
-        // PHASE 3: writes with full window
+        // 第3段階: 完全な window を使って書き込む。
         for (var ri = phase2End; ri < phase3End; ri += stride)
         {
             var oi = ri - oiOff;
@@ -201,7 +189,7 @@ public static class PdqHasher
         }
 
         var phase4Start = (vectorLen - halfWin + 1) * stride + inStartOffset;
-        // PHASE 4: final writes with shrinking window
+        // 第4段階: window を狭めながら末尾部分へ書き込む。
         for (var oi = phase4Start; oi < phase3End; oi += stride)
         {
             var li = oi - liOff;
@@ -447,7 +435,7 @@ public static class PdqHasher
     /// <summary>
     /// 2 つのハッシュバリアントリストのクロス積から最小距離を返す。
     /// バリアント = 同一画像を 0°/90°/180°/270° で生成した複数ハッシュを '|' 区切りで持つ仕様。
-    /// ユーザがアップした画像の回転状態が不明な場合、複数回転ハッシュを保持して最小距離を取ることで
+    /// ユーザーがアップした画像の回転状態が不明な場合、複数回転ハッシュを保持して最小距離を取ることで
     /// 回転耐性のあるマッチングを実現する。
     /// </summary>
     public static int? ClosestHashDistance(IReadOnlyList<string> leftVariants, IReadOnlyList<string> rightVariants)
@@ -514,9 +502,7 @@ public static class PdqHasher
     }
 
     /// <summary>固定長整数に変換済みの PDQ バリアント同士から最小距離を返す。</summary>
-    internal static int ClosestPackedHashDistance(
-        PackedHash256[] leftVariants,
-        PackedHash256[] rightVariants)
+    internal static int ClosestPackedHashDistance(PackedHash256[] leftVariants, PackedHash256[] rightVariants)
     {
         System.Diagnostics.Debug.Assert(leftVariants.Length > 0 && rightVariants.Length > 0);
 
@@ -554,11 +540,7 @@ public static class PdqHasher
         return true;
     }
 
-    private static int PackedHammingDistance(in PackedHash256 left, in PackedHash256 right)
-        => System.Numerics.BitOperations.PopCount(left.Part0 ^ right.Part0)
-            + System.Numerics.BitOperations.PopCount(left.Part1 ^ right.Part1)
-            + System.Numerics.BitOperations.PopCount(left.Part2 ^ right.Part2)
-            + System.Numerics.BitOperations.PopCount(left.Part3 ^ right.Part3);
+    private static int PackedHammingDistance(in PackedHash256 left, in PackedHash256 right) => System.Numerics.BitOperations.PopCount(left.Part0 ^ right.Part0) + System.Numerics.BitOperations.PopCount(left.Part1 ^ right.Part1) + System.Numerics.BitOperations.PopCount(left.Part2 ^ right.Part2) + System.Numerics.BitOperations.PopCount(left.Part3 ^ right.Part3);
 
     /// <summary>フィルタ済み画像を固定長の連続バッファへ縮小する。</summary>
     private static void Decimate64x64(float[] input, int inRows, int inCols, float[] output)
@@ -579,10 +561,7 @@ public static class PdqHasher
     /// 連続バッファ版の 64x64 → 16x16 DCT。
     /// 公開版と同じ係数・ループ順で計算し、4方向で作業領域を再利用する。
     /// </summary>
-    private static void Dct64To16(
-        float[] input,
-        float[] intermediate,
-        float[] output)
+    private static void Dct64To16(float[] input, float[] intermediate, float[] output)
     {
         var matrix = CachedDctMatrix.Value;
         for (var i = 0; i < DctOutputWh; i++)
@@ -665,9 +644,7 @@ public static class PdqHasher
         }
     }
 
-    // -----------------------------------------------------------------
-    // Rotation helpers - operate on row-major luma buffers (w * h floats).
-    // -----------------------------------------------------------------
+    // 回転処理は row-major の輝度 buffer（w * h 個の float）を扱う。
 
     public static (float[] luma, int width, int height) Rotate90(float[] luma, int w, int h)
     {
@@ -682,7 +659,7 @@ public static class PdqHasher
         {
             for (var j = 0; j < w; j++)
             {
-                // (i, j) -> (j, h - 1 - i) in new w' = h, h' = w
+                // 回転後の寸法は w' = h、h' = w。座標を (i, j) から (j, h - 1 - i) へ変換する。
                 rotated[j * h + (h - 1 - i)] = luma[i * w + j];
             }
         }
@@ -719,7 +696,7 @@ public static class PdqHasher
         {
             for (var j = 0; j < w; j++)
             {
-                // (i, j) -> (w - 1 - j, i) in new w' = h, h' = w
+                // 回転後の寸法は w' = h、h' = w。座標を (i, j) から (w - 1 - j, i) へ変換する。
                 rotated[(w - 1 - j) * h + i] = luma[i * w + j];
             }
         }
@@ -786,26 +763,11 @@ public static class PdqHasher
     }
 
     /// <summary>回転済み入力から品質値を省略し、呼出側の32バイト領域へハッシュを書き込む。</summary>
-    private static void ComputeHash(
-        float[] work,
-        float[] filterScratch,
-        float[] buffer64x64,
-        float[] intermediate,
-        float[] buffer16x16,
-        int width,
-        int height,
-        Span<byte> hash)
+    private static void ComputeHash(float[] work, float[] filterScratch, float[] buffer64x64, float[] intermediate, float[] buffer16x16, int width, int height, Span<byte> hash)
     {
         var windowAlongRows = ComputeJaroszFilterWindowSize(width, BufferWh);
         var windowAlongCols = ComputeJaroszFilterWindowSize(height, BufferWh);
-        JaroszFilter(
-            work,
-            filterScratch,
-            height,
-            width,
-            windowAlongRows,
-            windowAlongCols,
-            PdqNumJaroszXyPasses);
+        JaroszFilter(work, filterScratch, height, width, windowAlongRows, windowAlongCols, PdqNumJaroszXyPasses);
         Decimate64x64(work, height, width, buffer64x64);
         Dct64To16(buffer64x64, intermediate, buffer16x16);
 

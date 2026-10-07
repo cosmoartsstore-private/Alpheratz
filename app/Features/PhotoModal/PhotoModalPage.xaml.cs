@@ -22,7 +22,7 @@ namespace Alpheratz.Features.PhotoModal;
 
 /// <summary>
 /// 写真詳細を全画面モーダルで表示する Page。
-/// テーマリソースを確実に更新するため、ShellPage が表示ごとに新しいインスタンスを生成する。
+/// テーマresourceを確実に更新するため、ShellPage が表示ごとに新しいインスタンスを生成する。
 /// </summary>
 [ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public sealed partial class PhotoModalPage : Page
@@ -58,7 +58,7 @@ public sealed partial class PhotoModalPage : Page
     /// <summary>タグマスタ画面への遷移（モーダルを閉じてから遷移する想定）。</summary>
     public Action? OnOpenTagMaster { get; set; }
 
-    /// <summary>背面キー操作を止める PhotoModal 内側の overlay が表示されているかを返す。</summary>
+    /// <summary>背面キー操作を止める PhotoModal 内側の オーバーレイ が表示されているかを返す。</summary>
     public bool HasBlockingInnerOverlayOpen => TagAddOverlay.Visibility == Visibility.Visible;
 
     /// <summary>タグ候補リストをコンボボックスに反映する。</summary>
@@ -185,12 +185,7 @@ public sealed partial class PhotoModalPage : Page
             // 数百 MB の一時メモリを使う。Modal レイアウト上はこれ以上のピクセルを使い切らない。
             ModalImage.Source = null;
             ModalImage.Source = new BitmapImage
-            {
-                CreateOptions = BitmapCreateOptions.IgnoreImageCache,
-                DecodePixelWidth = request.DecodePixelWidth,
-                DecodePixelType = DecodePixelType.Logical,
-                UriSource = new Uri(request.NormalizedPath, UriKind.Absolute),
-            };
+            { CreateOptions = BitmapCreateOptions.IgnoreImageCache, DecodePixelWidth = request.DecodePixelWidth, DecodePixelType = DecodePixelType.Logical, UriSource = new Uri(request.NormalizedPath, UriKind.Absolute), };
         }
         catch (Exception ex)
         {
@@ -307,10 +302,7 @@ public sealed partial class PhotoModalPage : Page
         try
         {
             var isTextInputFocused = FocusManager.GetFocusedElement(XamlRoot) is TextBox;
-            switch (PhotoModalPageLogic.ResolveKeyAction(
-                hasBlockingInnerOverlayOpen: HasBlockingInnerOverlayOpen,
-                isTextInputFocused: isTextInputFocused,
-                key: e.Key))
+            switch (PhotoModalPageLogic.ResolveKeyAction(hasBlockingInnerOverlayOpen: HasBlockingInnerOverlayOpen, isTextInputFocused: isTextInputFocused, key: e.Key))
             {
                 case PhotoModalPageKeyAction.Suppress:
                     e.Handled = true;
@@ -501,14 +493,7 @@ public sealed partial class PhotoModalPage : Page
 
         if (choices.Length == 0)
         {
-            ExistingTagList.Children.Add(new TextBlock
-            {
-                Text = getMsg("PhotoModalPage.noAvailableTags"),
-                Foreground = themeBrush("ATextFaint"),
-                FontSize = 12,
-                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-                Margin = new Thickness(8, 6, 8, 6),
-            });
+            ExistingTagList.Children.Add(new TextBlock { Text = getMsg("PhotoModalPage.noAvailableTags"), Foreground = themeBrush("ATextFaint"), FontSize = 12, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(8, 6, 8, 6), });
             TagAddConfirmButton.IsEnabled = false;
             return;
         }
@@ -536,20 +521,11 @@ public sealed partial class PhotoModalPage : Page
         if (selected)
         {
             checkBox.Child = new Alpheratz.Shared.Controls.AppIcon
-            {
-                IconName = "check",
-                IconSize = 12,
-                Foreground = themeBrush("ATextOnPrimary"),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-            };
+            { IconName = "check", IconSize = 12, Foreground = themeBrush("ATextOnPrimary"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, };
         }
 
         var row = new Grid
-        {
-            Padding = new Thickness(10, 8, 10, 8),
-            Background = new SolidColorBrush(Colors.Transparent),
-        };
+        { Padding = new Thickness(10, 8, 10, 8), Background = new SolidColorBrush(Colors.Transparent), };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         Grid.SetColumn(checkBox, 0);
@@ -569,20 +545,7 @@ public sealed partial class PhotoModalPage : Page
         row.Children.Add(label);
 
         var button = new Button
-        {
-            Content = new Border
-            {
-                CornerRadius = new CornerRadius(8),
-                Background = new SolidColorBrush(Colors.Transparent),
-                BorderThickness = new Thickness(0),
-                Child = row,
-            },
-            Padding = new Thickness(0),
-            Background = new SolidColorBrush(Colors.Transparent),
-            BorderThickness = new Thickness(0),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            HorizontalContentAlignment = HorizontalAlignment.Stretch,
-        };
+        { Content = new Border { CornerRadius = new CornerRadius(8), Background = new SolidColorBrush(Colors.Transparent), BorderThickness = new Thickness(0), Child = row, }, Padding = new Thickness(0), Background = new SolidColorBrush(Colors.Transparent), BorderThickness = new Thickness(0), HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, };
         AutomationProperties.SetName(
             button,
             getMsg(
@@ -600,8 +563,7 @@ public sealed partial class PhotoModalPage : Page
         return button;
     }
 
-    private Brush themeBrush(string key)
-        => ThemeHelper.Brush(this, key) ?? new SolidColorBrush(Colors.Transparent);
+    private Brush themeBrush(string key) => ThemeHelper.Brush(this, key) ?? new SolidColorBrush(Colors.Transparent);
 
     /// <summary>タグマスタ画面の表示を要求する。</summary>
     private void OpenTagMaster_Click(object sender, RoutedEventArgs e)
@@ -626,10 +588,7 @@ public sealed partial class PhotoModalPage : Page
     {
         try
         {
-            var request = PhotoModalPageLogic.RemoveTagRequest(
-                (sender as FrameworkElement)?.Tag,
-                viewModel.state.SelectedPhoto?.PhotoPath,
-                OnRemoveTag is not null);
+            var request = PhotoModalPageLogic.RemoveTagRequest((sender as FrameworkElement)?.Tag, viewModel.state.SelectedPhoto?.PhotoPath, OnRemoveTag is not null);
             if (request is null) return;
             await OnRemoveTag!(request.PhotoPath, request.Tag);
             syncEmptyTagNote();

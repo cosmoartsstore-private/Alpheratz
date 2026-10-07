@@ -13,8 +13,7 @@ internal static class PhotoGridLogic
     public const double MinimumThumbHeight = 18;
 
     /// <summary>コントロール高さからスクロールバー track の有効高さを返す。</summary>
-    public static double TrackHeight(double actualHeight)
-        => Math.Max(MinimumTrackHeight, actualHeight - ScrollbarVerticalPadding);
+    public static double TrackHeight(double actualHeight) => Math.Max(MinimumTrackHeight, actualHeight - ScrollbarVerticalPadding);
 
     /// <summary>track 上の Y 座標を ScrollViewer の縦 offset に変換する。スクロール不能なら null。</summary>
     public static double? TrackPositionToOffset(double trackY, double actualHeight, double extentHeight, double viewportHeight)

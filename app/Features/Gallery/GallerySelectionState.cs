@@ -15,7 +15,7 @@ using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Features.Gallery;
 
-#pragma warning disable CS0162 // Unreachable code (DETACH flags are compile-time constants for debug)
+#pragma warning disable CS0162 // DETACH flag は Debug 用の compile-time constant のため、到達不能コードを許容する。
 /// <summary>
 /// マルチセレクトモードと選択中写真のセットを管理する。
 /// 選択が変わるたびに DB から (photo_path, source_slot) ペアを引き直すため、

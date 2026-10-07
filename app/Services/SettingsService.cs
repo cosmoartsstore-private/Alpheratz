@@ -99,11 +99,7 @@ public sealed class SettingsService
     /// フォルダパスと旧データ整理要求を同じ設定保存へ反映する。
     /// 保存済みパスが確認画面表示時から変わっていた場合は、古い操作で上書きしない。
     /// </summary>
-    public Task<PendingFolderCleanupSetting> SaveFolderChangeAsync(
-        int sourceSlot,
-        string expectedCurrentPath,
-        string committedPath,
-        CancellationToken ct = default)
+    public Task<PendingFolderCleanupSetting> SaveFolderChangeAsync(int sourceSlot, string expectedCurrentPath, string committedPath, CancellationToken ct = default)
     {
         if (sourceSlot is not (1 or 2))
             throw new ArgumentOutOfRangeException(nameof(sourceSlot), sourceSlot, "source_slot は 1 または 2 である必要があります");
@@ -132,11 +128,7 @@ public sealed class SettingsService
             }
 
             var cleanup = new PendingFolderCleanupSetting
-            {
-                OperationId = Guid.NewGuid().ToString("N"),
-                SourceSlot = sourceSlot,
-                CommittedPath = committedPath,
-            };
+            { OperationId = Guid.NewGuid().ToString("N"), SourceSlot = sourceSlot, CommittedPath = committedPath, };
             if (sourceSlot == 1)
                 setting.PhotoFolderPath = committedPath;
             else
@@ -159,9 +151,7 @@ public sealed class SettingsService
     }
 
     /// <summary>対象操作が現在も最新で、保存済みパスと一致しているか確認する。</summary>
-    public Task<bool> IsPendingFolderCleanupCurrentAsync(
-        PendingFolderCleanupSetting cleanup,
-        CancellationToken ct = default)
+    public Task<bool> IsPendingFolderCleanupCurrentAsync(PendingFolderCleanupSetting cleanup, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
         lock (_writeGate)
@@ -183,7 +173,7 @@ public sealed class SettingsService
     }
 
     /// <summary>
-    /// DB／キャッシュ整理が完了した操作だけ、operationId の compare-and-set で要求を解除する。
+    /// DB／cache整理が完了した操作だけ、operationId の compare-and-set で要求を解除する。
     /// 設定パスは手動編集され得るが、対象 slot のリセット完了後なら現在パスを次の走査で再構築できる。
     /// </summary>
     public Task ClearPendingFolderCleanupAsync(string operationId, CancellationToken ct = default)
@@ -204,13 +194,7 @@ public sealed class SettingsService
         }
     }
 
-    private static PendingFolderCleanupSetting CloneCleanup(PendingFolderCleanupSetting cleanup)
-        => new()
-        {
-            OperationId = cleanup.OperationId,
-            SourceSlot = cleanup.SourceSlot,
-            CommittedPath = cleanup.CommittedPath,
-        };
+    private static PendingFolderCleanupSetting CloneCleanup(PendingFolderCleanupSetting cleanup) => new() { OperationId = cleanup.OperationId, SourceSlot = cleanup.SourceSlot, CommittedPath = cleanup.CommittedPath, };
 
     /// <summary>自動起動の希望値を保存する。</summary>
     public Task SaveStartupPreferenceAsync(bool enabled, CancellationToken ct = default)

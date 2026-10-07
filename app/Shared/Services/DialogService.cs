@@ -21,9 +21,7 @@ public sealed class DialogService
         try
         {
             var picker = new FolderPicker
-            {
-                SuggestedStartLocation = PickerLocationId.PicturesLibrary,
-            };
+            { SuggestedStartLocation = PickerLocationId.PicturesLibrary, };
             picker.FileTypeFilter.Add("*");
 
             var window = App.MainWindowInstance;

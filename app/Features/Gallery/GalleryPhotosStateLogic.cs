@@ -21,13 +21,10 @@ internal static class GalleryPhotosStateLogic
     }
 
     /// <summary>写真差し替え時に displayItems の参照同期へ使う photo_path キーの辞書を作る。</summary>
-    public static IReadOnlyDictionary<string, PhotoThumbnailItem> BuildReplacementMap(IEnumerable<PhotoThumbnailItem> photos)
-        => photos.ToDictionary(photo => photo.PhotoPath, photo => photo, StringComparer.Ordinal);
+    public static IReadOnlyDictionary<string, PhotoThumbnailItem> BuildReplacementMap(IEnumerable<PhotoThumbnailItem> photos) => photos.ToDictionary(photo => photo.PhotoPath, photo => photo, StringComparer.Ordinal);
 
     /// <summary>サムネイル生成要求に使う photo_path キーの辞書を作る。空パスと重複パスは無視する。</summary>
-    public static IReadOnlyDictionary<string, PhotoThumbnailItem> BuildThumbnailRequestMap(
-        IEnumerable<PhotoThumbnailItem> photos,
-        bool requireMissingGridThumb)
+    public static IReadOnlyDictionary<string, PhotoThumbnailItem> BuildThumbnailRequestMap(IEnumerable<PhotoThumbnailItem> photos, bool requireMissingGridThumb)
     {
         var map = new Dictionary<string, PhotoThumbnailItem>(StringComparer.Ordinal);
         foreach (var photo in photos)
@@ -41,11 +38,7 @@ internal static class GalleryPhotosStateLogic
     }
 
     /// <summary>サムネイル生成 worker へ渡す未生成写真の path/slot リストを作る。</summary>
-    public static IReadOnlyList<(string path, long slot)> BuildThumbnailTargets(IEnumerable<PhotoThumbnailItem> photos)
-        => photos
-            .Where(photo => string.IsNullOrEmpty(photo.GridThumbPath) && !string.IsNullOrEmpty(photo.PhotoPath))
-            .Select(photo => (path: photo.PhotoPath, slot: photo.SourceSlot))
-            .ToList();
+    public static IReadOnlyList<(string path, long slot)> BuildThumbnailTargets(IEnumerable<PhotoThumbnailItem> photos) => photos.Where(photo => string.IsNullOrEmpty(photo.GridThumbPath) && !string.IsNullOrEmpty(photo.PhotoPath)).Select(photo => (path: photo.PhotoPath, slot: photo.SourceSlot)).ToList();
 
     /// <summary>既存 PhotoGridItem 内の Photo と GroupPhotos を新しい写真インスタンスへ差し替える。</summary>
     public static PhotoGridItem SyncDisplayItem(PhotoGridItem item, IReadOnlyDictionary<string, PhotoThumbnailItem> map)

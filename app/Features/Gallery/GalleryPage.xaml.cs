@@ -22,9 +22,7 @@ using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Features.Gallery;
 
-/// <summary>
-/// ギャラリー画面の Page。ViewModel と各子コントロールのコールバックを結線する。
-/// </summary>
+/// <summary>ギャラリー画面の Page。ViewModel と各子コントロールのコールバックを結線する。</summary>
 [ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public sealed partial class GalleryPage : Page
 {
@@ -79,14 +77,12 @@ public sealed partial class GalleryPage : Page
                 viewModel.filtersState.SortMode = sort;
                 SyncMonthNavAvailability();
             };
-            FilterPanel.OnDisplayFolderSelect = mode => viewModel.displayState.prepareDisplayFolderModeChange(
-                viewModel.filtersState.DisplayFolderMode, mode, m => viewModel.filtersState.DisplayFolderMode = m);
+            FilterPanel.OnDisplayFolderSelect = mode => viewModel.displayState.prepareDisplayFolderModeChange(viewModel.filtersState.DisplayFolderMode, mode, m => viewModel.filtersState.DisplayFolderMode = m);
             FilterPanel.OnGroupingSelect = mode =>
             {
                 if (mode != Shared.Models.GroupingMode.none && viewModel.displayState.ViewMode == Shared.Models.ViewMode.gallery)
                     return;
-                viewModel.displayState.prepareGroupingModeChange(
-                    viewModel.filtersState.GroupingMode, mode, m => viewModel.filtersState.GroupingMode = m);
+                viewModel.displayState.prepareGroupingModeChange(viewModel.filtersState.GroupingMode, mode, m => viewModel.filtersState.GroupingMode = m);
             };
             FilterPanel.OnWorldFilterAdd = worldName =>
             {
@@ -278,10 +274,9 @@ public sealed partial class GalleryPage : Page
     {
         try
         {
-            masonry.SetColumnCount(5);
+            masonry.SetColumnCount(Controls.GalleryMasonryViewportLogic.DefaultRequestedColumnCount);
             masonry.SetPhotos(viewModel.photosState.photos);
-            masonry.OnPhotoTapped = photo => viewModel.handlePhotoActivate(
-                new PhotoGridItem { Photo = photo }, IsShiftKeyDown(), p => OnSelectPhoto?.Invoke(p));
+            masonry.OnPhotoTapped = photo => viewModel.handlePhotoActivate(new PhotoGridItem { Photo = photo }, IsShiftKeyDown(), p => OnSelectPhoto?.Invoke(p));
             masonry.OnFavoriteClicked = photo => _ = viewModel.toggleFavorite(photo.PhotoPath, photo.IsFavorite);
             masonry.OnThumbnailsNeeded = items => viewModel.photosState.requestVisibleThumbnails(items);
             masonry.OnFirstVisibleIndexChanged = idx => SyncMonthNavToIndex(idx);
@@ -291,6 +286,9 @@ public sealed partial class GalleryPage : Page
             AppLogger.Error($"GalleryPage.WireMasonryCallbacks: threw: {ex}");
         }
     }
+
+    /// <summary>Shell全体で受けたキー操作を、遅延生成済みのMasonry表示へ渡す。</summary>
+    public void AdjustGalleryPhotoSize(int columnDelta) => GridStage.MasonryViewControlRef?.AdjustColumnCount(columnDelta);
 
     /// <summary>IsLoading / TotalCount の変化を GridStage の表示出し分けに反映する。</summary>
     private void OnPhotosStateChanged(object? sender, PropertyChangedEventArgs e)
@@ -338,10 +336,7 @@ public sealed partial class GalleryPage : Page
         AppLogger.Trace("GalleryPage.updateBulkOpBar: enter");
         try
         {
-            var state = GalleryPageLogic.ComputeBulkOperationBarState(
-                viewModel.selectionState.IsMultiSelectMode,
-                bulkOpBarWasVisible,
-                viewModel.selectionState.selectedPhotoPaths.Count);
+            var state = GalleryPageLogic.ComputeBulkOperationBarState(viewModel.selectionState.IsMultiSelectMode, bulkOpBarWasVisible, viewModel.selectionState.selectedPhotoPaths.Count);
             if (state.Transition == BulkOperationBarTransition.Show)
             {
                 BulkOpBar.Visibility = Visibility.Visible;
@@ -361,12 +356,10 @@ public sealed partial class GalleryPage : Page
     }
 
     /// <summary>バルク操作バー上のポインタ入力をここで止め、背面の写真カードへ渡さない。</summary>
-    private void BulkOpBar_PointerPressed(object sender, PointerRoutedEventArgs e)
-        => e.Handled = true;
+    private void BulkOpBar_PointerPressed(object sender, PointerRoutedEventArgs e) => e.Handled = true;
 
     /// <summary>バルク操作バー内のタップを背面の GridView 選択へ伝播させない。</summary>
-    private void BulkOpBar_Tapped(object sender, TappedRoutedEventArgs e)
-        => e.Handled = true;
+    private void BulkOpBar_Tapped(object sender, TappedRoutedEventArgs e) => e.Handled = true;
 
     /// <summary>マルチセレクトモードを終了する。</summary>
     private void ExitMultiSelect_Click(object sender, RoutedEventArgs e)
@@ -472,14 +465,7 @@ public sealed partial class GalleryPage : Page
 
         if (choices.Length == 0)
         {
-            BulkTagSelectionList.Children.Add(new TextBlock
-            {
-                Text = getMsg("GalleryPage.noBulkTags"),
-                Foreground = themeBrush("ATextFaint"),
-                FontSize = 12,
-                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-                Margin = new Thickness(8, 6, 8, 6),
-            });
+            BulkTagSelectionList.Children.Add(new TextBlock { Text = getMsg("GalleryPage.noBulkTags"), Foreground = themeBrush("ATextFaint"), FontSize = 12, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(8, 6, 8, 6), });
             return;
         }
 
@@ -504,20 +490,11 @@ public sealed partial class GalleryPage : Page
         if (selected)
         {
             checkBox.Child = new Alpheratz.Shared.Controls.AppIcon
-            {
-                IconName = "check",
-                IconSize = 12,
-                Foreground = themeBrush("ATextOnPrimary"),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-            };
+            { IconName = "check", IconSize = 12, Foreground = themeBrush("ATextOnPrimary"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, };
         }
 
         var row = new Grid
-        {
-            Padding = new Thickness(10, 8, 10, 8),
-            Background = new SolidColorBrush(Colors.Transparent),
-        };
+        { Padding = new Thickness(10, 8, 10, 8), Background = new SolidColorBrush(Colors.Transparent), };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         Grid.SetColumn(checkBox, 0);
@@ -537,22 +514,10 @@ public sealed partial class GalleryPage : Page
         row.Children.Add(label);
 
         var border = new Border
-        {
-            CornerRadius = new CornerRadius(8),
-            Background = new SolidColorBrush(Colors.Transparent),
-            BorderThickness = new Thickness(0),
-            Child = row,
-        };
+        { CornerRadius = new CornerRadius(8), Background = new SolidColorBrush(Colors.Transparent), BorderThickness = new Thickness(0), Child = row, };
 
         var button = new Button
-        {
-            Content = border,
-            Padding = new Thickness(0),
-            Background = new SolidColorBrush(Colors.Transparent),
-            BorderThickness = new Thickness(0),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            HorizontalContentAlignment = HorizontalAlignment.Stretch,
-        };
+        { Content = border, Padding = new Thickness(0), Background = new SolidColorBrush(Colors.Transparent), BorderThickness = new Thickness(0), HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, };
         AutomationProperties.SetName(
             button,
             getMsg(
@@ -576,19 +541,10 @@ public sealed partial class GalleryPage : Page
         var tagCount = pendingBulkTags.Count;
         BulkTagConfirmTagLabel.Text = tagCount == 0
             ? getMsg("GalleryPage.selectTagsPrompt")
-            : getMsg(
-                "GalleryPage.selectedTags",
-                ("tags", string.Join(
-                    "、",
-                    pendingBulkTags.OrderBy(
-                        tag => tag,
-                        StringComparer.Create(new System.Globalization.CultureInfo("ja-JP"), false)))));
+            : getMsg("GalleryPage.selectedTags", ("tags", string.Join("、", pendingBulkTags.OrderBy(tag => tag, StringComparer.Create(new System.Globalization.CultureInfo("ja-JP"), false)))));
         BulkTagConfirmSummaryLabel.Text = tagCount == 0
             ? getMsg("GalleryPage.selectedPhotoCount", ("count", selectedPhotoCount))
-            : getMsg(
-                "GalleryPage.bulkTagSummary",
-                ("photoCount", selectedPhotoCount),
-                ("tagCount", tagCount));
+            : getMsg("GalleryPage.bulkTagSummary", ("photoCount", selectedPhotoCount), ("tagCount", tagCount));
         BulkTagConfirmButton.IsEnabled = tagCount > 0;
     }
 
@@ -659,8 +615,7 @@ public sealed partial class GalleryPage : Page
         previousFocus?.Focus(FocusState.Programmatic);
     }
 
-    private Brush themeBrush(string key)
-        => ThemeHelper.Brush(this, key) ?? new SolidColorBrush(Colors.Transparent);
+    private Brush themeBrush(string key) => ThemeHelper.Brush(this, key) ?? new SolidColorBrush(Colors.Transparent);
 
     // 表示中の先頭写真インデックスから、月ナビのアクティブ月を決める。
     private void SyncMonthNavToIndex(int firstVisibleIndex)
@@ -747,14 +702,10 @@ public sealed partial class GalleryPage : Page
         AppLogger.Trace("GalleryPage.BulkCopy_Click: exit");
     }
 
-    private bool IsMonthNavAvailableForCurrentSort()
-        => viewModel.filtersState.SortMode == SortMode.dateDesc;
+    private bool IsMonthNavAvailableForCurrentSort() => viewModel.filtersState.SortMode == SortMode.dateDesc;
 
-    private void SyncMonthNavAvailability()
-        => GridStage.SetMonthNavAvailable(IsMonthNavAvailableForCurrentSort());
+    private void SyncMonthNavAvailability() => GridStage.SetMonthNavAvailable(IsMonthNavAvailableForCurrentSort());
 
     /// <summary>現在のキーボード状態から Shift 範囲選択の有無を取得する。</summary>
-    private static bool IsShiftKeyDown()
-        => (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift)
-            & CoreVirtualKeyStates.Down) == CoreVirtualKeyStates.Down;
+    private static bool IsShiftKeyDown() => (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift) & CoreVirtualKeyStates.Down) == CoreVirtualKeyStates.Down;
 }

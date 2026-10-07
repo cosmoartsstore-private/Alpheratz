@@ -38,10 +38,7 @@ public sealed class WorldService
     public const int WorldMatchDistanceThreshold = 75;
     private const int ParallelCandidateRankingMinimumCount = 512;
     private static int CandidateRankingParallelism
-        => Math.Clamp(
-            Environment.ProcessorCount - Math.Max(1, Environment.ProcessorCount / 5),
-            1,
-            16);
+        => Math.Clamp(Environment.ProcessorCount - Math.Max(1, Environment.ProcessorCount / 5), 1, 16);
 
     private readonly AlpheratzDb _db;
     private readonly PhotoScanner _scanner;
@@ -51,13 +48,10 @@ public sealed class WorldService
     /// PDQ 文字列を候補取得時に一度だけパースした既知ワールド候補。
     /// 大量の未知写真と総当たりするとき、候補側のパースを毎回繰り返さないために使う。
     /// </summary>
-    internal sealed record PreparedKnownWorldRow(
-        AlpheratzDb.KnownWorldRow Row,
-        PdqHasher.PackedHash256[] HashVariants);
+    internal sealed record PreparedKnownWorldRow(AlpheratzDb.KnownWorldRow Row, PdqHasher.PackedHash256[] HashVariants);
 
     /// <summary>指定距離が表示上一致率 71% 以上で、自動補完に利用できるかを返す。</summary>
-    public static bool CanAutomaticallyComplete(int? distance)
-        => distance is >= 0 and <= WorldMatchDistanceThreshold;
+    public static bool CanAutomaticallyComplete(int? distance) => distance is >= 0 and <= WorldMatchDistanceThreshold;
 
     /// <summary>ワールド情報を扱う DB、ログ由来の解決処理、UI dispatcher を受け取ってサービスを作成する。</summary>
     public WorldService(AlpheratzDb db, PhotoScanner scanner, DispatcherService? dispatcherService = null)
@@ -192,10 +186,7 @@ public sealed class WorldService
         // Explorer の選択指定は /select,<path> が1つの引数である。
         // ArgumentList に渡し、空白を含むパスの引用処理は ProcessStartInfo に委ねる。
         var psi = new ProcessStartInfo
-        {
-            FileName = ResolveExplorerExecutablePath(),
-            UseShellExecute = false,
-        };
+        { FileName = ResolveExplorerExecutablePath(), UseShellExecute = false, };
         var normalizedPath = System.IO.Path.GetFullPath(path.Replace('/', '\\'));
         psi.ArgumentList.Add(ExplorerSelectArgumentPrefix + normalizedPath);
         return psi;
@@ -220,10 +211,7 @@ public sealed class WorldService
     }
 
     /// <summary>Tweet Intent の query が `text` だけを持ち、追加パラメータを含まないことを確認する。</summary>
-    private static bool IsTextOnlyTweetIntentQuery(string query)
-        => query.StartsWith(TweetIntentQueryPrefix, StringComparison.Ordinal)
-            && !query.Contains('&', StringComparison.Ordinal)
-            && !query.Contains(';', StringComparison.Ordinal);
+    private static bool IsTextOnlyTweetIntentQuery(string query) => query.StartsWith(TweetIntentQueryPrefix, StringComparison.Ordinal) && !query.Contains('&', StringComparison.Ordinal) && !query.Contains(';', StringComparison.Ordinal);
 
     /// <summary>PATH 探索に依存せず Windows 配下の Explorer 実行ファイルを返す。</summary>
     private static string ResolveExplorerExecutablePath()
@@ -266,7 +254,7 @@ public sealed class WorldService
             return 0;
         }
 
-        // Group known photos by source_slot (each slot keeps its own DB ordering).
+        // 判定済み写真を source_slot ごとにまとめ、各 slot の DB 順序を維持する。
         var resolved = 0;
         var knownBySlot = new Dictionary<long, IReadOnlyList<PreparedKnownWorldRow>>();
 
@@ -292,26 +280,16 @@ public sealed class WorldService
         return resolved;
     }
 
-    private static (string WorldName, string? WorldId)? FindBestMatch(
-        string targetPhash,
-        IReadOnlyList<PreparedKnownWorldRow> candidates,
-        CancellationToken ct)
+    private static (string WorldName, string? WorldId)? FindBestMatch(string targetPhash, IReadOnlyList<PreparedKnownWorldRow> candidates, CancellationToken ct)
     {
         var result = FindBestMatchWithDetails(targetPhash, candidates, ct);
         if (result is null) return null;
         return (result.Value.Row.WorldName, result.Value.Row.WorldId);
     }
 
-    internal static (AlpheratzDb.KnownWorldRow Row, int Distance)? FindBestMatchWithDetails(
-        string targetPhash,
-        IReadOnlyList<AlpheratzDb.KnownWorldRow> candidates,
-        CancellationToken ct = default)
-        => FindBestMatchWithDetails(targetPhash, PrepareKnownWorldRows(candidates, ct), ct);
+    internal static (AlpheratzDb.KnownWorldRow Row, int Distance)? FindBestMatchWithDetails(string targetPhash, IReadOnlyList<AlpheratzDb.KnownWorldRow> candidates, CancellationToken ct = default) => FindBestMatchWithDetails(targetPhash, PrepareKnownWorldRows(candidates, ct), ct);
 
-    internal static (AlpheratzDb.KnownWorldRow Row, int Distance)? FindBestMatchWithDetails(
-        string targetPhash,
-        IReadOnlyList<PreparedKnownWorldRow> candidates,
-        CancellationToken ct = default)
+    internal static (AlpheratzDb.KnownWorldRow Row, int Distance)? FindBestMatchWithDetails(string targetPhash, IReadOnlyList<PreparedKnownWorldRow> candidates, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
         var targetVariants = PdqHasher.ParsePackedHashVariants(targetPhash);
@@ -335,16 +313,9 @@ public sealed class WorldService
         return (best, bestDistance);
     }
 
-    internal static List<(AlpheratzDb.KnownWorldRow Row, int Distance)> RankCandidatesByDistance(
-        string targetPhash,
-        IReadOnlyList<AlpheratzDb.KnownWorldRow> candidates,
-        CancellationToken ct = default)
-        => RankCandidatesByDistance(targetPhash, PrepareKnownWorldRows(candidates, ct), ct);
+    internal static List<(AlpheratzDb.KnownWorldRow Row, int Distance)> RankCandidatesByDistance(string targetPhash, IReadOnlyList<AlpheratzDb.KnownWorldRow> candidates, CancellationToken ct = default) => RankCandidatesByDistance(targetPhash, PrepareKnownWorldRows(candidates, ct), ct);
 
-    internal static List<(AlpheratzDb.KnownWorldRow Row, int Distance)> RankCandidatesByDistance(
-        string targetPhash,
-        IReadOnlyList<PreparedKnownWorldRow> candidates,
-        CancellationToken ct = default)
+    internal static List<(AlpheratzDb.KnownWorldRow Row, int Distance)> RankCandidatesByDistance(string targetPhash, IReadOnlyList<PreparedKnownWorldRow> candidates, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
         var targetVariants = PdqHasher.ParsePackedHashVariants(targetPhash);
@@ -358,23 +329,16 @@ public sealed class WorldService
                 if ((index & 0x7F) == 0)
                     ct.ThrowIfCancellationRequested();
                 var candidate = candidates[index];
-                ranked[index] = (
-                    candidate.Row,
-                    PdqHasher.ClosestPackedHashDistance(targetVariants, candidate.HashVariants));
+                ranked[index] = (candidate.Row, PdqHasher.ClosestPackedHashDistance(targetVariants, candidate.HashVariants));
             }
         }
         else
         {
             Parallel.For(0, candidates.Count, new ParallelOptions
-            {
-                CancellationToken = ct,
-                MaxDegreeOfParallelism = CandidateRankingParallelism,
-            }, index =>
+            { CancellationToken = ct, MaxDegreeOfParallelism = CandidateRankingParallelism, }, index =>
             {
                 var candidate = candidates[index];
-                ranked[index] = (
-                    candidate.Row,
-                    PdqHasher.ClosestPackedHashDistance(targetVariants, candidate.HashVariants));
+                ranked[index] = (candidate.Row, PdqHasher.ClosestPackedHashDistance(targetVariants, candidate.HashVariants));
             });
         }
 
@@ -382,9 +346,7 @@ public sealed class WorldService
         return new List<(AlpheratzDb.KnownWorldRow Row, int Distance)>(ranked);
     }
 
-    internal static IReadOnlyList<PreparedKnownWorldRow> PrepareKnownWorldRows(
-        IReadOnlyList<AlpheratzDb.KnownWorldRow> candidates,
-        CancellationToken ct = default)
+    internal static IReadOnlyList<PreparedKnownWorldRow> PrepareKnownWorldRows(IReadOnlyList<AlpheratzDb.KnownWorldRow> candidates, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
         var prepared = new List<PreparedKnownWorldRow>(candidates.Count);
@@ -396,7 +358,7 @@ public sealed class WorldService
             var variants = PdqHasher.ParsePackedHashVariants(candidate.Phash);
             if (variants.Length > 0)
             {
-                // 比較は固定長整数へ変換済みなので、約259文字の元ハッシュをキャッシュへ残さない。
+                // 比較は固定長整数へ変換済みなので、約259文字の元ハッシュをcacheへ残さない。
                 // 写真パスやワールド情報は候補表示と適用に必要なため、そのまま保持する。
                 prepared.Add(new PreparedKnownWorldRow(candidate with { Phash = string.Empty }, variants));
             }

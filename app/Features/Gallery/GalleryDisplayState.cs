@@ -176,14 +176,10 @@ public partial class GalleryDisplayState : UiThreadSafeObservableObject
         {
             DatePreset.today => new DatePresetRange(formatDate(today), formatDate(today)),
             DatePreset.last7days => new DatePresetRange(formatDate(today.AddDays(-6)), formatDate(today)),
-            DatePreset.thisMonth => new DatePresetRange(
-                formatDate(new DateTime(today.Year, today.Month, 1)),
-                formatDate(new DateTime(today.Year, today.Month, DateTime.DaysInMonth(today.Year, today.Month)))),
+            DatePreset.thisMonth => new DatePresetRange(formatDate(new DateTime(today.Year, today.Month, 1)), formatDate(new DateTime(today.Year, today.Month, DateTime.DaysInMonth(today.Year, today.Month)))),
             DatePreset.halfYear => new DatePresetRange(formatDate(today.AddMonths(-6)), formatDate(today)),
             DatePreset.oneYear => new DatePresetRange(formatDate(today.AddYears(-1)), formatDate(today)),
-            DatePreset.lastMonth => new DatePresetRange(
-                formatDate(new DateTime(today.Year, today.Month, 1).AddMonths(-1)),
-                formatDate(new DateTime(today.Year, today.Month, 1).AddDays(-1))),
+            DatePreset.lastMonth => new DatePresetRange(formatDate(new DateTime(today.Year, today.Month, 1).AddMonths(-1)), formatDate(new DateTime(today.Year, today.Month, 1).AddDays(-1))),
             _ => new DatePresetRange("", ""),
         };
         AppLogger.Trace($"GalleryDisplayState.getDateRangeFromPreset: exit from={range.from} to={range.to}");

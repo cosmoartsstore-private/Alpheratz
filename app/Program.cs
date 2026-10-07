@@ -43,8 +43,7 @@ partial class Program
                 AppLogger.Trace("Program.Main.AppStart: enter");
                 try
                 {
-                    var ctx = new Microsoft.UI.Dispatching.DispatcherQueueSynchronizationContext(
-                        Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread());
+                    var ctx = new Microsoft.UI.Dispatching.DispatcherQueueSynchronizationContext(Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread());
                     System.Threading.SynchronizationContext.SetSynchronizationContext(ctx);
                     AppLogger.Trace("Program.Main.AppStart: SyncContext installed");
                     _ = new App();

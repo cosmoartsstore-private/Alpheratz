@@ -11,7 +11,7 @@ namespace Alpheratz.Features.Gallery.Controls;
 public sealed partial class GalleryGridStage : UserControl
 {
     /// <summary>
-    /// MasonryView は x:Load=False で遅延初期化される。標準ビューしか使わないユーザでは
+    /// MasonryView は x:Load=False で遅延初期化される。標準ビューしか使わないユーザーでは
     /// 起動時にこの重いコントロール（Canvas + 仮想化マネージャ）が立ち上がらない。
     /// 最初に SetMasonryActive(true) が呼ばれたタイミングで FindName が走り、
     /// その後 OnMasonryRealized が一度だけ発火する。

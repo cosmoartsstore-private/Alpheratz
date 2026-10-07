@@ -67,14 +67,7 @@ public sealed partial class GalleryFilterPanel : UserControl
     }
 
     /// <summary>再生成せずに選択表示だけを切り替えるため保持するチェック行の構成要素。</summary>
-    private sealed class CheckboxRowVisual(
-        Button element,
-        Border itemBorder,
-        TextBlock nameBlock,
-        Border checkBorder,
-        bool hasCountText,
-        CheckboxVisualResources resources,
-        bool isChecked)
+    private sealed class CheckboxRowVisual(Button element, Border itemBorder, TextBlock nameBlock, Border checkBorder, bool hasCountText, CheckboxVisualResources resources, bool isChecked)
     {
         public Button Element { get; } = element;
         public Border ItemBorder { get; } = itemBorder;
@@ -111,8 +104,7 @@ public sealed partial class GalleryFilterPanel : UserControl
             return brush;
         }
 
-        public Brush ResolveOrTransparent(string key)
-            => Resolve(key) ?? new SolidColorBrush(Colors.Transparent);
+        public Brush ResolveOrTransparent(string key) => Resolve(key) ?? new SolidColorBrush(Colors.Transparent);
     }
 
     /// <summary>フィルタパネルを初期化し、初期表示に必要な曜日ヘッダを構築する。</summary>
@@ -386,11 +378,7 @@ public sealed partial class GalleryFilterPanel : UserControl
         if (boundFiltersState is null) return;
         try
         {
-            var state = GalleryFilterPanelLogic.ActiveState(
-                boundFiltersState.OrientationFilter,
-                boundFiltersState.SortMode,
-                boundFiltersState.DisplayFolderMode,
-                boundFiltersState.GroupingMode);
+            var state = GalleryFilterPanelLogic.ActiveState(boundFiltersState.OrientationFilter, boundFiltersState.SortMode, boundFiltersState.DisplayFolderMode, boundFiltersState.GroupingMode);
 
             setActive(OrientationAllBtn, state.OrientationAll);
             setActive(OrientationPortraitBtn, state.OrientationPortrait);
@@ -472,7 +460,9 @@ public sealed partial class GalleryFilterPanel : UserControl
             btn.Style = buttonStyle;
 
         var style = GalleryFilterPanelLogic.ActiveButtonStyle(active);
-        btn.Background = ResolveThemeBrush(btn, style.BackgroundKey);
+        btn.Background = ResolveThemeBrush(
+            btn,
+            active ? "APrimaryButtonGradient" : style.BackgroundKey);
         btn.Foreground = ResolveThemeBrush(btn, style.ForegroundKey);
         btn.BorderBrush = style.BorderTransparent || style.BorderKey is null
             ? new SolidColorBrush(Colors.Transparent)
@@ -480,7 +470,7 @@ public sealed partial class GalleryFilterPanel : UserControl
         btn.BorderThickness = new Thickness(style.BorderThickness);
     }
 
-    // ── Header ──
+    // 見出し
     private void ResetFilters_Click(object sender, RoutedEventArgs e)
     {
         AppLogger.Trace("GalleryFilterPanel.ResetFilters_Click");
@@ -488,7 +478,7 @@ public sealed partial class GalleryFilterPanel : UserControl
         catch (Exception ex) { AppLogger.Error($"GalleryFilterPanel.ResetFilters_Click: {ex}"); }
     }
 
-    // ── Sort ──
+    // 並び順
     private void SortDate_Click(object sender, RoutedEventArgs e)
     {
         try { OnSortSelect?.Invoke(SortMode.dateDesc); }
@@ -502,7 +492,7 @@ public sealed partial class GalleryFilterPanel : UserControl
         catch (Exception ex) { AppLogger.Error($"GalleryFilterPanel.SortWorld_Click: {ex}"); }
     }
 
-    // ── Date trigger ──
+    // 日付選択の開閉
     private void DateTrigger_Click(object sender, RoutedEventArgs e)
     {
         if (boundFiltersState is null) return;
@@ -528,7 +518,7 @@ public sealed partial class GalleryFilterPanel : UserControl
         catch (Exception ex) { AppLogger.Error($"GalleryFilterPanel.DateClear_Click: {ex}"); }
     }
 
-    // ── From/To chips ──
+    // 開始日と終了日の表示
     private void FromChip_Click(object sender, RoutedEventArgs e)
     {
         activeDateField = GalleryFilterPanelLogic.DateFieldFrom;
@@ -573,7 +563,7 @@ public sealed partial class GalleryFilterPanel : UserControl
         setActive(PresetOneYearBtn, state.OneYear);
     }
 
-    // ── Presets ──
+    // 日付 preset
     private void applyPresetToDraft(string preset)
     {
         var draft = GalleryFilterPanelLogic.ApplyPresetToDraft(preset, DateTime.Today);
@@ -604,7 +594,7 @@ public sealed partial class GalleryFilterPanel : UserControl
     /// <summary>日付ドラフトへ「1年」プリセットを適用する。</summary>
     private void PresetOneYear_Click(object sender, RoutedEventArgs e) => applyPresetToDraft("oneYear");
 
-    // ── Calendar navigation ──
+    // カレンダーの移動
     private static readonly DateTime CalendarMinMonth = new(2000, 1, 1);
     // static readonly の初期化式は静的コンストラクタ＝アプリ起動時刻で固定される。
     // 0 時跨ぎでアプリを起動しっぱなしにすると「今年 + 2 年」のラインが進まないので、
@@ -659,7 +649,7 @@ public sealed partial class GalleryFilterPanel : UserControl
         catch (Exception ex) { AppLogger.Error($"GalleryFilterPanel.CalendarApply_Click: {ex}"); }
     }
 
-    // ── Calendar rendering ──
+    // カレンダーの描画
     private void buildWeekdayHeaders()
     {
         WeekdayHeaderGrid.ColumnDefinitions.Clear();
@@ -669,13 +659,7 @@ public sealed partial class GalleryFilterPanel : UserControl
         {
             WeekdayHeaderGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             var tb = new TextBlock
-            {
-                Text = weekLabels[i],
-                FontSize = 10,
-                FontWeight = Microsoft.UI.Text.FontWeights.ExtraBold,
-                Foreground = ResolveThemeBrush(WeekdayHeaderGrid, "ATextFaint"),
-                HorizontalAlignment = HorizontalAlignment.Center,
-            };
+            { Text = weekLabels[i], FontSize = 10, FontWeight = Microsoft.UI.Text.FontWeights.ExtraBold, Foreground = ResolveThemeBrush(WeekdayHeaderGrid, "ATextFaint"), HorizontalAlignment = HorizontalAlignment.Center, };
             Grid.SetColumn(tb, i);
             WeekdayHeaderGrid.Children.Add(tb);
         }
@@ -684,10 +668,7 @@ public sealed partial class GalleryFilterPanel : UserControl
     /// <summary>表示月と選択範囲に基づいてカレンダーの日付セルを再構築する。</summary>
     private void buildCalendar()
     {
-        MonthLabel.Text = getMsg(
-            "GalleryFilterPanel.calendarMonth",
-            ("year", visibleMonth.Year),
-            ("month", visibleMonth.Month));
+        MonthLabel.Text = getMsg("GalleryFilterPanel.calendarMonth", ("year", visibleMonth.Year), ("month", visibleMonth.Month));
 
         CalendarDayGrid.ColumnDefinitions.Clear();
         CalendarDayGrid.RowDefinitions.Clear();
@@ -705,16 +686,23 @@ public sealed partial class GalleryFilterPanel : UserControl
         foreach (var cell in cells)
         {
             var visual = GalleryFilterPanelLogic.CalendarDayVisual(cell);
+            var isRangeEndpoint = cell.IsStart || cell.IsEnd;
 
-            if (cell.InRange)
+            // 範囲帯は端点の中心から内側だけへ描く。端点外へのはみ出しを防ぎ、
+            // 帯と端点を同じ高さにして1本の連続した選択範囲として見せる。
+            if (cell.InRange && !(cell.IsStart && cell.IsEnd))
             {
-                var roundLeft = cell.IsStart || cell.Column == 0;
-                var roundRight = cell.IsEnd || cell.Column == 6;
+                var rangeSegment = new Grid
+                { Height = 30, HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false, };
+                rangeSegment.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                rangeSegment.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+                var roundLeft = cell.Column == 0 && !cell.IsStart;
+                var roundRight = cell.Column == 6 && !cell.IsEnd;
                 var rangeBand = new Border
                 {
-                    Height = 24,
                     HorizontalAlignment = HorizontalAlignment.Stretch,
-                    VerticalAlignment = VerticalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Stretch,
                     Background = ResolveThemeBrush(CalendarDayGrid, "APrimarySoft"),
                     CornerRadius = new CornerRadius(
                         roundLeft ? 6 : 0,
@@ -723,9 +711,24 @@ public sealed partial class GalleryFilterPanel : UserControl
                         roundLeft ? 6 : 0),
                     IsHitTestVisible = false,
                 };
-                Grid.SetRow(rangeBand, cell.Row);
-                Grid.SetColumn(rangeBand, cell.Column);
-                CalendarDayGrid.Children.Add(rangeBand);
+
+                if (cell.IsStart)
+                {
+                    Grid.SetColumn(rangeBand, 1);
+                }
+                else if (cell.IsEnd)
+                {
+                    Grid.SetColumn(rangeBand, 0);
+                }
+                else
+                {
+                    Grid.SetColumnSpan(rangeBand, 2);
+                }
+
+                rangeSegment.Children.Add(rangeBand);
+                Grid.SetRow(rangeSegment, cell.Row);
+                Grid.SetColumn(rangeSegment, cell.Column);
+                CalendarDayGrid.Children.Add(rangeSegment);
             }
 
             var btn = new Button
@@ -738,11 +741,13 @@ public sealed partial class GalleryFilterPanel : UserControl
                 Height = 30,
                 Padding = new Thickness(0),
                 HorizontalAlignment = HorizontalAlignment.Center,
-                Background = (cell.InRange && !cell.IsStart && !cell.IsEnd)
-                    || visual.BackgroundTransparent
-                    || visual.BackgroundKey is null
-                    ? new SolidColorBrush(Colors.Transparent)
-                    : ResolveThemeBrush(CalendarDayGrid, visual.BackgroundKey),
+                Background = isRangeEndpoint
+                    ? ResolveThemeBrush(CalendarDayGrid, "APrimaryButtonGradient")
+                    : ((cell.InRange && !cell.IsStart && !cell.IsEnd)
+                        || visual.BackgroundTransparent
+                        || visual.BackgroundKey is null
+                            ? new SolidColorBrush(Colors.Transparent)
+                            : ResolveThemeBrush(CalendarDayGrid, visual.BackgroundKey)),
                 Foreground = visual.ForegroundWhite || visual.ForegroundKey is null
                     ? new SolidColorBrush(Colors.White)
                     : ResolveThemeBrush(CalendarDayGrid, visual.ForegroundKey),
@@ -754,13 +759,9 @@ public sealed partial class GalleryFilterPanel : UserControl
                     ? Microsoft.UI.Text.FontWeights.ExtraBold
                     : Microsoft.UI.Text.FontWeights.SemiBold,
             };
-            AutomationProperties.SetName(
-                btn,
-                getMsg(
-                    "GalleryFilterPanel.calendarDayAutomationName",
-                    ("year", cell.Date.Year),
-                    ("month", cell.Date.Month),
-                    ("day", cell.Date.Day)));
+            if (isRangeEndpoint && ThemeHelper.AppResource<Style>("PrimaryButtonStyle") is { } endpointStyle)
+                btn.Style = endpointStyle;
+            AutomationProperties.SetName(btn, getMsg("GalleryFilterPanel.calendarDayAutomationName", ("year", cell.Date.Year), ("month", cell.Date.Month), ("day", cell.Date.Day)));
 
             btn.Click += DayCell_Click;
 
@@ -785,7 +786,7 @@ public sealed partial class GalleryFilterPanel : UserControl
         buildCalendar();
     }
 
-    // ── Orientation ──
+    // 写真の向き
     private void OrientationAll_Click(object sender, RoutedEventArgs e)
     {
         try { OnOrientationSelect?.Invoke("all"); }
@@ -806,7 +807,7 @@ public sealed partial class GalleryFilterPanel : UserControl
         catch (Exception ex) { AppLogger.Error($"GalleryFilterPanel.OrientationLandscape_Click: {ex}"); }
     }
 
-    // ── Tags dropdown ──
+    // タグ選択
     private void TagTrigger_Click(object sender, RoutedEventArgs e)
     {
         var toggle = GalleryFilterPanelLogic.ToggleDropdown(TagDropdownPanel.Visibility == Visibility.Visible);
@@ -832,11 +833,7 @@ public sealed partial class GalleryFilterPanel : UserControl
     {
         TagCheckboxList.Children.Clear();
         var query = TagSearchBox?.Text?.Trim() ?? "";
-        var choices = GalleryFilterPanelLogic.BuildTagChoices(
-            allTagOptions,
-            query,
-            boundFiltersState?.tagFilters ?? Enumerable.Empty<string>(),
-            boundFiltersState?.TagFilterCounts ?? new Dictionary<string, long>());
+        var choices = GalleryFilterPanelLogic.BuildTagChoices(allTagOptions, query, boundFiltersState?.tagFilters ?? Enumerable.Empty<string>(), boundFiltersState?.TagFilterCounts ?? new Dictionary<string, long>());
 
         var resources = new CheckboxVisualResources(TagCheckboxList);
         foreach (var row in choices.Rows)
@@ -886,7 +883,7 @@ public sealed partial class GalleryFilterPanel : UserControl
         ApplySyncPlan(new FilterPanelSyncPlan(Badge: true, TagSummary: true, TagChoices: true));
     }
 
-    // ── World dropdown ──
+    // ワールド選択
     private void WorldTrigger_Click(object sender, RoutedEventArgs e)
     {
         var toggle = GalleryFilterPanelLogic.ToggleDropdown(WorldDropdownPanel.Visibility == Visibility.Visible);
@@ -918,10 +915,7 @@ public sealed partial class GalleryFilterPanel : UserControl
         worldChoiceSeparator = null;
         worldChoiceHeading = null;
 
-        var choices = GalleryFilterPanelLogic.BuildWorldChoices(
-            allWorldOptions,
-            null,
-            boundFiltersState?.worldFilters ?? Enumerable.Empty<string>());
+        var choices = GalleryFilterPanelLogic.BuildWorldChoices(allWorldOptions, null, boundFiltersState?.worldFilters ?? Enumerable.Empty<string>());
 
         var resources = new CheckboxVisualResources(WorldCheckboxList);
         var allRow = choices.Rows[0];
@@ -949,9 +943,7 @@ public sealed partial class GalleryFilterPanel : UserControl
 
         WorldCountLabel.Text = choices.CountLabel;
         applyWorldSearchFilter();
-        AppLogger.Info(
-            $"Performance.Gallery.WorldChoices rebuild rows={choices.Rows.Count} " +
-            $"elapsed_ms={Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F3}");
+        AppLogger.Info($"Performance.Gallery.WorldChoices rebuild rows={choices.Rows.Count} " + $"elapsed_ms={Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F3}");
     }
 
     /// <summary>ワールド選択の増減を、該当行と「すべて」行の表示だけへ反映する。</summary>
@@ -1032,9 +1024,7 @@ public sealed partial class GalleryFilterPanel : UserControl
         {
             OnWorldFilterAdd?.Invoke(worldName);
         }
-        AppLogger.Info(
-            $"Performance.Gallery.WorldFilterSelection action={action} " +
-            $"elapsed_ms={Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F3}");
+        AppLogger.Info($"Performance.Gallery.WorldFilterSelection action={action} " + $"elapsed_ms={Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F3}");
     }
 
     /// <summary>選択中のワールドフィルタをすべて解除する。</summary>
@@ -1056,21 +1046,12 @@ public sealed partial class GalleryFilterPanel : UserControl
         if (IsWorldDropdownOpen()) syncAllWorldChoiceChecks();
     }
 
-    // ── Shared checkbox item builder ──
-    private CheckboxRowVisual addCheckboxItem(
-        StackPanel parent,
-        string label,
-        string? countText,
-        bool isChecked,
-        CheckboxVisualResources resources,
-        Action onToggle)
+    // 共通の checkbox 項目生成
+    private CheckboxRowVisual addCheckboxItem(StackPanel parent, string label, string? countText, bool isChecked, CheckboxVisualResources resources, Action onToggle)
     {
         var visual = GalleryFilterPanelLogic.CheckboxVisual(isChecked, countText is not null);
         var grid = new Grid
-        {
-            Padding = new Thickness(10, 8, 10, 8),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-        };
+        { Padding = new Thickness(10, 8, 10, 8), HorizontalAlignment = HorizontalAlignment.Stretch, };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         if (countText is not null)
@@ -1123,13 +1104,7 @@ public sealed partial class GalleryFilterPanel : UserControl
         if (visual.CheckmarkVisible)
         {
             checkBorder.Child = new Alpheratz.Shared.Controls.AppIcon
-            {
-                IconName = "check",
-                IconSize = 12,
-                Foreground = resources.ResolveOrTransparent(visual.CheckmarkForegroundKey),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-            };
+            { IconName = "check", IconSize = 12, Foreground = resources.ResolveOrTransparent(visual.CheckmarkForegroundKey), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, };
         }
 
         Grid.SetColumn(checkBorder, 0);
@@ -1164,14 +1139,7 @@ public sealed partial class GalleryFilterPanel : UserControl
         btn.Click += (_, _) => onToggle();
 
         parent.Children.Add(btn);
-        return new CheckboxRowVisual(
-            btn,
-            itemBorder,
-            nameBlock,
-            checkBorder,
-            countText is not null,
-            resources,
-            isChecked);
+        return new CheckboxRowVisual(btn, itemBorder, nameBlock, checkBorder, countText is not null, resources, isChecked);
     }
 
     /// <summary>チェック行の既存要素へ選択状態だけを適用し、XAML要素の再生成を避ける。</summary>
@@ -1184,13 +1152,7 @@ public sealed partial class GalleryFilterPanel : UserControl
         row.CheckBorder.Background = row.Resources.Resolve(visual.CheckBackgroundKey);
         row.CheckBorder.Child = visual.CheckmarkVisible
             ? new Alpheratz.Shared.Controls.AppIcon
-            {
-                IconName = "check",
-                IconSize = 12,
-                Foreground = row.Resources.ResolveOrTransparent(visual.CheckmarkForegroundKey),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-            }
+            { IconName = "check", IconSize = 12, Foreground = row.Resources.ResolveOrTransparent(visual.CheckmarkForegroundKey), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, }
             : null;
         row.ItemBorder.Background = visual.ItemBackgroundKey is null
             ? row.Resources.Transparent
@@ -1205,11 +1167,7 @@ public sealed partial class GalleryFilterPanel : UserControl
     private static Border addSeparator(StackPanel parent)
     {
         var separator = new Border
-        {
-            Height = 1,
-            Margin = new Thickness(4, 4, 4, 4),
-            Background = ResolveThemeBrush(parent, "ABorder"),
-        };
+        { Height = 1, Margin = new Thickness(4, 4, 4, 4), Background = ResolveThemeBrush(parent, "ABorder"), };
         parent.Children.Add(separator);
         return separator;
     }
@@ -1218,25 +1176,19 @@ public sealed partial class GalleryFilterPanel : UserControl
     private static TextBlock addGroupLabel(StackPanel parent, string text)
     {
         var heading = new TextBlock
-        {
-            Text = text,
-            FontSize = 10,
-            FontWeight = Microsoft.UI.Text.FontWeights.ExtraBold,
-            Foreground = ResolveThemeBrush(parent, "ATextFaint"),
-            Margin = new Thickness(10, 4, 0, 2),
-        };
+        { Text = text, FontSize = 10, FontWeight = Microsoft.UI.Text.FontWeights.ExtraBold, Foreground = ResolveThemeBrush(parent, "ATextFaint"), Margin = new Thickness(10, 4, 0, 2), };
         parent.Children.Add(heading);
         return heading;
     }
 
-    // ── Favorites ──
+    // お気に入り
     private void FavoriteToggle_Click(object sender, RoutedEventArgs e)
     {
         if (boundFiltersState is null) return;
         boundFiltersState.FavoritesOnly = !boundFiltersState.FavoritesOnly;
     }
 
-    // ── Folder / Grouping (hidden, kept for compatibility) ──
+    // フォルダとグループ化（非表示の互換用処理）
     private void FolderAll_Click(object sender, RoutedEventArgs e)
     {
         try { OnDisplayFolderSelect?.Invoke(DisplayFolderMode.all); }
@@ -1284,12 +1236,10 @@ public sealed partial class GalleryFilterPanel : UserControl
     private static Visibility ToVisibility(bool visible) => visible ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>現在のテーマで使う Brush を取得する。未定義キーなら null を返す。</summary>
-    private static Brush? ResolveThemeBrush(FrameworkElement element, string key)
-        => ThemeHelper.BrushForSelectedTheme(key) ?? ThemeHelper.Brush(element, key);
+    private static Brush? ResolveThemeBrush(FrameworkElement element, string key) => ThemeHelper.BrushForSelectedTheme(key) ?? ThemeHelper.Brush(element, key);
 
     /// <summary>必須 Brush プロパティ用に、テーマ未定義時は透明ブラシへフォールバックする。</summary>
-    private static Brush ResolveThemeBrushOrTransparent(FrameworkElement element, string key)
-        => ResolveThemeBrush(element, key) ?? new SolidColorBrush(Colors.Transparent);
+    private static Brush ResolveThemeBrushOrTransparent(FrameworkElement element, string key) => ResolveThemeBrush(element, key) ?? new SolidColorBrush(Colors.Transparent);
 
     /// <summary>指定要素の VisualTree から型が一致する子孫を列挙する。</summary>
     private static IEnumerable<T> FindDescendants<T>(DependencyObject root) where T : DependencyObject

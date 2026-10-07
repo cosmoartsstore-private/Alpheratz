@@ -53,86 +53,22 @@ internal static class AnimatedFavoriteStarLogic
     }
 
     /// <summary>指定アニメーション種別に対応する keyframe 設定を返す。</summary>
-    public static FavoriteStarAnimationPlan? AnimationPlan(FavoriteStarAnimationKind kind)
-        => kind switch
-        {
-            FavoriteStarAnimationKind.FadeIn => FadeInAnimation(),
-            FavoriteStarAnimationKind.FadeOut => FadeOutAnimation(),
-            _ => null,
-        };
+    public static FavoriteStarAnimationPlan? AnimationPlan(FavoriteStarAnimationKind kind) => kind switch { FavoriteStarAnimationKind.FadeIn => FadeInAnimation(), FavoriteStarAnimationKind.FadeOut => FadeOutAnimation(), _ => null, };
 
     /// <summary>お気に入り解除アニメーション完了後に残す最終状態を返す。</summary>
-    public static FavoriteStarCompletionVisual FadeOutCompletionVisual()
-        => new FavoriteStarCompletionVisual(
-            StarOpacity: 1f,
-            StarScale: new Vector3(1f, 1f, 1f),
-            GlowOpacity: 0f,
-            GlowScale: new Vector3(0.78f, 0.78f, 1f));
+    public static FavoriteStarCompletionVisual FadeOutCompletionVisual() => new FavoriteStarCompletionVisual(StarOpacity: 1f, StarScale: new Vector3(1f, 1f, 1f), GlowOpacity: 0f, GlowScale: new Vector3(0.78f, 0.78f, 1f));
 
     /// <summary>お気に入り追加時の星と光彩の出現 keyframe を返す。</summary>
-    private static FavoriteStarAnimationPlan FadeInAnimation()
-        => new FavoriteStarAnimationPlan(
-            DurationMilliseconds: 240,
-            EaseControlPoint1: new Vector2(0.16f, 1f),
-            EaseControlPoint2: new Vector2(0.3f, 1f),
-            StarScaleFrames:
-            [
-                new FavoriteStarVectorFrame(0f, new Vector3(0.9f, 0.9f, 1f), FavoriteStarEaseKind.None),
-                new FavoriteStarVectorFrame(0.6f, new Vector3(1.08f, 1.08f, 1f), FavoriteStarEaseKind.Main),
-                new FavoriteStarVectorFrame(1f, new Vector3(1f, 1f, 1f), FavoriteStarEaseKind.Main),
-            ],
-            StarOpacityFrames:
-            [
-                new FavoriteStarScalarFrame(0f, 0.55f, FavoriteStarEaseKind.None),
-                new FavoriteStarScalarFrame(1f, 1f, FavoriteStarEaseKind.Main),
-            ],
-            GlowOpacityFrames:
-            [
-                new FavoriteStarScalarFrame(0f, 0f, FavoriteStarEaseKind.None),
-                new FavoriteStarScalarFrame(1f, 0f, FavoriteStarEaseKind.Main),
-            ],
-            GlowScaleFrames:
-            [
-                new FavoriteStarVectorFrame(0f, new Vector3(0.72f, 0.72f, 1f), FavoriteStarEaseKind.None),
-                new FavoriteStarVectorFrame(1f, new Vector3(1f, 1f, 1f), FavoriteStarEaseKind.Main),
-            ]);
+    private static FavoriteStarAnimationPlan FadeInAnimation() => new FavoriteStarAnimationPlan(DurationMilliseconds: 240, EaseControlPoint1: new Vector2(0.16f, 1f), EaseControlPoint2: new Vector2(0.3f, 1f), StarScaleFrames: [new FavoriteStarVectorFrame(0f, new Vector3(0.9f, 0.9f, 1f), FavoriteStarEaseKind.None), new FavoriteStarVectorFrame(0.6f, new Vector3(1.08f, 1.08f, 1f), FavoriteStarEaseKind.Main), new FavoriteStarVectorFrame(1f, new Vector3(1f, 1f, 1f), FavoriteStarEaseKind.Main),], StarOpacityFrames: [new FavoriteStarScalarFrame(0f, 0.55f, FavoriteStarEaseKind.None), new FavoriteStarScalarFrame(1f, 1f, FavoriteStarEaseKind.Main),], GlowOpacityFrames: [new FavoriteStarScalarFrame(0f, 0f, FavoriteStarEaseKind.None), new FavoriteStarScalarFrame(1f, 0f, FavoriteStarEaseKind.Main),], GlowScaleFrames: [new FavoriteStarVectorFrame(0f, new Vector3(0.72f, 0.72f, 1f), FavoriteStarEaseKind.None), new FavoriteStarVectorFrame(1f, new Vector3(1f, 1f, 1f), FavoriteStarEaseKind.Main),]);
 
     /// <summary>お気に入り解除時の星と光彩の退場 keyframe を返す。</summary>
-    private static FavoriteStarAnimationPlan FadeOutAnimation()
-        => new FavoriteStarAnimationPlan(
-            DurationMilliseconds: 200,
-            EaseControlPoint1: new Vector2(0.16f, 1f),
-            EaseControlPoint2: new Vector2(0.3f, 1f),
-            StarScaleFrames:
-            [
-                new FavoriteStarVectorFrame(0f, new Vector3(1f, 1f, 1f), FavoriteStarEaseKind.None),
-                new FavoriteStarVectorFrame(1f, new Vector3(0.92f, 0.92f, 1f), FavoriteStarEaseKind.Main),
-            ],
-            StarOpacityFrames:
-            [
-                new FavoriteStarScalarFrame(0f, 1f, FavoriteStarEaseKind.None),
-                new FavoriteStarScalarFrame(1f, 0.75f, FavoriteStarEaseKind.Main),
-            ],
-            GlowOpacityFrames:
-            [
-                new FavoriteStarScalarFrame(0f, 0f, FavoriteStarEaseKind.None),
-                new FavoriteStarScalarFrame(1f, 0f, FavoriteStarEaseKind.Main),
-            ],
-            GlowScaleFrames:
-            [
-                new FavoriteStarVectorFrame(0f, new Vector3(1f, 1f, 1f), FavoriteStarEaseKind.None),
-                new FavoriteStarVectorFrame(1f, new Vector3(0.82f, 0.82f, 1f), FavoriteStarEaseKind.Main),
-            ]);
+    private static FavoriteStarAnimationPlan FadeOutAnimation() => new FavoriteStarAnimationPlan(DurationMilliseconds: 200, EaseControlPoint1: new Vector2(0.16f, 1f), EaseControlPoint2: new Vector2(0.3f, 1f), StarScaleFrames: [new FavoriteStarVectorFrame(0f, new Vector3(1f, 1f, 1f), FavoriteStarEaseKind.None), new FavoriteStarVectorFrame(1f, new Vector3(0.92f, 0.92f, 1f), FavoriteStarEaseKind.Main),], StarOpacityFrames: [new FavoriteStarScalarFrame(0f, 1f, FavoriteStarEaseKind.None), new FavoriteStarScalarFrame(1f, 0.75f, FavoriteStarEaseKind.Main),], GlowOpacityFrames: [new FavoriteStarScalarFrame(0f, 0f, FavoriteStarEaseKind.None), new FavoriteStarScalarFrame(1f, 0f, FavoriteStarEaseKind.Main),], GlowScaleFrames: [new FavoriteStarVectorFrame(0f, new Vector3(1f, 1f, 1f), FavoriteStarEaseKind.None), new FavoriteStarVectorFrame(1f, new Vector3(0.82f, 0.82f, 1f), FavoriteStarEaseKind.Main),]);
 }
 
 /// <summary>星の Brush 解決に必要なテーマキーとフォールバック。</summary>
-internal sealed record FavoriteStarBrushPlan(
-    string? FillResourceKey,
-    string? StrokeResourceKey,
-    FavoriteStarBrushFallback FillFallback,
-    FavoriteStarBrushFallback StrokeFallback);
+internal sealed record FavoriteStarBrushPlan(string? FillResourceKey, string? StrokeResourceKey, FavoriteStarBrushFallback FillFallback, FavoriteStarBrushFallback StrokeFallback);
 
-/// <summary>テーマリソースが見つからない場合に使う既定 Brush の種類。</summary>
+/// <summary>テーマresourceが見つからない場合に使う既定 Brush の種類。</summary>
 internal enum FavoriteStarBrushFallback
 {
     Transparent,
@@ -164,18 +100,7 @@ internal sealed record FavoriteStarScalarFrame(float Progress, float Value, Favo
 internal sealed record FavoriteStarVectorFrame(float Progress, Vector3 Value, FavoriteStarEaseKind Ease);
 
 /// <summary>星と光彩に同時適用するアニメーション設定。</summary>
-internal sealed record FavoriteStarAnimationPlan(
-    int DurationMilliseconds,
-    Vector2 EaseControlPoint1,
-    Vector2 EaseControlPoint2,
-    IReadOnlyList<FavoriteStarVectorFrame> StarScaleFrames,
-    IReadOnlyList<FavoriteStarScalarFrame> StarOpacityFrames,
-    IReadOnlyList<FavoriteStarScalarFrame> GlowOpacityFrames,
-    IReadOnlyList<FavoriteStarVectorFrame> GlowScaleFrames);
+internal sealed record FavoriteStarAnimationPlan(int DurationMilliseconds, Vector2 EaseControlPoint1, Vector2 EaseControlPoint2, IReadOnlyList<FavoriteStarVectorFrame> StarScaleFrames, IReadOnlyList<FavoriteStarScalarFrame> StarOpacityFrames, IReadOnlyList<FavoriteStarScalarFrame> GlowOpacityFrames, IReadOnlyList<FavoriteStarVectorFrame> GlowScaleFrames);
 
 /// <summary>お気に入り解除アニメーション完了後の明示的な最終状態。</summary>
-internal sealed record FavoriteStarCompletionVisual(
-    float StarOpacity,
-    Vector3 StarScale,
-    float GlowOpacity,
-    Vector3 GlowScale);
+internal sealed record FavoriteStarCompletionVisual(float StarOpacity, Vector3 StarScale, float GlowOpacity, Vector3 GlowScale);

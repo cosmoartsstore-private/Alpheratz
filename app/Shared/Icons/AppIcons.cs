@@ -74,8 +74,7 @@ public static class AppIcons
     };
 
     /// <summary>SVG path-data 文字列を WinUI の型変換で Geometry に変換する。</summary>
-    public static Geometry ParseGeometry(string data)
-        => (Geometry)XamlBindingHelper.ConvertValue(typeof(Geometry), data);
+    public static Geometry ParseGeometry(string data) => (Geometry)XamlBindingHelper.ConvertValue(typeof(Geometry), data);
 
     /// <summary>アイコン名から Geometry を取得する。未登録名なら null。</summary>
     public static Geometry? GetGeometry(string iconName)

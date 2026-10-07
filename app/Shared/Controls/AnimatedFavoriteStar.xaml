@@ -1,20 +1,12 @@
-<UserControl
-    x:Class="Alpheratz.Shared.Controls.AnimatedFavoriteStar"
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    x:Name="Root">
+<UserControl x:Class="Alpheratz.Shared.Controls.AnimatedFavoriteStar" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Name="Root">
     <UserControl.Resources>
         <ControlTemplate x:Key="FavoriteStarButtonTemplate" TargetType="Button">
-            <ContentPresenter Content="{TemplateBinding Content}"
-                              ContentTemplate="{TemplateBinding ContentTemplate}"
-                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+            <ContentPresenter Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
         </ControlTemplate>
     </UserControl.Resources>
     <Grid>
-        <!-- Click animation uses this layer, but the rest state keeps it hidden so the star is not shown with a stray circle. -->
-        <Ellipse x:Name="Glow" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                 Margin="-6" Opacity="0">
+        <!-- クリック時だけこの layer を使い、静止時は非表示にして星の周囲へ円を残さない。 -->
+        <Ellipse x:Name="Glow" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="-6" Opacity="0">
             <Ellipse.Fill>
                 <RadialGradientBrush>
                     <GradientStop Color="#47FBBF24" Offset="0.0"/>
@@ -24,17 +16,9 @@
             </Ellipse.Fill>
         </Ellipse>
 
-        <Button x:Name="InteractiveButton" Padding="0" BorderThickness="0" Background="Transparent"
-                Template="{StaticResource FavoriteStarButtonTemplate}"
-                HorizontalAlignment="Center" VerticalAlignment="Center"
-                Click="InteractiveButton_Click">
+        <Button x:Name="InteractiveButton" Padding="0" BorderThickness="0" Background="Transparent" Template="{StaticResource FavoriteStarButtonTemplate}" HorizontalAlignment="Center" VerticalAlignment="Center" Click="InteractiveButton_Click">
             <Viewbox Width="18" Height="18">
-                <Path x:Name="Star"
-                      Data="M12,2L15.09,8.26L22,9.27L17,14.14L18.18,21.02L12,17.77L5.82,21.02L7,14.14L2,9.27L8.91,8.26L12,2Z"
-                      Fill="{Binding StarFill, ElementName=Root}"
-                      Stroke="{Binding StarStroke, ElementName=Root}"
-                      StrokeThickness="1.2"
-                      StrokeLineJoin="Round"/>
+                <Path x:Name="Star" Data="M12,2L15.09,8.26L22,9.27L17,14.14L18.18,21.02L12,17.77L5.82,21.02L7,14.14L2,9.27L8.91,8.26L12,2Z" Fill="{Binding StarFill, ElementName=Root}" Stroke="{Binding StarStroke, ElementName=Root}" StrokeThickness="1.2" StrokeLineJoin="Round"/>
             </Viewbox>
         </Button>
     </Grid>

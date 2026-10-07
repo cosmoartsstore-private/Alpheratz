@@ -3,19 +3,21 @@ using System.Diagnostics.CodeAnalysis;
 using Alpheratz.Core;
 using Alpheratz.Features.PhotoModal;
 using Alpheratz.Shared.Animations;
+using Alpheratz.Shared.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 
 namespace Alpheratz.Features.Shell.Controls;
 
 /// <summary>
 /// メインコンテンツ領域。MainContent (常時 GalleryPage) の上に 2 段スタックの
-/// モーダルレイヤと、ScanningOverlay / ToastHost を重ねる構造。
+/// モーダルレイヤーと、ScanningOverlay / ToastHost を重ねる構造。
 ///   Layer 0: MainContent (GalleryPage 固定)
 ///   Layer 1: ModalLayerHost (中位: Settings / WorldResolve / GroupDrillDown)
 ///   Layer 2: TopModalLayerHost (最上位: PhotoModal)
 ///   Layer 3: ScanningOverlay (スキャン進捗)
-///   Layer 4: ToastHost
+///   第4 レイヤー: ToastHost
 /// </summary>
 [ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public sealed partial class ShellStage : UserControl
@@ -32,6 +34,7 @@ public sealed partial class ShellStage : UserControl
             AppLogger.Error($"ShellStage.ctor: InitializeComponent failed: {ex}");
             throw;
         }
+        ActualThemeChanged += ShellStage_ActualThemeChanged;
         AppLogger.Trace("ShellStage.ctor: exit");
     }
 
@@ -51,6 +54,54 @@ public sealed partial class ShellStage : UserControl
         set => ModalContentHost.Content = value;
     }
 
+    /// <summary>
+    /// 設定画面では背面のギャラリーをぼかし、それ以外の中位モーダルは従来の暗幕を使う。
+    /// レイヤーを分けることで、ワールド補完やグループ詳細へぼかしが波及しないようにする。
+    /// </summary>
+    public bool UseBlurredModalBackdrop
+    {
+        get => BlurredModalBackdrop.Visibility == Visibility.Visible;
+        set
+        {
+            if (value)
+                BlurredModalBackdrop.Background = CreateSettingsBackdropBrush();
+            BlurredModalBackdrop.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
+            StandardModalBackdrop.Visibility = value ? Visibility.Collapsed : Visibility.Visible;
+        }
+    }
+
+    private void ShellStage_ActualThemeChanged(FrameworkElement sender, object args)
+    {
+        if (UseBlurredModalBackdrop)
+            BlurredModalBackdrop.Background = CreateSettingsBackdropBrush();
+    }
+
+    // XAML資材側は非対応環境用のsolid fallbackを保持し、対応環境だけ実行時にぼかしを有効化する。
+    private Brush CreateSettingsBackdropBrush()
+    {
+        try
+        {
+            var isDark = ActualTheme == ElementTheme.Dark;
+            return new AcrylicBrush
+            {
+                TintColor = isDark
+                    ? Windows.UI.Color.FromArgb(255, 3, 2, 5)
+                    : Windows.UI.Color.FromArgb(255, 244, 240, 250),
+                TintOpacity = isDark ? 0.68 : 0.42,
+                TintLuminosityOpacity = isDark ? 0.24 : 0.56,
+                FallbackColor = isDark
+                    ? Windows.UI.Color.FromArgb(232, 3, 4, 6)
+                    : Windows.UI.Color.FromArgb(232, 241, 237, 247),
+            };
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Warn($"ShellStage.CreateSettingsBackdropBrush: fallback: {ex.Message}");
+            return ThemeHelper.Brush(this, "ASettingsBackdrop")
+                ?? new SolidColorBrush(Windows.UI.Color.FromArgb(128, 0, 0, 0));
+        }
+    }
+
     // モーダル開閉のバージョンカウンタ。閉じるアニメの onCompleted から見て、
     // 「自分が始めたときの version と現在の version が一致する」ときだけ Content=null
     // などのクリーンアップを実行する。これにより：
@@ -61,7 +112,7 @@ public sealed partial class ShellStage : UserControl
     private int scanningOverlayVersion;
     private bool isScanningOverlayClosing;
 
-    /// <summary>中位モーダルレイヤの表示。FadeIn/Out + ScaleIn/Out アニメを伴う。</summary>
+    /// <summary>中位モーダルレイヤーの表示。FadeIn/Out + ScaleIn/Out アニメを伴う。</summary>
     public Visibility ModalVisibility
     {
         get => ModalLayerHost.Visibility;
@@ -104,7 +155,7 @@ public sealed partial class ShellStage : UserControl
 
     /// <summary>
     /// 最上位モーダルのコンテンツ (PhotoModal 専用)。
-    /// 中位レイヤ (ModalContent) の上にさらに重ねて表示することで、GroupDrillDown 中の
+    /// 中位レイヤー (ModalContent) の上にさらに重ねて表示することで、GroupDrillDown 中の
     /// 写真クリック → PhotoModal を中位 → 最上位の 2 段スタックで描画できる。
     /// </summary>
     public object? TopModalContent
@@ -114,9 +165,9 @@ public sealed partial class ShellStage : UserControl
     }
 
     /// <summary>
-    /// 最上位モーダルレイヤの表示。閉じるアニメ完了時に PhotoModalPage であれば
+    /// 最上位モーダルレイヤーの表示。閉じるアニメ完了時に PhotoModalPage であれば
     /// ReleaseImage() を呼んで重い BitmapImage 参照を解放する (再表示時は新規取得)。
-    /// PhotoModal は最上位レイヤにあるため、このプロパティで表示と解放をまとめて扱う。
+    /// PhotoModal は最上位レイヤーにあるため、このプロパティで表示と解放をまとめて扱う。
     /// version カウンタで「閉じるアニメ進行中に再オープン」したケースのクリーンアップ
     /// 競合を防ぐ。
     /// </summary>

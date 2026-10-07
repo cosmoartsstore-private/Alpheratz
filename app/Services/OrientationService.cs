@@ -86,8 +86,7 @@ public sealed class OrientationService
                         w = null;
                         h = null;
                     }
-                    await db.UpdatePhotoOrientationAndDimensionsAsync(
-                        item.PhotoPath, orientation, w, h, ct).ConfigureAwait(false);
+                    await db.UpdatePhotoOrientationAndDimensionsAsync(item.PhotoPath, orientation, w, h, ct).ConfigureAwait(false);
 
                     done++;
                     UpdateProgress(done, total, true);
@@ -136,9 +135,7 @@ public sealed class OrientationService
         lock (_publishLock)
         {
             currentProgress = snapshot;
-            _publishTail = _publishTail.ContinueWith(
-                _ => eventBus.PublishAsync(EventNames.OrientationProgress, snapshot),
-                TaskScheduler.Default).Unwrap();
+            _publishTail = _publishTail.ContinueWith(_ => eventBus.PublishAsync(EventNames.OrientationProgress, snapshot), TaskScheduler.Default).Unwrap();
         }
     }
 

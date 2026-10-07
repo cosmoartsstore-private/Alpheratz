@@ -14,15 +14,15 @@ using Windows.Storage.Streams;
 namespace Alpheratz.Core.Imaging;
 
 /// <summary>
-/// グリッド用 / 表示用サムネイルのディスクキャッシュを管理し、無ければ生成する。
-/// キャッシュキーは "&lt;filename&gt;.thumb.&lt;variant&gt;.jpg" 形式で imgCache ディレクトリに置く。
-/// variant は用途と生成仕様を表し、仕様変更時は別名にして既存キャッシュと混在させない。
+/// グリッド用 / 表示用サムネイルのディスクcacheを管理し、無ければ生成する。
+/// cacheキーは "&lt;filename&gt;.thumb.&lt;variant&gt;.jpg" 形式で imgCache directoryに置く。
+/// variant は用途と生成仕様を表し、仕様変更時は別名にして既存cacheと混在させない。
 /// </summary>
 public sealed class ThumbnailService
 {
     // 同一サムネイルファイルへの並列生成衝突を防ぐ per-path ロック。
     // 別パスの生成は並列に走らせたいので、ConcurrentDictionary で path -> lock entry を引く。
-    // OrdinalIgnoreCase: Windows ファイルシステムは大文字小文字を区別しないため。
+    // OrdinalIgnoreCase: Windows filesystemは大文字小文字を区別しないため。
     private static readonly ConcurrentDictionary<string, PathLockEntry> _pathLocks = new(StringComparer.OrdinalIgnoreCase);
     private readonly Func<string, string, uint, CancellationToken, Task> _generateThumbnailAsync;
 
@@ -42,7 +42,7 @@ public sealed class ThumbnailService
 
     /// <summary>
     /// グリッド用サムネイル（長辺 512px）を取得する。無ければ生成。
-    /// キャッシュキーは "grid-512"。HiDPI 表示で blur に見えないよう長辺 512px で生成する。
+    /// cacheキーは "grid-512"。HiDPI 表示で blur に見えないよう長辺 512px で生成する。
     /// </summary>
     public async Task<string> EnsureGridThumbAsync(string photoPath, long sourceSlot, CancellationToken ct = default)
     {
@@ -62,7 +62,7 @@ public sealed class ThumbnailService
 
     /// <summary>
     /// PhotoModal 表示用サムネイル（長辺 514px、display-514）を取得する。無ければ生成。
-    /// グリッド用とサイズはほぼ同じだが、キャッシュキーを分けることで将来別仕様にできる。
+    /// グリッド用とサイズはほぼ同じだが、cacheキーを分けることで将来別仕様にできる。
     /// </summary>
     public async Task<string> EnsureDisplayThumbAsync(string photoPath, long sourceSlot, CancellationToken ct = default)
     {
@@ -83,7 +83,7 @@ public sealed class ThumbnailService
     /// <summary>
     /// 指定写真から生成されたサムネイルをすべて削除する。
     /// 呼び出し側は先に ThumbnailWorker の処理を停止し、生成中ファイルとの競合を避ける。
-    /// キャッシュ削除の失敗は元写真の削除結果へ影響させず、警告だけを記録する。
+    /// cache削除の失敗は元写真の削除結果へ影響させず、警告だけを記録する。
     /// </summary>
     public int DeleteCachedThumbnails(string photoPath, long sourceSlot)
     {
@@ -125,11 +125,11 @@ public sealed class ThumbnailService
     }
 
     /// <summary>
-    /// キャッシュ存在チェック → 必要なら一時ファイルへ生成 → 最終ファイルを置換、を per-path セマフォの排他下で行う。
+    /// cache存在チェック → 必要なら一時ファイルへ生成 → 最終ファイルを置換、を per-path セマフォの排他下で行う。
     /// 並列で同一パスのサムネイルを生成しようとすると File.Create が衝突するため、
     /// パス単位の SemaphoreSlim で 1 つに絞る。別パスは並列のまま。
-    /// 元画像のタイムスタンプ &gt; キャッシュタイムスタンプなら完成後に旧キャッシュを置き換える
-    /// （ユーザがファイルを差し替えたケースで古いサムネが表示され続けるのを防ぐ）。
+    /// 元画像のタイムスタンプ &gt; cacheタイムスタンプなら完成後に旧cacheを置き換える
+    /// （ユーザーがファイルを差し替えたケースで古いサムネが表示され続けるのを防ぐ）。
     /// </summary>
     private async Task<string> EnsureThumbAsync(string photoPath, long sourceSlot, uint maxSize, string variant, CancellationToken ct)
     {
@@ -172,8 +172,8 @@ public sealed class ThumbnailService
                     if (!IsUsableThumbnailFile(temporaryPath))
                         throw new InvalidDataException("生成したサムネイルが完全な JPEG ではありません");
 
-                    // 同一ディレクトリ内の rename によって、完成済みファイルだけを最終名へ公開する。
-                    // 既存キャッシュがある場合も、生成が完了するまでは旧ファイルを維持する。
+                    // 同一directory内の rename によって、完成済みファイルだけを最終名へ公開する。
+                    // 既存cacheがある場合も、生成が完了するまでは旧ファイルを維持する。
                     File.Move(temporaryPath, thumbPath, overwrite: true);
                 }
                 finally
@@ -242,11 +242,10 @@ public sealed class ThumbnailService
             .Remove(new KeyValuePair<string, PathLockEntry>(thumbPath, pathLock));
     }
 
-    /// <summary>同じディレクトリ内で生成し、最終ファイル名と衝突しない一時パスを返す。</summary>
-    private static string BuildTemporaryPath(string thumbPath)
-        => $"{thumbPath}.{Guid.NewGuid():N}.tmp";
+    /// <summary>同じdirectory内で生成し、最終ファイル名と衝突しない一時パスを返す。</summary>
+    private static string BuildTemporaryPath(string thumbPath) => $"{thumbPath}.{Guid.NewGuid():N}.tmp";
 
-    /// <summary>生成途中の切断ファイルをキャッシュヒットとして扱わないよう JPEG の開始・終了マーカーを確認する。</summary>
+    /// <summary>生成途中の切断ファイルをcacheヒットとして扱わないよう JPEG の開始・終了マーカーを確認する。</summary>
     private static bool IsUsableThumbnailFile(string path)
     {
         try
@@ -281,7 +280,7 @@ public sealed class ThumbnailService
         }
     }
 
-    /// <summary>写真パスからキャッシュファイル名用の短い安定ハッシュを作る。</summary>
+    /// <summary>写真パスからcacheファイル名用の短い安定ハッシュを作る。</summary>
     private static string BuildCacheKey(string photoPath)
     {
         var normalized = photoPath.Replace('\\', '/').ToUpperInvariant();
@@ -292,7 +291,7 @@ public sealed class ThumbnailService
     /// <summary>
     /// 元画像をデコードし、長辺 maxSize 以下に縮小して JPEG で書き出す。
     /// EXIF 回転の扱いがこの関数の中核：
-    ///   - BitmapDecoder.OrientedPixelWidth/Height は EXIF 回転 *後* の寸法（ユーザ視点の寸法）。
+    ///   - BitmapDecoder.OrientedPixelWidth/Height は EXIF 回転 *後* の寸法（ユーザー視点の寸法）。
     ///   - BitmapTransform.ScaledWidth/Height は EXIF 回転 *前* の raw 寸法に適用される。
     ///   - そのため、EXIF Orientation が縦横入替（90°/270°）の場合は Transform の幅高を入替える必要がある。
     ///   - axisSwapped = (orientedW != decoder.PixelWidth) で「軸が入れ替わったか」を検出する。
@@ -327,9 +326,7 @@ public sealed class ThumbnailService
             var transformH = axisSwapped ? finalW : finalH;
 
             var transform = new BitmapTransform { ScaledWidth = transformW, ScaledHeight = transformH, InterpolationMode = BitmapInterpolationMode.Fant };
-            var pixelData = await decoder.GetPixelDataAsync(
-                BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore, transform,
-                ExifOrientationMode.RespectExifOrientation, ColorManagementMode.DoNotColorManage).AsTask(ct).ConfigureAwait(false);
+            var pixelData = await decoder.GetPixelDataAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore, transform, ExifOrientationMode.RespectExifOrientation, ColorManagementMode.DoNotColorManage).AsTask(ct).ConfigureAwait(false);
             var pixels = pixelData.DetachPixelData();
 
             var fileStream = new FileStream(destPath, FileMode.Create, FileAccess.ReadWrite, FileShare.None, 4096, useAsync: true);
@@ -385,8 +382,7 @@ public sealed class ThumbnailService
 
         public int ReleaseReference() => Interlocked.Decrement(ref referenceState);
 
-        public bool TryRetire()
-            => Interlocked.CompareExchange(ref referenceState, RetiredState, 0) == 0;
+        public bool TryRetire() => Interlocked.CompareExchange(ref referenceState, RetiredState, 0) == 0;
 
         public void Dispose() => Semaphore.Dispose();
     }

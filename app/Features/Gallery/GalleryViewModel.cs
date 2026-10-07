@@ -43,17 +43,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
     public Func<IReadOnlyList<PhotoThumbnailItem>?>? drillDownPhotosProvider { get; set; }
 
     // ギャラリーに必要なサービスとサブステートを受け取り、フィルタ変更の監視を開始する。
-    public GalleryViewModel(
-        PhotoService photoService,
-        WorldService worldService,
-        PhashService phashService,
-        ToastService toastService,
-        DispatcherService dispatcherService,
-        GalleryPhotosState photosState,
-        GalleryFiltersState filtersState,
-        GallerySelectionState selectionState,
-        GalleryDisplayState displayState,
-        GalleryScrollState scrollState)
+    public GalleryViewModel(PhotoService photoService, WorldService worldService, PhashService phashService, ToastService toastService, DispatcherService dispatcherService, GalleryPhotosState photosState, GalleryFiltersState filtersState, GallerySelectionState selectionState, GalleryDisplayState displayState, GalleryScrollState scrollState)
     {
         AppLogger.Trace("GalleryViewModel.ctor: enter");
         this.photoService = photoService;
@@ -185,26 +175,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
     private PhotoQueryFilters buildCurrentFilters()
     {
         AppLogger.Trace("GalleryViewModel.buildCurrentFilters: enter");
-        var filters = new PhotoQueryFilters(
-            searchQuery: filtersState.DebouncedQuery,
-            worldFilters: [.. filtersState.worldFilters],
-            dateFrom: filtersState.DateFrom,
-            dateTo: filtersState.DateTo,
-            orientationFilter: filtersState.OrientationFilter,
-            favoritesOnly: filtersState.FavoritesOnly,
-            tagFilters: [.. filtersState.tagFilters],
-            includePhash: false,
-            pagingEnabled: false,
-            viewMode: displayState.ViewMode,
-            sourceSlot: filtersState.DisplayFolderMode switch
-            {
-                DisplayFolderMode.primary => 1L,
-                DisplayFolderMode.secondary => 2L,
-                _ => null,
-            },
-            groupingMode: filtersState.GroupingMode,
-            sortMode: filtersState.SortMode
-        );
+        var filters = new PhotoQueryFilters(searchQuery: filtersState.DebouncedQuery, worldFilters: [.. filtersState.worldFilters], dateFrom: filtersState.DateFrom, dateTo: filtersState.DateTo, orientationFilter: filtersState.OrientationFilter, favoritesOnly: filtersState.FavoritesOnly, tagFilters: [.. filtersState.tagFilters], includePhash: false, pagingEnabled: false, viewMode: displayState.ViewMode, sourceSlot: filtersState.DisplayFolderMode switch { DisplayFolderMode.primary => 1L, DisplayFolderMode.secondary => 2L, _ => null, }, groupingMode: filtersState.GroupingMode, sortMode: filtersState.SortMode);
         AppLogger.Trace("GalleryViewModel.buildCurrentFilters: exit");
         return filters;
     }
@@ -216,8 +187,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         try
         {
             var options = await photoService.GetWorldFilterOptionsAsync().ConfigureAwait(false);
-            await dispatcherService.RunOnUiThread(() =>
-                filtersState.worldFilterOptions.ReplaceAll(options)).ConfigureAwait(false);
+            await dispatcherService.RunOnUiThread(() => filtersState.worldFilterOptions.ReplaceAll(options)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -233,8 +203,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         try
         {
             var counts = await photoService.GetTagFilterCountsAsync().ConfigureAwait(false);
-            await dispatcherService.RunOnUiThread(() =>
-                filtersState.setTagFilterCounts(counts)).ConfigureAwait(false);
+            await dispatcherService.RunOnUiThread(() => filtersState.setTagFilterCounts(counts)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -252,8 +221,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         {
             var nextIsFavorite = !currentIsFavorite;
             await photoService.SetPhotoFavoriteAsync(photoPath, nextIsFavorite, currentPhoto?.SourceSlot ?? 1).ConfigureAwait(false);
-            await dispatcherService.RunOnUiThread(() =>
-                updatePhoto(photoPath, photo => photo.IsFavorite = nextIsFavorite)).ConfigureAwait(false);
+            await dispatcherService.RunOnUiThread(() => updatePhoto(photoPath, photo => photo.IsFavorite = nextIsFavorite)).ConfigureAwait(false);
         }
         catch (Exception err)
         {
@@ -277,9 +245,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         if (normalized.Length > MAX_TAG_LENGTH)
         {
             AppLogger.Trace("GalleryViewModel.addTag: skip (too long)");
-            toastService.addToast(
-                getMsg("GalleryViewModel.tagTooLong", ("maxLength", MAX_TAG_LENGTH)),
-                ToastType.error);
+            toastService.addToast(getMsg("GalleryViewModel.tagTooLong", ("maxLength", MAX_TAG_LENGTH)), ToastType.error);
             return;
         }
 
@@ -293,12 +259,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         try
         {
             await photoService.AddPhotoTagAsync(photoPath, normalized, currentPhoto?.SourceSlot ?? 1).ConfigureAwait(false);
-            await dispatcherService.RunOnUiThread(() =>
-                updatePhoto(photoPath, photo => photo.Tags = photo.Tags
-                    .Concat([normalized])
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .OrderBy(item => item, StringComparer.Create(new CultureInfo("ja-JP"), false))
-                    .ToArray())).ConfigureAwait(false);
+            await dispatcherService.RunOnUiThread(() => updatePhoto(photoPath, photo => photo.Tags = photo.Tags.Concat([normalized]).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(item => item, StringComparer.Create(new CultureInfo("ja-JP"), false)).ToArray())).ConfigureAwait(false);
             await loadTagFilterCounts().ConfigureAwait(false);
             toastService.addToast(getMsg("GalleryViewModel.tagAdded"));
         }
@@ -323,9 +284,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
 
         if (normalizedTags.Any(tag => tag.Length > MAX_TAG_LENGTH))
         {
-            toastService.addToast(
-                getMsg("GalleryViewModel.tagTooLong", ("maxLength", MAX_TAG_LENGTH)),
-                ToastType.error);
+            toastService.addToast(getMsg("GalleryViewModel.tagTooLong", ("maxLength", MAX_TAG_LENGTH)), ToastType.error);
             return;
         }
 
@@ -343,12 +302,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         {
             await photoService.AddPhotoTagsAsync(photoPath, additions, currentPhoto?.SourceSlot ?? 1).ConfigureAwait(false);
 
-            await dispatcherService.RunOnUiThread(() =>
-                updatePhoto(photoPath, photo => photo.Tags = photo.Tags
-                    .Concat(additions)
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .OrderBy(item => item, StringComparer.Create(new CultureInfo("ja-JP"), false))
-                    .ToArray())).ConfigureAwait(false);
+            await dispatcherService.RunOnUiThread(() => updatePhoto(photoPath, photo => photo.Tags = photo.Tags.Concat(additions).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(item => item, StringComparer.Create(new CultureInfo("ja-JP"), false)).ToArray())).ConfigureAwait(false);
             await loadTagFilterCounts().ConfigureAwait(false);
             toastService.addToast(
                 additions.Length == 1
@@ -371,8 +325,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         try
         {
             await photoService.RemovePhotoTagAsync(photoPath, tag, currentPhoto?.SourceSlot ?? 1).ConfigureAwait(false);
-            await dispatcherService.RunOnUiThread(() =>
-                updatePhoto(photoPath, photo => photo.Tags = photo.Tags.Where(item => item != tag).ToArray())).ConfigureAwait(false);
+            await dispatcherService.RunOnUiThread(() => updatePhoto(photoPath, photo => photo.Tags = photo.Tags.Where(item => item != tag).ToArray())).ConfigureAwait(false);
             await loadTagFilterCounts().ConfigureAwait(false);
             toastService.addToast(getMsg("GalleryViewModel.tagRemoved"));
         }
@@ -384,10 +337,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("GalleryViewModel.removeTag: exit");
     }
 
-    public async Task applySimilarWorldMatch(
-        PhotoThumbnailItem sourcePhoto,
-        PhotoThumbnailItem? selectedPhotoView,
-        Action<PhotoThumbnailItem>? updateSelectedPhoto = null)
+    public async Task applySimilarWorldMatch(PhotoThumbnailItem sourcePhoto, PhotoThumbnailItem? selectedPhotoView, Action<PhotoThumbnailItem>? updateSelectedPhoto = null)
     {
         AppLogger.Trace("GalleryViewModel.applySimilarWorldMatch: enter");
         if (selectedPhotoView is null)
@@ -493,8 +443,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         try
         {
             var result = await photoService.BulkSetPhotoFavoriteAsync(refs, isFavorite).ConfigureAwait(false);
-            await dispatcherService.RunOnUiThread(() =>
-                applyBulkFavoriteResult(result, isFavorite, selectionVersion)).ConfigureAwait(false);
+            await dispatcherService.RunOnUiThread(() => applyBulkFavoriteResult(result, isFavorite, selectionVersion)).ConfigureAwait(false);
         }
         catch (Exception err)
         {
@@ -526,9 +475,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         if (normalizedTags.Any(tag => tag.Length > MAX_TAG_LENGTH))
         {
             AppLogger.Trace("GalleryViewModel.bulkAddTags: skip (too long)");
-            toastService.addToast(
-                getMsg("GalleryViewModel.tagTooLong", ("maxLength", MAX_TAG_LENGTH)),
-                ToastType.error);
+            toastService.addToast(getMsg("GalleryViewModel.tagTooLong", ("maxLength", MAX_TAG_LENGTH)), ToastType.error);
             return;
         }
 
@@ -538,8 +485,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         try
         {
             var result = await photoService.BulkAddPhotoTagsAsync(refs, normalizedTags).ConfigureAwait(false);
-            await dispatcherService.RunOnUiThread(() =>
-                applyBulkTagResult(result, normalizedTags, selectionVersion)).ConfigureAwait(false);
+            await dispatcherService.RunOnUiThread(() => applyBulkTagResult(result, normalizedTags, selectionVersion)).ConfigureAwait(false);
             if (result.SucceededCount > 0)
                 await loadTagFilterCounts().ConfigureAwait(false);
         }
@@ -552,10 +498,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
     }
 
     /// <summary>一括お気に入り結果の完了済み写真だけを表示へ反映し、失敗写真を再試行対象として残す。</summary>
-    internal void applyBulkFavoriteResult(
-        PhotoBulkUpdateResult result,
-        bool isFavorite,
-        long? selectionVersion = null)
+    internal void applyBulkFavoriteResult(PhotoBulkUpdateResult result, bool isFavorite, long? selectionVersion = null)
     {
         foreach (var photoRef in result.SucceededPhotos)
             updatePhoto(photoRef.photo_path, photo => photo.IsFavorite = isFavorite);
@@ -564,17 +507,11 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         var successMessage = isFavorite
             ? getMsg("GalleryViewModel.bulkFavoriteAdded", ("count", result.SucceededCount))
             : getMsg("GalleryViewModel.bulkFavoriteRemoved", ("count", result.SucceededCount));
-        notifyBulkUpdateResult(
-            result,
-            successMessage,
-            getMsg("GalleryViewModel.favoriteOperationLabel"));
+        notifyBulkUpdateResult(result, successMessage, getMsg("GalleryViewModel.favoriteOperationLabel"));
     }
 
     /// <summary>一括タグ結果の完了済み写真だけへ要求タグを反映し、失敗写真を再試行対象として残す。</summary>
-    internal void applyBulkTagResult(
-        PhotoBulkUpdateResult result,
-        IReadOnlyList<string> normalizedTags,
-        long? selectionVersion = null)
+    internal void applyBulkTagResult(PhotoBulkUpdateResult result, IReadOnlyList<string> normalizedTags, long? selectionVersion = null)
     {
         foreach (var photoRef in result.SucceededPhotos)
         {
@@ -595,18 +532,9 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
 
         retainFailedBulkSelection(result, selectionVersion);
         var successMessage = normalizedTags.Count == 1
-            ? getMsg(
-                "GalleryViewModel.bulkSingleTagAdded",
-                ("tag", normalizedTags[0]),
-                ("photoCount", result.SucceededCount))
-            : getMsg(
-                "GalleryViewModel.bulkTagsAdded",
-                ("tagCount", normalizedTags.Count),
-                ("photoCount", result.SucceededCount));
-        notifyBulkUpdateResult(
-            result,
-            successMessage,
-            getMsg("GalleryViewModel.tagOperationLabel"));
+            ? getMsg("GalleryViewModel.bulkSingleTagAdded", ("tag", normalizedTags[0]), ("photoCount", result.SucceededCount))
+            : getMsg("GalleryViewModel.bulkTagsAdded", ("tagCount", normalizedTags.Count), ("photoCount", result.SucceededCount));
+        notifyBulkUpdateResult(result, successMessage, getMsg("GalleryViewModel.tagOperationLabel"));
     }
 
     /// <summary>部分失敗時は完了済み写真を選択から外し、失敗写真だけを再実行できる状態にする。</summary>
@@ -651,10 +579,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
     }
 
     /// <summary>一括更新の完了件数と失敗写真名を、既存のトースト通知へ変換する。</summary>
-    private void notifyBulkUpdateResult(
-        PhotoBulkUpdateResult result,
-        string successMessage,
-        string operationLabel)
+    private void notifyBulkUpdateResult(PhotoBulkUpdateResult result, string successMessage, string operationLabel)
     {
         if (result.FailedCount == 0)
         {
@@ -663,8 +588,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         }
 
         var names = result.FailedPhotos
-            .Select(failure => Path.GetFileName(
-                failure.Photo.photo_path.Replace('/', Path.DirectorySeparatorChar)))
+            .Select(failure => Path.GetFileName(failure.Photo.photo_path.Replace('/', Path.DirectorySeparatorChar)))
             .Select(name => string.IsNullOrWhiteSpace(name)
                 ? getMsg("GalleryViewModel.unknownPhotoName")
                 : name)
@@ -673,9 +597,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         var nameSummary = string.Join("、", names.Take(displayedNameCount));
         if (names.Length > displayedNameCount)
         {
-            nameSummary += "、" + getMsg(
-                "GalleryViewModel.additionalPhotoCount",
-                ("count", names.Length - displayedNameCount));
+            nameSummary += "、" + getMsg("GalleryViewModel.additionalPhotoCount", ("count", names.Length - displayedNameCount));
         }
 
         var status = result.WasCanceled
@@ -684,15 +606,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         var completed = result.SucceededCount > 0
             ? getMsg("GalleryViewModel.bulkUpdateCompleted", ("count", result.SucceededCount))
             : string.Empty;
-        toastService.addToast(
-            getMsg(
-                "GalleryViewModel.bulkUpdateFailureSummary",
-                ("status", status),
-                ("completed", completed),
-                ("failedCount", result.FailedCount),
-                ("names", nameSummary)),
-            ToastType.error,
-            duration: 7000);
+        toastService.addToast(getMsg("GalleryViewModel.bulkUpdateFailureSummary", ("status", status), ("completed", completed), ("failedCount", result.FailedCount), ("names", nameSummary)), ToastType.error, duration: 7000);
     }
 
     // 選択中写真を指定フォルダへコピーし、コピー件数とスキップ件数を通知する。
@@ -708,12 +622,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
             if (skipped == 0)
                 toastService.addToast(getMsg("GalleryViewModel.photosCopied", ("count", copied)));
             else
-                toastService.addToast(
-                    getMsg(
-                        "GalleryViewModel.photosCopiedWithFailures",
-                        ("copied", copied),
-                        ("failed", skipped)),
-                    ToastType.info);
+                toastService.addToast(getMsg("GalleryViewModel.photosCopiedWithFailures", ("copied", copied), ("failed", skipped)), ToastType.info);
         }
         catch (Exception err)
         {
@@ -758,9 +667,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         }
     }
 
-    /// <summary>
-    /// photoPath に一致する写真を photos / displayItems / drillDownPhotos から探し、updater を適用する。
-    /// </summary>
+    /// <summary>photoPath に一致する写真を photos / displayItems / drillDownPhotos から探し、updater を適用する。</summary>
     private void updatePhoto(string photoPath, Action<PhotoThumbnailItem> updater)
     {
         try

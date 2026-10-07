@@ -16,18 +16,13 @@ using static Alpheratz.Messages.MessageCatalog;
 namespace Alpheratz.Services;
 
 /// <summary>一括写真更新で個別に完了できなかった写真と理由。</summary>
-public sealed record PhotoBulkUpdateFailure(
-    SelectedPhotoRefDto Photo,
-    string Reason,
-    bool IsCanceled);
+public sealed record PhotoBulkUpdateFailure(SelectedPhotoRefDto Photo, string Reason, bool IsCanceled);
 
 /// <summary>
 /// 一括写真更新の個別結果。
 /// 呼び出し側は完了済み写真だけを画面へ反映し、失敗写真を再試行対象として残せる。
 /// </summary>
-public sealed record PhotoBulkUpdateResult(
-    IReadOnlyList<SelectedPhotoRefDto> SucceededPhotos,
-    IReadOnlyList<PhotoBulkUpdateFailure> FailedPhotos)
+public sealed record PhotoBulkUpdateResult(IReadOnlyList<SelectedPhotoRefDto> SucceededPhotos, IReadOnlyList<PhotoBulkUpdateFailure> FailedPhotos)
 {
     public int SucceededCount => SucceededPhotos.Count;
     public int FailedCount => FailedPhotos.Count;
@@ -42,37 +37,19 @@ public enum DuplicatePhotoScanStage
 }
 
 /// <summary>重複写真検出の進捗。</summary>
-public sealed record DuplicatePhotoScanProgress(
-    DuplicatePhotoScanStage Stage,
-    int Processed,
-    int Total);
+public sealed record DuplicatePhotoScanProgress(DuplicatePhotoScanStage Stage, int Processed, int Total);
 
 /// <summary>ファイル内容が一致した写真1件。</summary>
-public sealed record ExactDuplicatePhoto(
-    string PhotoFilename,
-    string PhotoPath,
-    string Timestamp,
-    long SourceSlot,
-    long FileSize);
+public sealed record ExactDuplicatePhoto(string PhotoFilename, string PhotoPath, string Timestamp, long SourceSlot, long FileSize);
 
 /// <summary>同じファイル内容を持つ写真グループ。</summary>
-public sealed record ExactDuplicatePhotoGroup(
-    string ContentHash,
-    long FileSize,
-    IReadOnlyList<ExactDuplicatePhoto> Photos);
+public sealed record ExactDuplicatePhotoGroup(string ContentHash, long FileSize, IReadOnlyList<ExactDuplicatePhoto> Photos);
 
 /// <summary>重複写真検出の完了結果。</summary>
-public sealed record ExactDuplicateDetectionResult(
-    IReadOnlyList<ExactDuplicatePhotoGroup> Groups,
-    int TotalPhotoCount,
-    int UnreadablePhotoCount);
+public sealed record ExactDuplicateDetectionResult(IReadOnlyList<ExactDuplicatePhotoGroup> Groups, int TotalPhotoCount, int UnreadablePhotoCount);
 
 /// <summary>削除直前に完全一致を再検証するための対象情報。</summary>
-public sealed record DuplicatePhotoDeleteTarget(
-    SelectedPhotoRefDto Photo,
-    string ExpectedContentHash,
-    long ExpectedFileSize,
-    IReadOnlyList<string> RetainedPhotoPaths);
+public sealed record DuplicatePhotoDeleteTarget(SelectedPhotoRefDto Photo, string ExpectedContentHash, long ExpectedFileSize, IReadOnlyList<string> RetainedPhotoPaths);
 
 /// <summary>重複写真を削除できなかった理由の分類。</summary>
 public enum DuplicatePhotoDeleteFailureKind
@@ -85,22 +62,17 @@ public enum DuplicatePhotoDeleteFailureKind
 }
 
 /// <summary>削除できなかった写真と理由。</summary>
-public sealed record DuplicatePhotoDeleteFailure(
-    SelectedPhotoRefDto Photo,
-    DuplicatePhotoDeleteFailureKind Kind);
+public sealed record DuplicatePhotoDeleteFailure(SelectedPhotoRefDto Photo, DuplicatePhotoDeleteFailureKind Kind);
 
 /// <summary>重複写真の削除結果。DatabaseUpdated=false の場合も DeletedPhotos の元ファイルは削除済み。</summary>
-public sealed record DuplicatePhotoDeleteResult(
-    IReadOnlyList<SelectedPhotoRefDto> DeletedPhotos,
-    IReadOnlyList<DuplicatePhotoDeleteFailure> FailedPhotos,
-    bool DatabaseUpdated);
+public sealed record DuplicatePhotoDeleteResult(IReadOnlyList<SelectedPhotoRefDto> DeletedPhotos, IReadOnlyList<DuplicatePhotoDeleteFailure> FailedPhotos, bool DatabaseUpdated);
 
 /// <summary>
 /// 写真関連の操作を集約するアプリケーションサービス。
 /// AlpheratzDb の薄いラッパに見えるが、以下を加味して 1 層挟む意味がある：
 ///   - 一括更新の直列化 (_bulkWriteGate)
 ///   - DTO ↔ DB クエリパラメータの変換
-///   - ファイルシステム操作 (BulkCopyPhotosAsync)
+///   - filesystem操作 (BulkCopyPhotosAsync)
 /// ViewModel から見ると「写真にまつわる操作の唯一の入口」になる。
 /// </summary>
 public sealed class PhotoService
@@ -147,21 +119,7 @@ public sealed class PhotoService
         }, ct);
 
     /// <summary>外向け Payload を DB 内部の Params に変換する。includePhash は転送量削減のため別パラメータ化。</summary>
-    private PhotoQueryParams ToParams(PhotoQueryPayload p, bool includePhash = false) => new()
-    {
-        StartDate = p.startDate,
-        EndDate = p.endDate,
-        WorldQuery = p.worldQuery,
-        WorldExacts = p.worldExacts,
-        Orientation = p.orientation,
-        FavoritesOnly = p.favoritesOnly,
-        TagFilters = p.tagFilters,
-        SourceSlot = p.sourceSlot,
-        Limit = p.limit,
-        Offset = p.offset,
-        IncludePhash = includePhash,
-        Sort = p.sortMode,
-    };
+    private PhotoQueryParams ToParams(PhotoQueryPayload p, bool includePhash = false) => new() { StartDate = p.startDate, EndDate = p.endDate, WorldQuery = p.worldQuery, WorldExacts = p.worldExacts, Orientation = p.orientation, FavoritesOnly = p.favoritesOnly, TagFilters = p.tagFilters, SourceSlot = p.sourceSlot, Limit = p.limit, Offset = p.offset, IncludePhash = includePhash, Sort = p.sortMode, };
 
     /// <summary>フィルタ条件で写真をページ単位で取得する。詳細は AlpheratzDb.GetPhotosPageAsync を参照。</summary>
     public async Task<PhotoPageDto> GetPhotosAsync(PhotoQueryPayload payload, CancellationToken ct = default)
@@ -170,9 +128,7 @@ public sealed class PhotoService
         try
         {
             var query = ToParams(payload, payload.includePhash == true);
-            var page = await RunReadOffUiThread(
-                () => _db.GetPhotosPageAsync(query, ct),
-                ct).ConfigureAwait(false);
+            var page = await RunReadOffUiThread(() => _db.GetPhotosPageAsync(query, ct), ct).ConfigureAwait(false);
             AppLogger.Trace($"PhotoService.GetPhotosAsync: exit total={page.Total}");
             return new PhotoPageDto { items = page.Items, total = page.Total };
         }
@@ -184,17 +140,13 @@ public sealed class PhotoService
     }
 
     /// <summary>MonthNav 用に同じフィルタ条件で年月別件数を取得する。</summary>
-    public async Task<IReadOnlyList<Core.Database.MonthSummaryItem>> GetMonthSummaryAsync(
-        PhotoQueryPayload payload,
-        CancellationToken ct = default)
+    public async Task<IReadOnlyList<Core.Database.MonthSummaryItem>> GetMonthSummaryAsync(PhotoQueryPayload payload, CancellationToken ct = default)
     {
         AppLogger.Trace("PhotoService.GetMonthSummaryAsync: enter");
         try
         {
             var query = ToParams(payload);
-            var result = await RunReadOffUiThread(
-                () => _db.GetMonthSummaryAsync(query, ct),
-                ct).ConfigureAwait(false);
+            var result = await RunReadOffUiThread(() => _db.GetMonthSummaryAsync(query, ct), ct).ConfigureAwait(false);
             AppLogger.Trace("PhotoService.GetMonthSummaryAsync: exit");
             return result;
         }
@@ -209,24 +161,12 @@ public sealed class PhotoService
     /// グループドリルダウン用のクエリ。groupKey をワールド名として完全一致検索し、
     /// 空文字または空白だけの値は「不明なワールド」として扱う。
     /// </summary>
-    public async Task<IReadOnlyList<PhotoRecordDto>> GetWorldGroupPhotosAsync(
-        string groupKey, string? startDate, string? endDate, long? sourceSlot,
-        string? orientation, bool? favoritesOnly, IReadOnlyList<string>? tagFilters,
-        CancellationToken ct = default)
+    public async Task<IReadOnlyList<PhotoRecordDto>> GetWorldGroupPhotosAsync(string groupKey, string? startDate, string? endDate, long? sourceSlot, string? orientation, bool? favoritesOnly, IReadOnlyList<string>? tagFilters, CancellationToken ct = default)
     {
         AppLogger.Trace($"PhotoService.GetWorldGroupPhotosAsync: enter groupKey={groupKey}");
         try
         {
-            var page = await _db.GetPhotosPageAsync(new PhotoQueryParams
-            {
-                StartDate = startDate,
-                EndDate = endDate,
-                WorldExacts = [groupKey],
-                SourceSlot = sourceSlot,
-                Orientation = orientation,
-                FavoritesOnly = favoritesOnly,
-                TagFilters = tagFilters,
-            }, ct).ConfigureAwait(false);
+            var page = await _db.GetPhotosPageAsync(new PhotoQueryParams { StartDate = startDate, EndDate = endDate, WorldExacts = [groupKey], SourceSlot = sourceSlot, Orientation = orientation, FavoritesOnly = favoritesOnly, TagFilters = tagFilters, }, ct).ConfigureAwait(false);
             AppLogger.Trace($"PhotoService.GetWorldGroupPhotosAsync: exit count={page.Items.Count}");
             return page.Items;
         }
@@ -310,11 +250,7 @@ public sealed class PhotoService
     /// 選択写真を 1 件ずつ更新し、完了・失敗を写真単位で返す。
     /// キャンセルは写真間で受け付け、実行中の 1 写真を完了させてから残りを未更新として返す。
     /// </summary>
-    internal async Task<PhotoBulkUpdateResult> RunBulkPhotoUpdatesAsync(
-        IReadOnlyList<SelectedPhotoRefDto> photos,
-        string operationName,
-        Func<SelectedPhotoRefDto, Task> update,
-        CancellationToken ct = default)
+    internal async Task<PhotoBulkUpdateResult> RunBulkPhotoUpdatesAsync(IReadOnlyList<SelectedPhotoRefDto> photos, string operationName, Func<SelectedPhotoRefDto, Task> update, CancellationToken ct = default)
     {
         AppLogger.Trace($"PhotoService.RunBulkPhotoUpdatesAsync: enter operation={operationName} count={photos.Count}");
         if (photos.Count == 0)
@@ -377,31 +313,20 @@ public sealed class PhotoService
         }
 
         var result = new PhotoBulkUpdateResult(succeeded.ToArray(), failed.ToArray());
-        AppLogger.Trace(
-            $"PhotoService.RunBulkPhotoUpdatesAsync: exit operation={operationName} " +
-            $"succeeded={result.SucceededCount} failed={result.FailedCount} canceled={result.WasCanceled}");
+        AppLogger.Trace($"PhotoService.RunBulkPhotoUpdatesAsync: exit operation={operationName} " + $"succeeded={result.SucceededCount} failed={result.FailedCount} canceled={result.WasCanceled}");
         return result;
     }
 
-    private static void AddCanceledFailures(
-        ICollection<PhotoBulkUpdateFailure> failed,
-        IReadOnlyList<SelectedPhotoRefDto> photos,
-        int startIndex)
+    private static void AddCanceledFailures(ICollection<PhotoBulkUpdateFailure> failed, IReadOnlyList<SelectedPhotoRefDto> photos, int startIndex)
     {
         for (var index = startIndex; index < photos.Count; index++)
         {
-            failed.Add(new PhotoBulkUpdateFailure(
-                photos[index],
-                getMsg("PhotoService.operationCancelled"),
-                IsCanceled: true));
+            failed.Add(new PhotoBulkUpdateFailure(photos[index], getMsg("PhotoService.operationCancelled"), IsCanceled: true));
         }
     }
 
     /// <summary>選択写真一括お気に入り設定。完了・失敗を写真単位で返す。</summary>
-    public Task<PhotoBulkUpdateResult> BulkSetPhotoFavoriteAsync(
-        IReadOnlyList<SelectedPhotoRefDto> photos,
-        bool isFavorite,
-        CancellationToken ct = default)
+    public Task<PhotoBulkUpdateResult> BulkSetPhotoFavoriteAsync(IReadOnlyList<SelectedPhotoRefDto> photos, bool isFavorite, CancellationToken ct = default)
     {
         AppLogger.Trace($"PhotoService.BulkSetPhotoFavoriteAsync: enter count={photos.Count} isFavorite={isFavorite}");
         var task = RunBulkPhotoUpdatesAsync(
@@ -409,10 +334,7 @@ public sealed class PhotoService
             nameof(BulkSetPhotoFavoriteAsync),
             async photo =>
             {
-                var updated = await _db.TrySetPhotoFavoriteAsync(
-                    photo.photo_path,
-                    isFavorite,
-                    CancellationToken.None).ConfigureAwait(false);
+                var updated = await _db.TrySetPhotoFavoriteAsync(photo.photo_path, isFavorite, CancellationToken.None).ConfigureAwait(false);
                 if (!updated)
                     throw new InvalidOperationException($"写真が見つかりません: {photo.photo_path}");
             },
@@ -422,8 +344,7 @@ public sealed class PhotoService
     }
 
     /// <summary>単体写真へのタグ追加（tags マスタへの登録も DB 側でまとめて行う）。</summary>
-    public async Task AddPhotoTagAsync(string photoPath, string tag, long sourceSlot, CancellationToken ct = default)
-        => await AddPhotoTagsAsync(photoPath, [tag], sourceSlot, ct).ConfigureAwait(false);
+    public async Task AddPhotoTagAsync(string photoPath, string tag, long sourceSlot, CancellationToken ct = default) => await AddPhotoTagsAsync(photoPath, [tag], sourceSlot, ct).ConfigureAwait(false);
 
     /// <summary>単体写真へ複数タグを追加する。1 回のゲート取得でまとめて書き込み、UI スレッドを塞がない。</summary>
     public async Task AddPhotoTagsAsync(string photoPath, IReadOnlyList<string> tags, long sourceSlot, CancellationToken ct = default)
@@ -433,9 +354,7 @@ public sealed class PhotoService
         await _bulkWriteGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            await RunWriteOffUiThread(
-                () => _db.AddPhotoTagsAsync(photoPath, tags, ct),
-                ct).ConfigureAwait(false);
+            await RunWriteOffUiThread(() => _db.AddPhotoTagsAsync(photoPath, tags, ct), ct).ConfigureAwait(false);
         }
         finally
         {
@@ -445,20 +364,13 @@ public sealed class PhotoService
     }
 
     /// <summary>選択写真への一括タグ追加。完了・失敗を写真単位で返す。</summary>
-    public Task<PhotoBulkUpdateResult> BulkAddPhotoTagAsync(
-        IReadOnlyList<SelectedPhotoRefDto> photos,
-        string tag,
-        CancellationToken ct = default)
-        => BulkAddPhotoTagsAsync(photos, [tag], ct);
+    public Task<PhotoBulkUpdateResult> BulkAddPhotoTagAsync(IReadOnlyList<SelectedPhotoRefDto> photos, string tag, CancellationToken ct = default) => BulkAddPhotoTagsAsync(photos, [tag], ct);
 
     /// <summary>
     /// 選択写真へ複数タグを一括追加し、完了・失敗を写真単位で返す。
     /// タグ間ではキャンセルせず、1 写真に対する要求タグを完了してから次の写真へ進む。
     /// </summary>
-    public Task<PhotoBulkUpdateResult> BulkAddPhotoTagsAsync(
-        IReadOnlyList<SelectedPhotoRefDto> photos,
-        IReadOnlyList<string> tags,
-        CancellationToken ct = default)
+    public Task<PhotoBulkUpdateResult> BulkAddPhotoTagsAsync(IReadOnlyList<SelectedPhotoRefDto> photos, IReadOnlyList<string> tags, CancellationToken ct = default)
     {
         AppLogger.Trace($"PhotoService.BulkAddPhotoTagsAsync: enter photoCount={photos.Count} tagCount={tags.Count}");
         if (photos.Count == 0 || tags.Count == 0)
@@ -467,11 +379,7 @@ public sealed class PhotoService
             return Task.FromResult(new PhotoBulkUpdateResult([], []));
         }
 
-        var task = RunBulkPhotoUpdatesAsync(
-            photos,
-            nameof(BulkAddPhotoTagsAsync),
-            photo => _db.AddPhotoTagsAsync(photo.photo_path, tags, CancellationToken.None),
-            ct);
+        var task = RunBulkPhotoUpdatesAsync(photos, nameof(BulkAddPhotoTagsAsync), photo => _db.AddPhotoTagsAsync(photo.photo_path, tags, CancellationToken.None), ct);
         AppLogger.Trace("PhotoService.BulkAddPhotoTagsAsync: exit (dispatched)");
         return task;
     }
@@ -506,16 +414,12 @@ public sealed class PhotoService
     /// SHA-256 が一致する写真だけを重複として返す。PDQ 未計算または不正な値が同じ
     /// サイズ群に含まれる場合は、その群をすべて比較して取りこぼしを防ぐ。
     /// </summary>
-    public async Task<ExactDuplicateDetectionResult> FindExactDuplicatePhotosAsync(
-        IProgress<DuplicatePhotoScanProgress>? progress = null,
-        CancellationToken ct = default)
+    public async Task<ExactDuplicateDetectionResult> FindExactDuplicatePhotosAsync(IProgress<DuplicatePhotoScanProgress>? progress = null, CancellationToken ct = default)
     {
         AppLogger.Trace("PhotoService.FindExactDuplicatePhotosAsync: enter");
         try
         {
-            var photos = await RunReadOffUiThread(
-                () => _db.GetPhotosForDuplicateDetectionAsync(ct),
-                ct).ConfigureAwait(false);
+            var photos = await RunReadOffUiThread(() => _db.GetPhotosForDuplicateDetectionAsync(ct), ct).ConfigureAwait(false);
 
             var candidates = new List<DuplicateFileCandidate>(photos.Count);
             var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -544,11 +448,7 @@ public sealed class PhotoService
                     }
                 }
 
-                ReportDuplicateProgress(
-                    progress,
-                    DuplicatePhotoScanStage.InspectingFiles,
-                    index + 1,
-                    photos.Count);
+                ReportDuplicateProgress(progress, DuplicatePhotoScanStage.InspectingFiles, index + 1, photos.Count);
             }
 
             var filesToHash = BuildExactDuplicateHashCandidates(candidates);
@@ -581,11 +481,7 @@ public sealed class PhotoService
                     AppLogger.Warn($"PhotoService.FindExactDuplicatePhotosAsync: hash skip path={candidate.Photo.photo_path}: {ex.Message}");
                 }
 
-                ReportDuplicateProgress(
-                    progress,
-                    DuplicatePhotoScanStage.ComparingContents,
-                    index + 1,
-                    filesToHash.Length);
+                ReportDuplicateProgress(progress, DuplicatePhotoScanStage.ComparingContents, index + 1, filesToHash.Length);
             }
 
             var groups = hashedFiles
@@ -594,12 +490,7 @@ public sealed class PhotoService
                 .Select(group =>
                 {
                     var photosInGroup = group
-                        .Select(file => new ExactDuplicatePhoto(
-                            file.Candidate.Photo.photo_filename,
-                            file.Candidate.Photo.photo_path,
-                            file.Candidate.Photo.timestamp,
-                            file.Candidate.Photo.source_slot,
-                            file.Candidate.FileSize))
+                        .Select(file => new ExactDuplicatePhoto(file.Candidate.Photo.photo_filename, file.Candidate.Photo.photo_path, file.Candidate.Photo.timestamp, file.Candidate.Photo.source_slot, file.Candidate.FileSize))
                         .OrderBy(photo => photo.Timestamp, StringComparer.Ordinal)
                         .ThenBy(photo => photo.PhotoPath, StringComparer.OrdinalIgnoreCase)
                         .ToArray();
@@ -609,8 +500,7 @@ public sealed class PhotoService
                 .ThenBy(group => group.Photos[0].PhotoPath, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
-            AppLogger.Trace(
-                $"PhotoService.FindExactDuplicatePhotosAsync: exit groups={groups.Length} unreadable={unreadableCount}");
+            AppLogger.Trace($"PhotoService.FindExactDuplicatePhotosAsync: exit groups={groups.Length} unreadable={unreadableCount}");
             return new ExactDuplicateDetectionResult(groups, photos.Count, unreadableCount);
         }
         catch (Exception ex)
@@ -622,11 +512,9 @@ public sealed class PhotoService
 
     /// <summary>
     /// 選択写真が現在も登録済みで検出時と同じ内容かを確認し、同じ内容の保持写真を固定してから削除する。
-    /// 元ファイルを先に削除し、成功したパスだけを DB とサムネイルキャッシュから除去する。
+    /// 元ファイルを先に削除し、成功したパスだけを DB とサムネイルcacheから除去する。
     /// </summary>
-    public async Task<DuplicatePhotoDeleteResult> DeleteDuplicatePhotosAsync(
-        IReadOnlyList<DuplicatePhotoDeleteTarget> targets,
-        CancellationToken ct = default)
+    public async Task<DuplicatePhotoDeleteResult> DeleteDuplicatePhotosAsync(IReadOnlyList<DuplicatePhotoDeleteTarget> targets, CancellationToken ct = default)
     {
         AppLogger.Trace($"PhotoService.DeleteDuplicatePhotosAsync: enter count={targets.Count}");
         await _bulkWriteGate.WaitAsync(ct).ConfigureAwait(false);
@@ -634,9 +522,7 @@ public sealed class PhotoService
         {
             var deletedPhotos = new List<SelectedPhotoRefDto>(targets.Count);
             var failedPhotos = new List<DuplicatePhotoDeleteFailure>();
-            var currentPhotos = await RunReadOffUiThread(
-                () => _db.GetPhotosForDuplicateDetectionAsync(ct),
-                ct).ConfigureAwait(false);
+            var currentPhotos = await RunReadOffUiThread(() => _db.GetPhotosForDuplicateDetectionAsync(ct), ct).ConfigureAwait(false);
             var currentPhotosByPath = currentPhotos
                 .GroupBy(photo => photo.photo_path, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
@@ -651,9 +537,7 @@ public sealed class PhotoService
                     || !currentPhotosByPath.TryGetValue(target.Photo.photo_path, out var currentPhoto)
                     || currentPhoto.source_slot != target.Photo.source_slot)
                 {
-                    failedPhotos.Add(new DuplicatePhotoDeleteFailure(
-                        target.Photo,
-                        DuplicatePhotoDeleteFailureKind.NoLongerRegistered));
+                    failedPhotos.Add(new DuplicatePhotoDeleteFailure(target.Photo, DuplicatePhotoDeleteFailureKind.NoLongerRegistered));
                     continue;
                 }
                 validTargets.Add(target);
@@ -663,33 +547,23 @@ public sealed class PhotoService
                 .Select(target => target.Photo.photo_path)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var targetGroup in validTargets.GroupBy(target => new DuplicateDeleteGroupKey(
-                target.ExpectedContentHash,
-                target.ExpectedFileSize)))
+            foreach (var targetGroup in validTargets.GroupBy(target => new DuplicateDeleteGroupKey(target.ExpectedContentHash, target.ExpectedFileSize)))
             {
                 ct.ThrowIfCancellationRequested();
                 FileContentReadLease? retainedLease = null;
                 foreach (var retainedPath in targetGroup
                     .SelectMany(target => target.RetainedPhotoPaths)
-                    .Where(path => !string.IsNullOrWhiteSpace(path)
-                        && currentPhotosByPath.ContainsKey(path)
-                        && !selectedPaths.Contains(path))
+                    .Where(path => !string.IsNullOrWhiteSpace(path) && currentPhotosByPath.ContainsKey(path) && !selectedPaths.Contains(path))
                     .Distinct(StringComparer.OrdinalIgnoreCase))
                 {
                     ct.ThrowIfCancellationRequested();
                     FileContentReadLease? candidateLease = null;
                     try
                     {
-                        candidateLease = await OpenFileContentReadLeaseAsync(
-                            ToNativePath(retainedPath),
-                            allowDelete: false,
-                            ct).ConfigureAwait(false);
+                        candidateLease = await OpenFileContentReadLeaseAsync(ToNativePath(retainedPath), allowDelete: false, ct).ConfigureAwait(false);
                         if (candidateLease is not null
                             && candidateLease.Snapshot.FileSize == targetGroup.Key.ExpectedFileSize
-                            && string.Equals(
-                                candidateLease.Snapshot.ContentHash,
-                                targetGroup.Key.ExpectedContentHash,
-                                StringComparison.Ordinal))
+                            && string.Equals(candidateLease.Snapshot.ContentHash, targetGroup.Key.ExpectedContentHash, StringComparison.Ordinal))
                         {
                             retainedLease = candidateLease;
                             candidateLease = null;
@@ -702,8 +576,7 @@ public sealed class PhotoService
                     }
                     catch (Exception ex)
                     {
-                        AppLogger.Warn(
-                            $"PhotoService.DeleteDuplicatePhotosAsync: retained comparison failed path={retainedPath}: {ex.Message}");
+                        AppLogger.Warn($"PhotoService.DeleteDuplicatePhotosAsync: retained comparison failed path={retainedPath}: {ex.Message}");
                     }
                     finally
                     {
@@ -716,9 +589,7 @@ public sealed class PhotoService
                 {
                     foreach (var target in targetGroup)
                     {
-                        failedPhotos.Add(new DuplicatePhotoDeleteFailure(
-                            target.Photo,
-                            DuplicatePhotoDeleteFailureKind.RetainedPhotoUnavailable));
+                        failedPhotos.Add(new DuplicatePhotoDeleteFailure(target.Photo, DuplicatePhotoDeleteFailureKind.RetainedPhotoUnavailable));
                     }
                     continue;
                 }
@@ -732,10 +603,7 @@ public sealed class PhotoService
                         FileContentReadLease? targetLease;
                         try
                         {
-                            targetLease = await OpenFileContentReadLeaseAsync(
-                                nativeTargetPath,
-                                allowDelete: true,
-                                ct).ConfigureAwait(false);
+                            targetLease = await OpenFileContentReadLeaseAsync(nativeTargetPath, allowDelete: true, ct).ConfigureAwait(false);
                         }
                         catch (OperationCanceledException) when (ct.IsCancellationRequested)
                         {
@@ -743,35 +611,25 @@ public sealed class PhotoService
                         }
                         catch (Exception ex)
                         {
-                            AppLogger.Warn(
-                                $"PhotoService.DeleteDuplicatePhotosAsync: target comparison failed path={target.Photo.photo_path}: {ex.Message}");
-                            failedPhotos.Add(new DuplicatePhotoDeleteFailure(
-                                target.Photo,
-                                DuplicatePhotoDeleteFailureKind.ComparisonFailed));
+                            AppLogger.Warn($"PhotoService.DeleteDuplicatePhotosAsync: target comparison failed path={target.Photo.photo_path}: {ex.Message}");
+                            failedPhotos.Add(new DuplicatePhotoDeleteFailure(target.Photo, DuplicatePhotoDeleteFailureKind.ComparisonFailed));
                             continue;
                         }
 
-                        // 既に存在しない写真はファイル削除済みとして DB とキャッシュだけを整理する。
+                        // 既に存在しない写真はファイル削除済みとして DB とcacheだけを整理する。
                         if (targetLease is null)
                         {
                             deletedPhotos.Add(target.Photo);
-                            _thumbnailService?.DeleteCachedThumbnails(
-                                target.Photo.photo_path,
-                                target.Photo.source_slot);
+                            _thumbnailService?.DeleteCachedThumbnails(target.Photo.photo_path, target.Photo.source_slot);
                             continue;
                         }
 
                         await using (targetLease.ConfigureAwait(false))
                         {
                             if (targetLease.Snapshot.FileSize != target.ExpectedFileSize
-                                || !string.Equals(
-                                    targetLease.Snapshot.ContentHash,
-                                    target.ExpectedContentHash,
-                                    StringComparison.Ordinal))
+                                || !string.Equals(targetLease.Snapshot.ContentHash, target.ExpectedContentHash, StringComparison.Ordinal))
                             {
-                                failedPhotos.Add(new DuplicatePhotoDeleteFailure(
-                                    target.Photo,
-                                    DuplicatePhotoDeleteFailureKind.FileChanged));
+                                failedPhotos.Add(new DuplicatePhotoDeleteFailure(target.Photo, DuplicatePhotoDeleteFailureKind.FileChanged));
                                 continue;
                             }
 
@@ -785,24 +643,18 @@ public sealed class PhotoService
                             }
                             catch (Exception ex) when (IsMissingFileException(ex))
                             {
-                                AppLogger.Trace(
-                                    $"PhotoService.DeleteDuplicatePhotosAsync: already missing path={target.Photo.photo_path}");
+                                AppLogger.Trace($"PhotoService.DeleteDuplicatePhotosAsync: already missing path={target.Photo.photo_path}");
                             }
                             catch (Exception ex) when (!IsMissingFileException(ex))
                             {
-                                AppLogger.Warn(
-                                    $"PhotoService.DeleteDuplicatePhotosAsync: delete failed path={target.Photo.photo_path}: {ex.Message}");
-                                failedPhotos.Add(new DuplicatePhotoDeleteFailure(
-                                    target.Photo,
-                                    DuplicatePhotoDeleteFailureKind.DeleteFailed));
+                                AppLogger.Warn($"PhotoService.DeleteDuplicatePhotosAsync: delete failed path={target.Photo.photo_path}: {ex.Message}");
+                                failedPhotos.Add(new DuplicatePhotoDeleteFailure(target.Photo, DuplicatePhotoDeleteFailureKind.DeleteFailed));
                                 continue;
                             }
                         }
 
                         deletedPhotos.Add(target.Photo);
-                        _thumbnailService?.DeleteCachedThumbnails(
-                            target.Photo.photo_path,
-                            target.Photo.source_slot);
+                        _thumbnailService?.DeleteCachedThumbnails(target.Photo.photo_path, target.Photo.source_slot);
                     }
                 }
             }
@@ -813,9 +665,7 @@ public sealed class PhotoService
                 try
                 {
                     var deletedPaths = deletedPhotos.Select(photo => photo.photo_path).ToArray();
-                    await RunWriteOffUiThread(
-                        () => _db.DeletePhotosByPathsAsync(deletedPaths, ct),
-                        ct).ConfigureAwait(false);
+                    await RunWriteOffUiThread(() => _db.DeletePhotosByPathsAsync(deletedPaths, ct), ct).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
@@ -828,8 +678,7 @@ public sealed class PhotoService
                 }
             }
 
-            AppLogger.Trace(
-                $"PhotoService.DeleteDuplicatePhotosAsync: exit deleted={deletedPhotos.Count} failed={failedPhotos.Count} db={databaseUpdated}");
+            AppLogger.Trace($"PhotoService.DeleteDuplicatePhotosAsync: exit deleted={deletedPhotos.Count} failed={failedPhotos.Count} db={databaseUpdated}");
             return new DuplicatePhotoDeleteResult(deletedPhotos, failedPhotos, databaseUpdated);
         }
         catch (Exception ex)
@@ -853,11 +702,8 @@ public sealed class PhotoService
         await _bulkWriteGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            var result = await RunWriteOffUiThread(
-                () => _db.CreatePhotoUserDataBackupAsync(ct),
-                ct).ConfigureAwait(false);
-            AppLogger.Trace(
-                $"PhotoService.CreatePhotoUserDataBackupAsync: exit source={result.SourcePhotoCount} entries={result.BackupEntryCount}");
+            var result = await RunWriteOffUiThread(() => _db.CreatePhotoUserDataBackupAsync(ct), ct).ConfigureAwait(false);
+            AppLogger.Trace($"PhotoService.CreatePhotoUserDataBackupAsync: exit source={result.SourcePhotoCount} entries={result.BackupEntryCount}");
             return result;
         }
         catch (Exception ex)
@@ -873,7 +719,7 @@ public sealed class PhotoService
 
     /// <summary>
     /// 保存済みのお気に入りとタグを、現在の写真へファイル名一致で復元する。
-    /// 復元全体は DB 側の単一トランザクションで処理する。
+    /// 復元全体は DB 側の単一transactionで処理する。
     /// </summary>
     public async Task<PhotoUserDataRestoreResult> RestorePhotoUserDataBackupAsync(CancellationToken ct = default)
     {
@@ -881,11 +727,8 @@ public sealed class PhotoService
         await _bulkWriteGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            var result = await RunWriteOffUiThread(
-                () => _db.RestorePhotoUserDataBackupAsync(ct),
-                ct).ConfigureAwait(false);
-            AppLogger.Trace(
-                $"PhotoService.RestorePhotoUserDataBackupAsync: exit entries={result.BackupEntryCount} matched={result.MatchedPhotoCount}");
+            var result = await RunWriteOffUiThread(() => _db.RestorePhotoUserDataBackupAsync(ct), ct).ConfigureAwait(false);
+            AppLogger.Trace($"PhotoService.RestorePhotoUserDataBackupAsync: exit entries={result.BackupEntryCount} matched={result.MatchedPhotoCount}");
             return result;
         }
         catch (Exception ex)
@@ -959,15 +802,13 @@ public sealed class PhotoService
         return task;
     }
 
-    private static string ToNativePath(string path)
-        => path.Replace('/', Path.DirectorySeparatorChar);
+    private static string ToNativePath(string path) => path.Replace('/', Path.DirectorySeparatorChar);
 
     /// <summary>
     /// 既存の類似分析結果を候補グループとして再利用し、完全一致確認が必要な写真だけを返す。
     /// 分析結果が揃っていないサイズ群は全件を返し、未分析写真との重複も検出対象に含める。
     /// </summary>
-    private static DuplicateFileCandidate[] BuildExactDuplicateHashCandidates(
-        IReadOnlyList<DuplicateFileCandidate> candidates)
+    private static DuplicateFileCandidate[] BuildExactDuplicateHashCandidates(IReadOnlyList<DuplicateFileCandidate> candidates)
     {
         var result = new List<DuplicateFileCandidate>();
         foreach (var sizeGroup in candidates.GroupBy(candidate => candidate.FileSize))
@@ -977,11 +818,7 @@ public sealed class PhotoService
                 continue;
 
             var analyzed = sameSize
-                .Select(candidate => new
-                {
-                    Candidate = candidate,
-                    SimilarityKey = GetReusableSimilarityHashKey(candidate.Photo.phash),
-                })
+                .Select(candidate => new { Candidate = candidate, SimilarityKey = GetReusableSimilarityHashKey(candidate.Photo.phash), })
                 .ToArray();
 
             if (analyzed.Any(item => item.SimilarityKey is null))
@@ -990,10 +827,7 @@ public sealed class PhotoService
                 continue;
             }
 
-            result.AddRange(analyzed
-                .GroupBy(item => item.SimilarityKey!, StringComparer.Ordinal)
-                .Where(group => group.Count() > 1)
-                .SelectMany(group => group.Select(item => item.Candidate)));
+            result.AddRange(analyzed.GroupBy(item => item.SimilarityKey!, StringComparer.Ordinal).Where(group => group.Count() > 1).SelectMany(group => group.Select(item => item.Candidate)));
         }
         return result.ToArray();
     }
@@ -1007,11 +841,7 @@ public sealed class PhotoService
             : string.Join("|", variants.OrderBy(static value => value, StringComparer.Ordinal));
     }
 
-    private static void ReportDuplicateProgress(
-        IProgress<DuplicatePhotoScanProgress>? progress,
-        DuplicatePhotoScanStage stage,
-        int processed,
-        int total)
+    private static void ReportDuplicateProgress(IProgress<DuplicatePhotoScanProgress>? progress, DuplicatePhotoScanStage stage, int processed, int total)
     {
         if (progress is null)
             return;
@@ -1020,14 +850,9 @@ public sealed class PhotoService
     }
 
     /// <summary>共有読み取りだけを許可して内容を固定し、サイズと完全一致判定用ハッシュを返す。</summary>
-    private static async Task<FileContentSnapshot?> ReadFileContentSnapshotAsync(
-        string nativePath,
-        CancellationToken ct)
+    private static async Task<FileContentSnapshot?> ReadFileContentSnapshotAsync(string nativePath, CancellationToken ct)
     {
-        var lease = await OpenFileContentReadLeaseAsync(
-            nativePath,
-            allowDelete: false,
-            ct).ConfigureAwait(false);
+        var lease = await OpenFileContentReadLeaseAsync(nativePath, allowDelete: false, ct).ConfigureAwait(false);
         if (lease is null)
             return null;
 
@@ -1039,10 +864,7 @@ public sealed class PhotoService
     /// ハッシュ計算後も読み取りハンドルを保持し、呼び出し側の検証区間で書き換えを防ぐ。
     /// 削除対象だけは StorageFile による削除を許可するため FileShare.Delete を追加する。
     /// </summary>
-    private static async Task<FileContentReadLease?> OpenFileContentReadLeaseAsync(
-        string nativePath,
-        bool allowDelete,
-        CancellationToken ct)
+    private static async Task<FileContentReadLease?> OpenFileContentReadLeaseAsync(string nativePath, bool allowDelete, CancellationToken ct)
     {
         try
         {
@@ -1057,9 +879,7 @@ public sealed class PhotoService
             {
                 var fileSize = stream.Length;
                 var hash = await SHA256.HashDataAsync(stream, ct).ConfigureAwait(false);
-                return new FileContentReadLease(
-                    stream,
-                    new FileContentSnapshot(fileSize, Convert.ToHexString(hash)));
+                return new FileContentReadLease(stream, new FileContentSnapshot(fileSize, Convert.ToHexString(hash)));
             }
             catch
             {
@@ -1073,39 +893,23 @@ public sealed class PhotoService
         }
     }
 
-    private static async Task DeleteFileUsingExplorerDefaultsAsync(
-        string nativePath,
-        CancellationToken ct)
+    private static async Task DeleteFileUsingExplorerDefaultsAsync(string nativePath, CancellationToken ct)
     {
         var file = await StorageFile.GetFileFromPathAsync(nativePath).AsTask(ct).ConfigureAwait(false);
         await file.DeleteAsync(StorageDeleteOption.Default).AsTask(ct).ConfigureAwait(false);
     }
 
-    private static bool IsMissingFileException(Exception ex)
-        => ex is FileNotFoundException or DirectoryNotFoundException
-            || ex.HResult == unchecked((int)0x80070002)
-            || ex.HResult == unchecked((int)0x80070003);
+    private static bool IsMissingFileException(Exception ex) => ex is FileNotFoundException or DirectoryNotFoundException || ex.HResult == unchecked((int)0x80070002) || ex.HResult == unchecked((int)0x80070003);
 
-    private sealed record DuplicateFileCandidate(
-        PhotoRecordDto Photo,
-        string NativePath,
-        long FileSize);
+    private sealed record DuplicateFileCandidate(PhotoRecordDto Photo, string NativePath, long FileSize);
 
-    private sealed record HashedDuplicateFile(
-        DuplicateFileCandidate Candidate,
-        string ContentHash);
+    private sealed record HashedDuplicateFile(DuplicateFileCandidate Candidate, string ContentHash);
 
-    private sealed record FileContentSnapshot(
-        long FileSize,
-        string ContentHash);
+    private sealed record FileContentSnapshot(long FileSize, string ContentHash);
 
-    private sealed record DuplicateDeleteGroupKey(
-        string ExpectedContentHash,
-        long ExpectedFileSize);
+    private sealed record DuplicateDeleteGroupKey(string ExpectedContentHash, long ExpectedFileSize);
 
-    private sealed class FileContentReadLease(
-        FileStream stream,
-        FileContentSnapshot snapshot) : IAsyncDisposable
+    private sealed class FileContentReadLease(FileStream stream, FileContentSnapshot snapshot) : IAsyncDisposable
     {
         public FileContentSnapshot Snapshot { get; } = snapshot;
 

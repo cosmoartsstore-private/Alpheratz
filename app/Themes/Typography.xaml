@@ -1,8 +1,6 @@
-<ResourceDictionary
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- Implicit defaults: every TextBlock / TextBox in the app picks these up. -->
+    <!-- アプリ内の TextBlock / TextBox に適用する既定 style。 -->
     <Style TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{ThemeResource AFontSans}"/>
         <Setter Property="Foreground" Value="{ThemeResource AText}"/>
@@ -43,7 +41,7 @@
         <Setter Property="Foreground" Value="{ThemeResource ATextFaint}"/>
     </Style>
 
-    <!-- Helper / hint text under titles -->
+    <!-- 見出しの下に表示する補足文 -->
     <Style x:Key="HintTextStyle" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource AFontSans}"/>
         <Setter Property="FontSize" Value="{StaticResource AFontSizeSm}"/>

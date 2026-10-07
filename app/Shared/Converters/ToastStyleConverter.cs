@@ -23,8 +23,7 @@ public sealed class ToastAccentBrushConverter : IValueConverter
     }
 
     /// <summary>Toast 表示専用の変換なので逆変換は提供しない。</summary>
-    public object ConvertBack(object value, Type targetType, object parameter, string language)
-        => throw new NotSupportedException();
+    public object ConvertBack(object value, Type targetType, object parameter, string language) => throw new NotSupportedException();
 }
 
 /// <summary>
@@ -40,6 +39,5 @@ public sealed class ToastIconConverter : IValueConverter
     }
 
     /// <summary>Toast 表示専用の変換なので逆変換は提供しない。</summary>
-    public object ConvertBack(object value, Type targetType, object parameter, string language)
-        => throw new NotSupportedException();
+    public object ConvertBack(object value, Type targetType, object parameter, string language) => throw new NotSupportedException();
 }

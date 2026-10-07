@@ -31,10 +31,7 @@ internal static class MonthNavLogic
     }
 
     /// <summary>指定 index のグループが年見出しを出す先頭月かを返す。</summary>
-    public static bool IsYearStart(IReadOnlyList<GalleryMonthGroup> groups, int index)
-        => index >= 0
-            && index < groups.Count
-            && (index == 0 || groups[index - 1].Year != groups[index].Year);
+    public static bool IsYearStart(IReadOnlyList<GalleryMonthGroup> groups, int index) => index >= 0 && index < groups.Count && (index == 0 || groups[index - 1].Year != groups[index].Year);
 
     /// <summary>月グループと active 状態から、月ボタンのラベルとテーマキーを返す。</summary>
     public static MonthNavButtonDisplay MonthButton(GalleryMonthGroup group, bool isActive)
@@ -60,24 +57,14 @@ internal enum MonthNavFontWeight
 }
 
 /// <summary>MonthNav の 1 行分の描画指示。</summary>
-internal sealed record MonthNavRenderItem(
-    MonthNavRenderKind Kind,
-    int? Year,
-    GalleryMonthGroup? Group,
-    MonthNavButtonDisplay? Button)
+internal sealed record MonthNavRenderItem(MonthNavRenderKind Kind, int? Year, GalleryMonthGroup? Group, MonthNavButtonDisplay? Button)
 {
     /// <summary>年見出し行を作る。</summary>
-    public static MonthNavRenderItem YearHeader(int year)
-        => new(MonthNavRenderKind.YearHeader, year, null, null);
+    public static MonthNavRenderItem YearHeader(int year) => new(MonthNavRenderKind.YearHeader, year, null, null);
 
     /// <summary>月ボタン行を作る。</summary>
-    public static MonthNavRenderItem MonthButton(GalleryMonthGroup group, MonthNavButtonDisplay display)
-        => new(MonthNavRenderKind.MonthButton, null, group, display);
+    public static MonthNavRenderItem MonthButton(GalleryMonthGroup group, MonthNavButtonDisplay display) => new(MonthNavRenderKind.MonthButton, null, group, display);
 }
 
-/// <summary>月ボタンに適用するラベル、太さ、テーマリソースキー。</summary>
-internal sealed record MonthNavButtonDisplay(
-    string Label,
-    MonthNavFontWeight FontWeight,
-    string ForegroundKey,
-    string? BackgroundKey);
+/// <summary>月ボタンに適用するラベル、太さ、テーマresourceキー。</summary>
+internal sealed record MonthNavButtonDisplay(string Label, MonthNavFontWeight FontWeight, string ForegroundKey, string? BackgroundKey);

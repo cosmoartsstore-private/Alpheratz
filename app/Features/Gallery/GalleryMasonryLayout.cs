@@ -7,12 +7,7 @@ namespace Alpheratz.Features.Gallery;
 public sealed record MasonryItem(PhotoThumbnailItem Photo, double Top, double Left, double Width, double Height);
 
 /// <summary>Masonry レイアウト計算の結果。</summary>
-public sealed record MasonryLayoutResult(
-    IReadOnlyList<MasonryItem> Items,
-    double TotalHeight,
-    double ColumnWidth,
-    int ColumnCount,
-    double Gap);
+public sealed record MasonryLayoutResult(IReadOnlyList<MasonryItem> Items, double TotalHeight, double ColumnWidth, int ColumnCount, double Gap);
 
 /// <summary>
 /// Masonry レイアウトの座標を計算する純粋ロジック。
@@ -22,11 +17,14 @@ public static class GalleryMasonryLayout
 {
     public const double Gap = 14;
 
+    /// <summary>自動レイアウト時に基準とする、読みやすさ優先の列幅。</summary>
+    public const double PreferredColumnWidth = 320;
+
     /// <summary>
-    /// 1列の最小幅。列数の自動制限にも使う。
-    /// 画面幅が足りない場合は列数を減らし、カードが潰れないようにする。
+    /// 手動で写真を小さくした場合にも下回らない列幅。
+    /// 画面幅が足りない場合は実効列数を減らし、操作部や写真が潰れるのを防ぐ。
     /// </summary>
-    public const double MinColumnWidth = 320;
+    public const double MinColumnWidth = 180;
 
     /// <summary>
     /// 仮想化の探索範囲に使う最大カード高。
@@ -40,10 +38,7 @@ public static class GalleryMasonryLayout
     private const double DefaultAspect = 16.0 / 9.0;
 
     /// <summary>写真リストとパネル幅からレイアウト座標を一括計算する。</summary>
-    public static MasonryLayoutResult Build(
-        IReadOnlyList<PhotoThumbnailItem> photos,
-        double panelWidth,
-        int requestedColumnCount)
+    public static MasonryLayoutResult Build(IReadOnlyList<PhotoThumbnailItem> photos, double panelWidth, int requestedColumnCount)
     {
         var availableWidth = Math.Max(panelWidth - 8, MinColumnWidth);
         var maxFitColumns = Math.Max(1, (int)Math.Floor((availableWidth + Gap) / (MinColumnWidth + Gap)));

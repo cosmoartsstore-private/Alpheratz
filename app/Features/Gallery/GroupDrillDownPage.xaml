@@ -1,19 +1,6 @@
-<UserControl
-    x:Class="Alpheratz.Features.Gallery.GroupDrillDownPage"
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:messages="using:Alpheratz.Messages"
-    xmlns:shared="using:Alpheratz.Shared.Controls"
-    IsTabStop="True"
-    KeyDown="UserControl_KeyDown">
+<UserControl x:Class="Alpheratz.Features.Gallery.GroupDrillDownPage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:messages="using:Alpheratz.Messages" xmlns:shared="using:Alpheratz.Shared.Controls" IsTabStop="True" KeyDown="UserControl_KeyDown">
     <Grid Background="Transparent" Tapped="Backdrop_Tapped">
-        <Border MaxWidth="1400" MaxHeight="900" MinWidth="0" Margin="24"
-                HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                CornerRadius="{StaticResource ARadiusModal}"
-                Background="{ThemeResource ASurface}"
-                BorderBrush="{ThemeResource ABorder}"
-                BorderThickness="1"
-                Tapped="ModalContent_Tapped">
+        <Border MaxWidth="1400" MaxHeight="900" MinWidth="0" Margin="24" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" CornerRadius="{StaticResource ARadiusModal}" Background="{ThemeResource ASurface}" BorderBrush="{ThemeResource ABorder}" BorderThickness="1" Tapped="ModalContent_Tapped">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -26,19 +13,8 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock x:Name="GroupTitle" Grid.Column="0"
-                               VerticalAlignment="Center"
-                               FontSize="{StaticResource AFontSizeXl}" FontWeight="Bold"
-                               Foreground="{ThemeResource AText}"
-                               TextTrimming="CharacterEllipsis"/>
-                    <Button x:Name="CloseButton" Grid.Column="1"
-                            Width="34" Height="34"
-                            CornerRadius="{StaticResource ARadiusButton}"
-                            Background="{ThemeResource ASurfaceSoft}"
-                            BorderThickness="0"
-                            AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('GroupDrillDownPage.closeAutomationName')}"
-                            ToolTipService.ToolTip="{x:Bind messages:MessageCatalog.getMsg('GroupDrillDownPage.closeTooltip')}"
-                            Click="CloseButton_Click">
+                    <TextBlock x:Name="GroupTitle" Grid.Column="0" VerticalAlignment="Center" FontSize="{StaticResource AFontSizeXl}" FontWeight="Bold" Foreground="{ThemeResource AText}" TextTrimming="CharacterEllipsis"/>
+                    <Button x:Name="CloseButton" Grid.Column="1" Width="34" Height="34" CornerRadius="{StaticResource ARadiusButton}" Background="{ThemeResource ASurfaceSoft}" BorderThickness="0" AutomationProperties.Name="{x:Bind messages:MessageCatalog.getMsg('GroupDrillDownPage.closeAutomationName')}" ToolTipService.ToolTip="{x:Bind messages:MessageCatalog.getMsg('GroupDrillDownPage.closeTooltip')}" Click="CloseButton_Click">
                         <shared:AppIcon IconName="close" IconSize="12" Foreground="{ThemeResource ATextDim}"/>
                     </Button>
                 </Grid>

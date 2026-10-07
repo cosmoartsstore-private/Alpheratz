@@ -1,8 +1,4 @@
-<UserControl
-    x:Class="Alpheratz.Shared.Controls.ToastHost"
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:converters="using:Alpheratz.Shared.Converters">
+<UserControl x:Class="Alpheratz.Shared.Controls.ToastHost" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:converters="using:Alpheratz.Shared.Converters">
     <UserControl.Resources>
         <converters:ToastAccentBrushConverter x:Key="ToastAccentBrushConverter"/>
         <converters:ToastIconConverter x:Key="ToastIconConverter"/>
@@ -17,33 +13,17 @@
             </ItemsControl.ItemContainerTransitions>
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                    <Border MinWidth="260" MaxWidth="420" Margin="0,0,0,8"
-                            CornerRadius="{StaticResource ARadius}"
-                            Background="{ThemeResource ASurface}"
-                            BorderBrush="{ThemeResource ABorder}"
-                            BorderThickness="1">
+                    <Border MinWidth="260" MaxWidth="420" Margin="0,0,0,8" CornerRadius="{StaticResource ARadius}" Background="{ThemeResource ASurface}" BorderBrush="{ThemeResource ABorder}" BorderThickness="1">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="4"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <!-- 左端のタイプ別アクセントストライプ -->
-                            <Border Grid.Column="0"
-                                    Background="{Binding Type, Converter={StaticResource ToastAccentBrushConverter}}"
-                                    CornerRadius="12,0,0,12"/>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10"
-                                        Padding="14,10" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding Type, Converter={StaticResource ToastIconConverter}}"
-                                           Foreground="{Binding Type, Converter={StaticResource ToastAccentBrushConverter}}"
-                                           FontSize="{StaticResource AFontSizeLg}"
-                                           FontWeight="ExtraBold"
-                                           VerticalAlignment="Center"/>
-                                <TextBlock Text="{Binding Msg}"
-                                           Foreground="{ThemeResource AText}"
-                                           FontSize="{StaticResource AFontSizeMd}"
-                                           TextWrapping="Wrap"
-                                           AutomationProperties.LiveSetting="Polite"
-                                           VerticalAlignment="Center"/>
+                            <Border Grid.Column="0" Background="{Binding Type, Converter={StaticResource ToastAccentBrushConverter}}" CornerRadius="12,0,0,12"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" Padding="14,10" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Type, Converter={StaticResource ToastIconConverter}}" Foreground="{Binding Type, Converter={StaticResource ToastAccentBrushConverter}}" FontSize="{StaticResource AFontSizeLg}" FontWeight="ExtraBold" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding Msg}" Foreground="{ThemeResource AText}" FontSize="{StaticResource AFontSizeMd}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Grid>
                     </Border>

@@ -5,7 +5,7 @@ using Microsoft.UI.Xaml.Media;
 namespace Alpheratz.Shared.Services;
 
 /// <summary>
-/// 要素の ActualTheme に基づいて ThemeDictionaries からリソースを解決する。
+/// 要素の ActualTheme に基づいて ThemeDictionaries からresourceを解決する。
 ///
 /// Application.Current.Resources["key"] や {ThemeResource} を Application.Resources 階層で引くと
 /// Application.RequestedTheme で解決されるが、WinUI 3 では Application.RequestedTheme は
@@ -30,8 +30,7 @@ public static class ThemeHelper
     public static void NotifySelectedThemeChanged(ElementTheme theme) => SelectedTheme = theme;
 
     /// <summary>element の ActualTheme に対応した Brush を ThemeDictionaries から取得する。</summary>
-    public static Brush? Brush(FrameworkElement element, string key)
-        => Resolve<Brush>(element, key);
+    public static Brush? Brush(FrameworkElement element, string key) => Resolve<Brush>(element, key);
 
     /// <summary>
     /// element 不在 (IValueConverter 等) で SelectedTheme をフォールバックに使う lookup。
@@ -48,11 +47,10 @@ public static class ThemeHelper
         return null;
     }
 
-    /// <summary>element の ActualTheme に対応したリソースを ThemeDictionaries から取得する。</summary>
-    public static T? Resource<T>(FrameworkElement element, string key) where T : class
-        => Resolve<T>(element, key);
+    /// <summary>element の ActualTheme に対応したresourceを ThemeDictionaries から取得する。</summary>
+    public static T? Resource<T>(FrameworkElement element, string key) where T : class => Resolve<T>(element, key);
 
-    /// <summary>テーマ非依存リソース (FontFamily 等)。Application.Resources を直接引く。</summary>
+    /// <summary>テーマ非依存resource (FontFamily 等)。Application.Resources を直接引く。</summary>
     public static T? AppResource<T>(string key) where T : class
     {
         var res = Application.Current.Resources;

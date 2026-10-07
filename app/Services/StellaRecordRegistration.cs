@@ -26,9 +26,7 @@ internal static class StellaRecordRegistration
         );
         """;
 
-    /// <summary>
-    /// StellaRecord の apps テーブルで確認した一意制約の形を表す。
-    /// </summary>
+    /// <summary>StellaRecord の apps テーブルで確認した一意制約の形を表す。</summary>
     private enum AppsSchemaKind
     {
         /// <summary>現行 schema。path が UNIQUE で、name は重複を許可する。</summary>
@@ -42,8 +40,8 @@ internal static class StellaRecordRegistration
     }
 
     /// <summary>
-    /// レジストリから StellaRecord DB を解決し、指定された実行ファイルを登録する。
-    /// 任意連携のため、レジストリ・DB・ファイル操作の失敗は握りつぶす。
+    /// registryから StellaRecord DB を解決し、指定された実行ファイルを登録する。
+    /// 任意連携のため、registry・DB・ファイル操作の失敗は握りつぶす。
     /// </summary>
     public static void Register(string exePath, string? iconPath = null)
     {
@@ -61,7 +59,7 @@ internal static class StellaRecordRegistration
     }
 
     /// <summary>
-    /// レジストリから StellaRecord DB を解決し、現在の Alpheratz 登録を削除する。
+    /// registryから StellaRecord DB を解決し、現在の Alpheratz 登録を削除する。
     /// 任意連携のため、削除失敗は呼び出し元へ伝播しない。
     /// </summary>
     public static void Unregister()
@@ -93,7 +91,7 @@ internal static class StellaRecordRegistration
 
     /// <summary>
     /// 指定 DB へ Alpheratz を登録する。
-    /// レジストリ解決後の実 DB と、呼び出し元が明示した DB の両方を同じ手順で更新する。
+    /// registry解決後の実 DB と、呼び出し元が明示した DB の両方を同じ手順で更新する。
     /// </summary>
     internal static void RegisterToDatabase(string dbPath, string exePath, string? iconPath = null)
     {
@@ -121,9 +119,7 @@ internal static class StellaRecordRegistration
         transaction.Commit();
     }
 
-    /// <summary>
-    /// 指定 DB から Alpheratz の登録を削除する。旧 launcher 名の残存行も同時に削除する。
-    /// </summary>
+    /// <summary>指定 DB から Alpheratz の登録を削除する。旧 launcher 名の残存行も同時に削除する。</summary>
     internal static void UnregisterFromDatabase(string dbPath, string? exePath = null)
     {
         if (!File.Exists(dbPath)) return;
@@ -147,17 +143,13 @@ internal static class StellaRecordRegistration
         cmd.ExecuteNonQuery();
     }
 
-    /// <summary>
-    /// StellaRecord DB として参照できるファイルが存在するか確認する。
-    /// </summary>
+    /// <summary>StellaRecord DB として参照できるファイルが存在するか確認する。</summary>
     internal static bool IsDatabaseAvailable(string? dbPath)
     {
         return dbPath is not null && File.Exists(dbPath);
     }
 
-    /// <summary>
-    /// SQLite 接続を開き、StellaRecord 連携用の待機時間を設定する。
-    /// </summary>
+    /// <summary>SQLite 接続を開き、StellaRecord 連携用の待機時間を設定する。</summary>
     private static SqliteConnection OpenConnection(string dbPath)
     {
         var connectionString = new SqliteConnectionStringBuilder { DataSource = dbPath }.ToString();
@@ -179,9 +171,7 @@ internal static class StellaRecordRegistration
         }
     }
 
-    /// <summary>
-    /// DB が未作成の場合に、現行 StellaRecord schema と同じ apps テーブルを作成する。
-    /// </summary>
+    /// <summary>DB が未作成の場合に、現行 StellaRecord schema と同じ apps テーブルを作成する。</summary>
     private static void EnsureAppsTable(SqliteConnection conn)
     {
         using var createCmd = conn.CreateCommand();
@@ -189,9 +179,7 @@ internal static class StellaRecordRegistration
         createCmd.ExecuteNonQuery();
     }
 
-    /// <summary>
-    /// 旧 Alpheratz v2 登録名の行を同じ登録トランザクション内で削除する。
-    /// </summary>
+    /// <summary>旧 Alpheratz v2 登録名の行を同じ登録transaction内で削除する。</summary>
     private static void RemoveLegacyAppName(SqliteConnection conn, SqliteTransaction transaction)
     {
         using var cmd = conn.CreateCommand();
@@ -216,9 +204,7 @@ internal static class StellaRecordRegistration
         return AppsSchemaKind.PathDeduplication;
     }
 
-    /// <summary>
-    /// 判定済み schema に対応する登録 SQL を組み立てる。
-    /// </summary>
+    /// <summary>判定済み schema に対応する登録 SQL を組み立てる。</summary>
     private static string BuildRegistrationSql(AppsSchemaKind schemaKind)
     {
         if (schemaKind == AppsSchemaKind.CurrentPathUnique)
@@ -254,9 +240,7 @@ internal static class StellaRecordRegistration
             """;
     }
 
-    /// <summary>
-    /// 判定済み schema に対応する登録解除 SQL を組み立てる。
-    /// </summary>
+    /// <summary>判定済み schema に対応する登録解除 SQL を組み立てる。</summary>
     private static string BuildUnregistrationSql(AppsSchemaKind schemaKind)
     {
         if (schemaKind == AppsSchemaKind.LegacyCategory)
@@ -270,9 +254,7 @@ internal static class StellaRecordRegistration
         return "DELETE FROM apps WHERE path = $path OR name = $legacyName";
     }
 
-    /// <summary>
-    /// 指定テーブルに指定列が存在するか PRAGMA table_info で確認する。
-    /// </summary>
+    /// <summary>指定テーブルに指定列が存在するか PRAGMA table_info で確認する。</summary>
     private static bool HasColumn(SqliteConnection conn, string table, string column)
     {
         using var cmd = conn.CreateCommand();
@@ -286,9 +268,7 @@ internal static class StellaRecordRegistration
         return false;
     }
 
-    /// <summary>
-    /// 指定列だけを対象にする非 partial の UNIQUE index または UNIQUE 制約が存在するか確認する。
-    /// </summary>
+    /// <summary>指定列だけを対象にする非 partial の UNIQUE index または UNIQUE 制約が存在するか確認する。</summary>
     private static bool HasSingleColumnUniqueIndex(SqliteConnection conn, string table, string column)
     {
         var uniqueIndexes = new List<string>();
@@ -329,11 +309,10 @@ internal static class StellaRecordRegistration
     /// PRAGMA の identifier を二重引用符で quote する。
     /// PRAGMA では SQL parameter を使えないため、identifier の二重引用符を escape して注入を防ぐ。
     /// </summary>
-    private static string QuoteIdentifier(string identifier)
-        => "\"" + identifier.Replace("\"", "\"\"") + "\"";
+    private static string QuoteIdentifier(string identifier) => "\"" + identifier.Replace("\"", "\"\"") + "\"";
 
     /// <summary>
-    /// StellaRecord のレジストリから DB パスを解決する。
+    /// StellaRecord のregistryから DB パスを解決する。
     /// InstallLocation から見つかる公式配置を優先し、見つからない場合だけ DbPath を参照する。
     /// </summary>
     private static string? GetDbPath()

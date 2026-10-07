@@ -22,7 +22,7 @@ using static Alpheratz.Messages.MessageCatalog;
 
 namespace Alpheratz.Features.Shell;
 
-#pragma warning disable CS0162 // Unreachable code (DETACH flags are compile-time constants for debug)
+#pragma warning disable CS0162 // DETACH flag は Debug 用の compile-time constant のため、到達不能コードを許容する。
 public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDisposable
 {
     private const bool DETACH_RUNTIME_DATA = false;
@@ -54,7 +54,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     // UPDATE が衝突して SQLITE_BUSY が返り、結果として orientation や phash が一部行だけ
     // 反映されず欠落するパーシャル書き込みが発生する。WAL でも複数 writer は禁止のため、
     // ここで明示的に 1 つずつ走らせる。トレードオフ：スキャン後の補完が逐次なので終了が
-    // やや遅いが、ユーザは UI 操作可能なので体感問題にはなりにくい。
+    // やや遅いが、ユーザーは UI 操作可能なので体感問題にはなりにくい。
     private readonly SemaphoreSlim postScanGate = new(1, 1);
     private readonly object postScanOperationsGate = new();
     private readonly Dictionary<Task, CancellationTokenSource> postScanOperations = [];
@@ -104,13 +104,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     public bool OpenWorldLinkOnPost { get => openWorldLinkOnPost; set => SetProperty(ref openWorldLinkOnPost, value); }
     public string ActiveTweetTemplate { get => activeTweetTemplate; set => SetProperty(ref activeTweetTemplate, value); }
 
-    public ShellViewModel(
-        SettingsService settingsService, AlpheratzDb db, PhotoScanner scanner,
-        PhashService phashService, OrientationService orientationService, WorldService worldService,
-        LocalEventBus eventBus, ToastService toastService, GalleryViewModel galleryViewModel,
-        SettingsViewModel settingsViewModel, TagMasterViewModel tagMasterViewModel,
-        TemplatePageViewModel templatePageViewModel, PhotoModalState photoModalState, DispatcherService dispatcherService,
-        ThumbnailWorker thumbnailWorker, PhotoService? photoService = null)
+    public ShellViewModel(SettingsService settingsService, AlpheratzDb db, PhotoScanner scanner, PhashService phashService, OrientationService orientationService, WorldService worldService, LocalEventBus eventBus, ToastService toastService, GalleryViewModel galleryViewModel, SettingsViewModel settingsViewModel, TagMasterViewModel tagMasterViewModel, TemplatePageViewModel templatePageViewModel, PhotoModalState photoModalState, DispatcherService dispatcherService, ThumbnailWorker thumbnailWorker, PhotoService? photoService = null)
     {
         AppLogger.Trace("ShellViewModel.ctor: enter");
         this.settingsService = settingsService; this.db = db;
@@ -126,8 +120,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     }
 
     /// <summary>ワールド解決モーダル用の ViewModel を現在のサービス構成から作成する。</summary>
-    public WorldResolve.WorldResolveViewModel CreateWorldResolveViewModel()
-        => new(db, thumbnailWorker, toastService, dispatcherService);
+    public WorldResolve.WorldResolveViewModel CreateWorldResolveViewModel() => new(db, thumbnailWorker, toastService, dispatcherService);
 
     /// <summary>単一写真を対象にした PhotoModalViewModel を作成する。写真が null なら null。</summary>
     public PhotoModalViewModel? createPhotoModalViewModel(PhotoThumbnailItem? photo)
@@ -162,10 +155,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         {
             // リスナ登録と設定読込は副作用が独立しているので並行化する。
             // 写真ロードはこれらが終わった後 (DB セッションが落ち着いた後) に開始する。
-            await Task.WhenAll(
-                registerScanListeners(),
-                registerPhashWorker(),
-                refreshSettings()).ConfigureAwait(false);
+            await Task.WhenAll(registerScanListeners(), registerPhashWorker(), refreshSettings()).ConfigureAwait(false);
 
             // フォルダ設定の保存後にアプリが終了していた場合は、ギャラリーを読む前に
             // 旧スロットの整理を再実行する。整理できない間は新しい走査を開始しない。
@@ -401,10 +391,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     }
 
     /// <summary>ギャラリーのワールド候補とタグ件数を再取得する。</summary>
-    private Task refreshGalleryFilterMetadata()
-        => Task.WhenAll(
-            galleryViewModel.loadWorldFilterOptions(),
-            galleryViewModel.loadTagFilterCounts());
+    private Task refreshGalleryFilterMetadata() => Task.WhenAll(galleryViewModel.loadWorldFilterOptions(), galleryViewModel.loadTagFilterCounts());
 
     /// <summary>タグを削除し、ギャラリー側のタグフィルタと写真一覧を再同期する。</summary>
     public async Task deleteTagAndRefreshGallery(string tag)
@@ -423,9 +410,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
             {
                 while (galleryViewModel.filtersState.tagFilters.Remove(tag)) { }
             }).ConfigureAwait(false);
-            await Task.WhenAll(
-                galleryViewModel.loadTagFilterCounts(),
-                galleryViewModel.photosState.loadPhotos()).ConfigureAwait(false);
+            await Task.WhenAll(galleryViewModel.loadTagFilterCounts(), galleryViewModel.photosState.loadPhotos()).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -449,10 +434,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
                 return;
             }
 
-            toastService.addToast(getMsg(
-                "ShellViewModel.photoUserDataBackupCreated",
-                ("photoCount", result.SourcePhotoCount),
-                ("fileCount", result.BackupEntryCount)));
+            toastService.addToast(getMsg("ShellViewModel.photoUserDataBackupCreated", ("photoCount", result.SourcePhotoCount), ("fileCount", result.BackupEntryCount)));
         }
         catch (Exception ex)
         {
@@ -487,10 +469,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
 
             try
             {
-                await Task.WhenAll(
-                    tagMasterViewModel.loadTags(),
-                    galleryViewModel.loadTagFilterCounts(),
-                    galleryViewModel.photosState.loadPhotos()).ConfigureAwait(false);
+                await Task.WhenAll(tagMasterViewModel.loadTags(), galleryViewModel.loadTagFilterCounts(), galleryViewModel.photosState.loadPhotos()).ConfigureAwait(false);
             }
             catch (Exception refreshError)
             {
@@ -500,10 +479,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
                 return;
             }
 
-            toastService.addToast(getMsg(
-                "ShellViewModel.photoUserDataRestored",
-                ("photoCount", result.MatchedPhotoCount),
-                ("tagCount", result.CreatedTagCount)));
+            toastService.addToast(getMsg("ShellViewModel.photoUserDataRestored", ("photoCount", result.MatchedPhotoCount), ("tagCount", result.CreatedTagCount)));
         }
         catch (Exception ex)
         {
@@ -517,8 +493,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
     /// 重複写真の削除中はスキャンとサムネイル生成を停止し、元ファイル・DB・表示一覧の順に同期する。
     /// フォルダ変更と同じ gate を使い、対象フォルダの差し替えと同時に実行されないようにする。
     /// </summary>
-    public async Task<DuplicatePhotoDeleteResult> deleteDuplicatePhotos(
-        IReadOnlyList<DuplicatePhotoDeleteTarget> targets)
+    public async Task<DuplicatePhotoDeleteResult> deleteDuplicatePhotos(IReadOnlyList<DuplicatePhotoDeleteTarget> targets)
     {
         AppLogger.Trace($"ShellViewModel.deleteDuplicatePhotos: enter count={targets.Count}");
         if (targets.Count == 0)
@@ -537,8 +512,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
             await thumbnailWorker.SuspendOperationsAndWaitAsync().ConfigureAwait(false);
 
             var result = await photoService.DeleteDuplicatePhotosAsync(targets).ConfigureAwait(false);
-            await dispatcherService.RunOnUiThread(() =>
-                galleryViewModel.selectionState.clearSelectedPhotos()).ConfigureAwait(false);
+            await dispatcherService.RunOnUiThread(() => galleryViewModel.selectionState.clearSelectedPhotos()).ConfigureAwait(false);
 
             thumbnailWorker.ResumeOperations();
             sharedThumbnailsSuspended = false;
@@ -547,20 +521,15 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
 
             try
             {
-                await Task.WhenAll(
-                    galleryViewModel.photosState.loadPhotos(),
-                    refreshGalleryFilterMetadata()).ConfigureAwait(false);
+                await Task.WhenAll(galleryViewModel.photosState.loadPhotos(), refreshGalleryFilterMetadata()).ConfigureAwait(false);
             }
             catch (Exception refreshError)
             {
                 AppLogger.Error($"ShellViewModel.deleteDuplicatePhotos: refresh failed after delete: {refreshError}");
-                toastService.addToast(
-                    getMsg("DuplicatePhotosViewModel.galleryRefreshFailed"),
-                    ToastType.error);
+                toastService.addToast(getMsg("DuplicatePhotosViewModel.galleryRefreshFailed"), ToastType.error);
             }
 
-            AppLogger.Trace(
-                $"ShellViewModel.deleteDuplicatePhotos: exit deleted={result.DeletedPhotos.Count} failed={result.FailedPhotos.Count}");
+            AppLogger.Trace($"ShellViewModel.deleteDuplicatePhotos: exit deleted={result.DeletedPhotos.Count} failed={result.FailedPhotos.Count}");
             return result;
         }
         catch (Exception ex)
@@ -664,8 +633,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
             }));
             scanUnlistenFns.Add(eventBus.Subscribe<string>(EventNames.ScanWarning, payload =>
             {
-                dispatcherService.requestAnimationFrame(() =>
-                    toastService.addToast(payload, ToastType.info, duration: 7000));
+                dispatcherService.requestAnimationFrame(() => toastService.addToast(payload, ToastType.info, duration: 7000));
                 return Task.CompletedTask;
             }));
             scanUnlistenFns.Add(eventBus.Subscribe<string>(EventNames.ScanCancelled, payload =>
@@ -841,9 +809,9 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
             if (!isCurrent)
                 AppLogger.Warn($"ShellViewModel.ResumePendingFolderCleanupAsync: path changed for operation {cleanup.OperationId}; reset approved slot");
 
-            // 旧フォルダの生成処理が imgCache 削除後に完了すると、削除済みキャッシュを再作成する。
+            // 旧フォルダの生成処理が imgCache 削除後に完了すると、削除済みcacheを再作成する。
             // Gallery と共有ワーカーの新規要求を止め、WorldResolve を含む全生成の完了を
-            // 待ってから DB とキャッシュを整理する。
+            // 待ってから DB とcacheを整理する。
             await galleryViewModel.photosState.suspendThumbnailGenerationAndWait().ConfigureAwait(false);
             await thumbnailWorker.SuspendOperationsAndWaitAsync().ConfigureAwait(false);
             await db.ResetPhotoCacheBySlotAsync(cleanup.SourceSlot).ConfigureAwait(false);
@@ -860,7 +828,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         }
     }
 
-    /// <summary>保留中スロットの写真フォルダを変更し、設定保存後に DB キャッシュをリセットする。</summary>
+    /// <summary>保留中スロットの写真フォルダを変更し、設定保存後に DB cacheをリセットする。</summary>
     public async Task applyFolderChange(int slot, string newPath)
     {
         AppLogger.Trace($"ShellViewModel.applyFolderChange: enter slot={slot} newPath={newPath}");
@@ -900,10 +868,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
                 if (AreSameFolderPath(currentPath, newPath))
                 {
                     ClearPendingFolderChangeIfCurrent(slot, newPath);
-                    await Task.WhenAll(
-                        galleryViewModel.photosState.loadPhotos(),
-                        tagMasterViewModel.loadTags(),
-                        refreshGalleryFilterMetadata()).ConfigureAwait(false);
+                    await Task.WhenAll(galleryViewModel.photosState.loadPhotos(), tagMasterViewModel.loadTags(), refreshGalleryFilterMetadata()).ConfigureAwait(false);
                     await startScan().ConfigureAwait(false);
                     toastService.addToast(getMsg("ShellViewModel.folderCleanupComplete"));
                     return;
@@ -917,10 +882,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
             if (!await ResumePendingFolderCleanupAsync().ConfigureAwait(false))
                 return;
 
-            await Task.WhenAll(
-                galleryViewModel.photosState.loadPhotos(),
-                tagMasterViewModel.loadTags(),
-                refreshGalleryFilterMetadata()).ConfigureAwait(false);
+            await Task.WhenAll(galleryViewModel.photosState.loadPhotos(), tagMasterViewModel.loadTags(), refreshGalleryFilterMetadata()).ConfigureAwait(false);
             await startScan().ConfigureAwait(false);
             toastService.addToast(getMsg("ShellViewModel.folderUpdated"));
         }
@@ -967,14 +929,11 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         }
         catch
         {
-            return string.Equals(
-                left.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
-                right.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
-                StringComparison.OrdinalIgnoreCase);
+            return string.Equals(left.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), right.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), StringComparison.OrdinalIgnoreCase);
         }
     }
 
-    /// <summary>指定スロットの写真キャッシュを削除し、設定上のフォルダパスも空にする。</summary>
+    /// <summary>指定スロットの写真cacheを削除し、設定上のフォルダパスも空にする。</summary>
     public async Task executeResetFolder(int slot, string? expectedPath = null)
     {
         AppLogger.Trace($"ShellViewModel.executeResetFolder: enter slot={slot}");
@@ -1007,10 +966,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
             if (!await ResumePendingFolderCleanupAsync().ConfigureAwait(false))
                 return;
 
-            await Task.WhenAll(
-                galleryViewModel.photosState.loadPhotos(),
-                tagMasterViewModel.loadTags(),
-                refreshGalleryFilterMetadata()).ConfigureAwait(false);
+            await Task.WhenAll(galleryViewModel.photosState.loadPhotos(), tagMasterViewModel.loadTags(), refreshGalleryFilterMetadata()).ConfigureAwait(false);
             toastService.addToast(getMsg("ShellViewModel.folderReset", ("slot", slot)));
         }
         catch (Exception err)
@@ -1155,8 +1111,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         catch (Exception err)
         {
             AppLogger.Error($"ShellViewModel.handleStartupPreference: threw: {err}");
-            await dispatcherService.RunOnUiThread(() =>
-                settingsViewModel.StartupEnabled = StartupEnabled).ConfigureAwait(false);
+            await dispatcherService.RunOnUiThread(() => settingsViewModel.StartupEnabled = StartupEnabled).ConfigureAwait(false);
             toastService.addToast(getMsg("ShellViewModel.startupUpdateFailed"), ToastType.error);
         }
         AppLogger.Trace("ShellViewModel.handleStartupPreference: exit");

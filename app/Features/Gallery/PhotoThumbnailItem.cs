@@ -152,9 +152,7 @@ public partial class PhotoThumbnailItem : UiThreadSafeObservableObject
         }
     }
 
-    /// <summary>
-    /// PhotoModal 用の表示パス。display_thumb_path → resolved_photo_path → photo_path の優先順。
-    /// </summary>
+    /// <summary>PhotoModal 用の表示パス。display_thumb_path → resolved_photo_path → photo_path の優先順。</summary>
     public string? EffectiveDisplayPath
     {
         get
@@ -167,46 +165,8 @@ public partial class PhotoThumbnailItem : UiThreadSafeObservableObject
     }
 
     /// <summary>DB の DTO から ViewModel インスタンスを生成する。</summary>
-    public static PhotoThumbnailItem FromDto(PhotoRecordDto photo) => new()
-    {
-        photo_filename = photo.photo_filename,
-        photo_path = photo.photo_path,
-        resolved_photo_path = photo.resolved_photo_path,
-        grid_thumb_path = photo.grid_thumb_path,
-        display_thumb_path = photo.display_thumb_path,
-        world_id = photo.world_id,
-        world_name = photo.world_name,
-        Timestamp = photo.timestamp,
-        Phash = photo.phash,
-        Orientation = photo.orientation,
-        image_width = photo.image_width,
-        image_height = photo.image_height,
-        source_slot = photo.source_slot,
-        is_favorite = photo.is_favorite,
-        Tags = photo.tags,
-        match_source = photo.match_source,
-        is_missing = photo.is_missing,
-    };
+    public static PhotoThumbnailItem FromDto(PhotoRecordDto photo) => new() { photo_filename = photo.photo_filename, photo_path = photo.photo_path, resolved_photo_path = photo.resolved_photo_path, grid_thumb_path = photo.grid_thumb_path, display_thumb_path = photo.display_thumb_path, world_id = photo.world_id, world_name = photo.world_name, Timestamp = photo.timestamp, Phash = photo.phash, Orientation = photo.orientation, image_width = photo.image_width, image_height = photo.image_height, source_slot = photo.source_slot, is_favorite = photo.is_favorite, Tags = photo.tags, match_source = photo.match_source, is_missing = photo.is_missing, };
 
     /// <summary>ViewModel の現在値を DTO に変換する。</summary>
-    public PhotoRecordDto ToDto() => new()
-    {
-        photo_filename = photo_filename,
-        photo_path = photo_path,
-        resolved_photo_path = resolved_photo_path,
-        grid_thumb_path = grid_thumb_path,
-        display_thumb_path = display_thumb_path,
-        world_id = world_id,
-        world_name = world_name,
-        timestamp = Timestamp,
-        phash = Phash,
-        orientation = Orientation,
-        image_width = image_width,
-        image_height = image_height,
-        source_slot = source_slot,
-        is_favorite = is_favorite,
-        tags = Tags,
-        match_source = match_source,
-        is_missing = is_missing,
-    };
+    public PhotoRecordDto ToDto() => new() { photo_filename = photo_filename, photo_path = photo_path, resolved_photo_path = resolved_photo_path, grid_thumb_path = grid_thumb_path, display_thumb_path = display_thumb_path, world_id = world_id, world_name = world_name, timestamp = Timestamp, phash = Phash, orientation = Orientation, image_width = image_width, image_height = image_height, source_slot = source_slot, is_favorite = is_favorite, tags = Tags, match_source = match_source, is_missing = is_missing, };
 }

@@ -9,8 +9,8 @@ $RepoRoot = Split-Path -Parent $BuildWorksRoot
 $InstallerScriptPath = Join-Path $BuildWorksRoot "nsis\Installer.nsi"
 $InstallerOutputPath = Join-Path $BuildWorksRoot "Alpheratz-Installer.exe"
 $VcRedistPath = Join-Path $BuildWorksRoot "runtime\vc_redist.x64.exe"
-# Windows App Runtime preflight is intentionally skipped for the self-contained build.
-# WindowsAppSDKSelfContained=true copies WinAppSDK dependencies into the app output.
+# self-contained 配布では Windows App Runtime の事前確認を行わない。
+# WindowsAppSDKSelfContained=true により WinAppSDK の依存ファイルを配布物へ同梱する。
 
 if (Test-Path $InstallerOutputPath) {
     Remove-Item -LiteralPath $InstallerOutputPath -Force

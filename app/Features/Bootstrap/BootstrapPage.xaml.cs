@@ -8,9 +8,7 @@ using Microsoft.UI.Xaml.Media.Animation;
 
 namespace Alpheratz.Features.Bootstrap;
 
-/// <summary>
-/// 起動時のスプラッシュ画面。ロゴのフェードだけを扱い、短い起動処理へ疑似進捗は表示しない。
-/// </summary>
+/// <summary>起動時のスプラッシュ画面。ロゴのフェードだけを扱い、短い起動処理へ疑似進捗は表示しない。</summary>
 [ExcludeFromCodeCoverage(Justification = "WinUI/OS framework boundary; behavior is covered through extracted logic and service tests.")]
 public sealed partial class BootstrapPage : Page
 {
@@ -41,13 +39,7 @@ public sealed partial class BootstrapPage : Page
         {
             var sb = new Storyboard();
             var fade = new DoubleAnimation
-            {
-                From = 0,
-                To = 1,
-                Duration = new Duration(TimeSpan.FromMilliseconds(FadeInDurationMilliseconds)),
-                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
-                FillBehavior = FillBehavior.Stop,
-            };
+            { From = 0, To = 1, Duration = new Duration(TimeSpan.FromMilliseconds(FadeInDurationMilliseconds)), EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }, FillBehavior = FillBehavior.Stop, };
             Storyboard.SetTarget(fade, SplashContent);
             Storyboard.SetTargetProperty(fade, "Opacity");
             sb.Children.Add(fade);
@@ -74,13 +66,7 @@ public sealed partial class BootstrapPage : Page
         {
             var sb = new Storyboard();
             var fade = new DoubleAnimation
-            {
-                From = 1,
-                To = 0,
-                Duration = new Duration(TimeSpan.FromMilliseconds(FadeOutDurationMilliseconds)),
-                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn },
-                FillBehavior = FillBehavior.Stop,
-            };
+            { From = 1, To = 0, Duration = new Duration(TimeSpan.FromMilliseconds(FadeOutDurationMilliseconds)), EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }, FillBehavior = FillBehavior.Stop, };
             Storyboard.SetTarget(fade, SplashContent);
             Storyboard.SetTargetProperty(fade, "Opacity");
             sb.Children.Add(fade);

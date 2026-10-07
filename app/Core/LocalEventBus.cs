@@ -47,11 +47,8 @@ public sealed class LocalEventBus
         try
         {
             // JsonDocument.Parse(...).RootElement を返すと、所有する JsonDocument を解放できない。
-            // SerializeToElement は独立した JsonElement を返すため、配信中に保持するリソースが残らない。
-            json = JsonSerializer.SerializeToElement(
-                payload,
-                payload?.GetType() ?? typeof(object),
-                _opts);
+            // SerializeToElement は独立した JsonElement を返すため、配信中に保持するresourceが残らない。
+            json = JsonSerializer.SerializeToElement(payload, payload?.GetType() ?? typeof(object), _opts);
         }
         catch (Exception ex)
         {
@@ -110,7 +107,7 @@ public sealed class LocalEventBus
                 }
                 catch (Exception ex)
                 {
-                    // payload スキーマが publisher 側で変わった場合などは、購読側で診断できるよう警告を残す。
+                    // payload schemaが publisher 側で変わった場合などは、購読側で診断できるよう警告を残す。
                     AppLogger.Warn($"LocalEventBus.Subscribe<{typeof(TPayload).Name}>: deserialize failed for event={eventName}: {ex.Message}");
                     return Task.CompletedTask;
                 }

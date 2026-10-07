@@ -90,17 +90,7 @@ public sealed partial class MonthNav : UserControl
     private Border BuildYearHeader(int year)
     {
         return new Border
-        {
-            Padding = new Thickness(8, 10, 8, 2),
-            Child = new TextBlock
-            {
-                Text = getMsg("MonthNav.yearLabel", ("year", year)),
-                FontSize = 11,
-                FontWeight = Microsoft.UI.Text.FontWeights.ExtraBold,
-                Foreground = ThemeHelper.Brush(this, MonthNavLogic.YearHeaderForegroundKey),
-                HorizontalAlignment = HorizontalAlignment.Center,
-            }
-        };
+        { Padding = new Thickness(8, 10, 8, 2), Child = new TextBlock { Text = getMsg("MonthNav.yearLabel", ("year", year)), FontSize = 11, FontWeight = Microsoft.UI.Text.FontWeights.ExtraBold, Foreground = ThemeHelper.Brush(this, MonthNavLogic.YearHeaderForegroundKey), HorizontalAlignment = HorizontalAlignment.Center, } };
     }
 
     // 月ジャンプ用ボタンを作り、アクティブ月には強調色を付ける。
@@ -133,9 +123,7 @@ public sealed partial class MonthNav : UserControl
             Content = label,
             Tag = g,
         };
-        AutomationProperties.SetName(
-            btn,
-            getMsg("MonthNav.jumpToMonth", ("year", g.Year), ("month", g.Month)));
+        AutomationProperties.SetName(btn, getMsg("MonthNav.jumpToMonth", ("year", g.Year), ("month", g.Month)));
         btn.Click += MonthButton_Click;
         return btn;
     }
