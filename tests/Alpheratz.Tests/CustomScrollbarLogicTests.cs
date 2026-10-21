@@ -21,7 +21,7 @@ public sealed class CustomScrollbarLogicTests
     public void ThumbLayout_KeepsMinimumHeightAndCurrentTop()
     {
         Assert.Equal(
-            new ScrollbarThumbLayout(CustomScrollbarLogic.MinimumThumbHeight, 32),
+            new ScrollbarThumbLayout(24d, 32),
             CustomScrollbarLogic.ThumbLayout(thumbTop: 32, thumbHeight: 4));
         Assert.Equal(
             new ScrollbarThumbLayout(72, 128),
@@ -58,18 +58,18 @@ public sealed class CustomScrollbarLogicTests
     {
         Assert.Equal(
             new ScrollbarHoverVisual(
-                CustomScrollbarLogic.VisibleRailOpacity,
-                CustomScrollbarLogic.HoverThumbWidth,
-                CustomScrollbarLogic.HoverThumbBrushKey,
-                CustomScrollbarLogic.HoverAnimationDurationMilliseconds),
+                0.55f,
+                6d,
+                "AScrollbarThumbHover",
+                120),
             CustomScrollbarLogic.HoverVisual(ScrollbarPointerState.Entered, isDragging: false));
 
         Assert.Equal(
             new ScrollbarHoverVisual(
-                CustomScrollbarLogic.HiddenRailOpacity,
-                CustomScrollbarLogic.RestThumbWidth,
-                CustomScrollbarLogic.RestThumbBrushKey,
-                CustomScrollbarLogic.HoverAnimationDurationMilliseconds),
+                0f,
+                2d,
+                "AScrollbarThumb",
+                120),
             CustomScrollbarLogic.HoverVisual(ScrollbarPointerState.Exited, isDragging: false));
     }
 

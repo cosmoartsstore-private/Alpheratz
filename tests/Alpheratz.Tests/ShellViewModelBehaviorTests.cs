@@ -14,6 +14,10 @@ using Alpheratz.Models.Events;
 using Alpheratz.Services;
 using Alpheratz.Shared.Models;
 using Alpheratz.Shared.Services;
+using Microsoft.Win32;
+using Microsoft.Win32.SafeHandles;
+using System.Runtime.InteropServices;
+using System.Reflection;
 
 namespace Alpheratz.Tests;
 
@@ -25,7 +29,7 @@ namespace Alpheratz.Tests;
 /// 起動時初期化、設定保存、イベント購読、フォルダ状態、写真モーダル生成の現在仕様を固定する。
 /// </summary>
 [Collection(AppPathsCacheTestCollection.Name)]
-public sealed class ShellViewModelBehaviorTests
+public sealed partial class ShellViewModelBehaviorTests
 {
     /// <summary>
     /// initialize が保存済み設定を Shell と子 ViewModel へ反映し、
@@ -84,12 +88,12 @@ public sealed class ShellViewModelBehaviorTests
         Assert.True(harness.ViewModel.CanStartWorldResolve);
         Assert.Equal(5, harness.ViewModel.PdqProgress.done);
         Assert.Contains(
-            harness.ToastService.toasts,
-            toast => toast.Msg == MessageCatalog.getMsg("PhotoScanner.folderUnconfigured"));
-        Assert.Contains(harness.ToastService.toasts, toast => toast.Msg.Contains("類似画像の解析が完了しました"));
+            harness.ViewModel.toastState.toasts,
+            toast => toast.Msg == "写真フォルダが設定されていません。設定からフォルダを選択してください。");
+        Assert.Contains(harness.ViewModel.toastState.toasts, toast => toast.Msg.Contains("類似画像の解析が完了しました"));
         Assert.Contains(
-            harness.ToastService.toasts,
-            toast => toast.Msg == MessageCatalog.getMsg("PhashService.failed"));
+            harness.ViewModel.toastState.toasts,
+            toast => toast.Msg == "類似画像の解析に失敗しました。アプリを再起動すると、未解析の写真をもう一度解析します。");
     }
 
     /// <summary>
@@ -277,7 +281,7 @@ public sealed class ShellViewModelBehaviorTests
         Assert.DoesNotContain("night", harness.ViewModel.galleryViewModel.filtersState.TagFilterCounts.Keys);
         Assert.Contains(
             harness.ToastService.toasts,
-            toast => toast.Msg == MessageCatalog.getMsg("TagMasterViewModel.tagDeleted"));
+            toast => toast.Msg == "タグと写真への設定を削除しました。");
     }
 
     /// <summary>
@@ -346,7 +350,7 @@ public sealed class ShellViewModelBehaviorTests
         Assert.Null(deletedPhoto);
         Assert.Contains(
             harness.ToastService.toasts,
-            toast => toast.Msg == MessageCatalog.getMsg("ShellViewModel.folderUpdated"));
+            toast => toast.Msg == "写真フォルダを変更しました。");
     }
 
     /// <summary>同じ実フォルダを別表記で再選択しても、写真メタデータをリセットしないことを確認する。</summary>
@@ -439,12 +443,48 @@ public sealed class ShellViewModelBehaviorTests
     /// <summary>
     /// テストで使う ShellViewModel と依存サービス一式を組み立てる補助クラス。
     ///
-    /// 本体と同じ具象サービスを使うが、AppConfig と AlpheratzDb は一時ディレクトリへ向ける。
+    /// 本体と同じ具象サービスを使い、DB・設定とHKCUを専用の所有領域へ向ける。
+    /// scan後のarchive補完も実ユーザーのPolaris登録・logを参照しない。
     /// DispatcherService は DispatcherQueue なしで作り、UI スレッドへ送る処理を同期実行させる。
     /// </summary>
+    [Fact]
+    public async Task PublicScanCancelRejectsReentryKeepsSourcesAndTheSameShellCanScanAgain()
+    {
+        await using var harness = ShellTestHarness.Create(); await harness.ViewModel.initialize();
+        var folder = Path.Combine(harness.TempDir, "所有写真"); Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, "VRChat_2026-10-20_01-02-03.000_10x20.png");
+        byte[] source = [137, 80, 78, 71, 13, 10, 26, 10]; File.WriteAllBytes(path, source);
+        harness.Config.SaveSetting(new AlpheratzSetting { PhotoFolderPath = folder });
+        var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously); var started = 0;
+        await using var cancelListener = harness.EventBus.Subscribe<ScanProgressDto>(EventNames.ScanProgress, async _ =>
+        {
+            if (Interlocked.Increment(ref started) != 1) return;
+            await harness.ViewModel.startScan(); await harness.ViewModel.cancelScan();
+        });
+        await using var cancelledListener = harness.EventBus.Subscribe<string>(EventNames.ScanCancelled, _ => { cancelled.TrySetResult(); return Task.CompletedTask; });
+        await harness.ViewModel.startScan(); await cancelled.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var active = typeof(ShellViewModel).GetField("activeScanTask", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(harness.ViewModel) as Task;
+        if (active is not null) await active.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal("idle", harness.ViewModel.ScanStatus); Assert.Equal(source, File.ReadAllBytes(path)); Assert.Equal(0, (await harness.Db.GetPhotosPageAsync(new PhotoQueryParams())).Total);
+        Assert.Contains(harness.ToastService.toasts, toast => toast.Msg == "写真の読み込みを中止しました。");
+        await cancelListener.DisposeAsync();
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var completionListener = harness.EventBus.Subscribe(EventNames.ScanEnrichCompleted, () => { completed.TrySetResult(); return Task.CompletedTask; });
+        await harness.ViewModel.startScan(); await completed.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        Assert.Equal("completed", harness.ViewModel.ScanStatus); var photo = Assert.Single((await harness.Db.GetPhotosPageAsync(new PhotoQueryParams())).Items);
+        Assert.Equal(AppPaths.NormalizePathForDb(path), photo.photo_path); Assert.Equal(1L, photo.source_slot); Assert.Equal(source, File.ReadAllBytes(path));
+        await harness.ViewModel.cancelScan(); Assert.Equal(source, File.ReadAllBytes(path));
+    }
+
     private sealed class ShellTestHarness : IDisposable, IAsyncDisposable
     {
         private readonly string tempDir;
+        private static readonly nint CurrentUserHandle = unchecked((int)0x80000001);
+        private readonly string registryPath = @"Software\CosmoArtsStoreTests\AlpheratzShellHarness\" + Guid.NewGuid().ToString("N");
+        private readonly RegistryKey registryRoot;
+        private readonly RegistryKey isolatedRegistry;
+        private bool registryMapped;
+        private bool disposed;
 
         public AlpheratzDb Db { get; }
         public AppConfig Config { get; }
@@ -452,61 +492,89 @@ public sealed class ShellViewModelBehaviorTests
         public ToastService ToastService { get; } = new();
         public ShellViewModel ViewModel { get; }
         public string TempDir => tempDir;
+        public string DbPath => Path.Combine(tempDir, "Alpheratz.db");
+        public string SettingPath => Path.Combine(tempDir, "settings", "setting.json");
 
         /// <summary>一時DB・設定・サービスを作成し、ShellViewModel を構築する。</summary>
         private ShellTestHarness(string tempDir)
         {
             this.tempDir = tempDir;
             Directory.CreateDirectory(tempDir);
-            Db = new AlpheratzDb(Path.Combine(tempDir, "Alpheratz.db"));
-            Db.Initialize();
-            Config = new AppConfig(Path.Combine(tempDir, "settings"));
+            // このcollectionは他collectionとも並行しない。差替えはtest processだけに限定する。
+            registryRoot = Registry.CurrentUser.OpenSubKey("", writable: true)!;
+            isolatedRegistry = registryRoot.CreateSubKey(registryPath);
+            isolatedRegistry.SetValue("ShellHarnessId", registryPath);
+            try
+            {
+                Assert.Equal(0, RegOverridePredefKey(CurrentUserHandle, isolatedRegistry.Handle));
+                registryMapped = true;
+                Assert.Equal(registryPath, Registry.CurrentUser.GetValue("ShellHarnessId"));
+                Assert.Null(AppPaths.GetPolarisArchiveDir());
+            }
+            catch
+            {
+                RestoreRegistry();
+                throw;
+            }
+            try
+            {
+                Db = new AlpheratzDb(DbPath);
+                Db.Initialize();
+                Config = new AppConfig(Path.Combine(tempDir, "settings"));
 
-            var settingsService = new SettingsService(Config);
-            var photoService = new PhotoService(Db);
-            var scanner = new PhotoScanner(Config, Db, EventBus);
-            var worldService = new WorldService(Db, scanner);
-            var phashService = new PhashService(Db, EventBus);
-            var orientationService = new OrientationService(Db, EventBus);
-            var dispatcherService = new DispatcherService();
-            var thumbnailWorker = new ThumbnailWorker(new ThumbnailService());
-            var photosState = new GalleryPhotosState(photoService, EventBus, ToastService, dispatcherService, thumbnailWorker);
-            var filtersState = new GalleryFiltersState();
-            var selectionState = new GallerySelectionState(photoService, ToastService);
-            var displayState = new GalleryDisplayState();
-            var scrollState = new GalleryScrollState();
-            var galleryViewModel = new GalleryViewModel(
-                photoService,
-                worldService,
-                phashService,
-                ToastService,
-                dispatcherService,
-                photosState,
-                filtersState,
-                selectionState,
-                displayState,
-                scrollState);
-            var settingsViewModel = new SettingsViewModel(settingsService, new DialogService());
-            var tagMasterViewModel = new TagMasterViewModel(Db, ToastService);
-            var templatePageViewModel = new TemplatePageViewModel(settingsService, worldService, ToastService);
-            var photoModalState = new PhotoModalState(photoService, ToastService);
+                var settingsService = new SettingsService(Config);
+                var thumbnailService = new ThumbnailService();
+                var photoService = new PhotoService(Db, thumbnailService);
+                var scanner = new PhotoScanner(Config, Db, EventBus);
+                var worldService = new WorldService(Db, scanner);
+                var phashService = new PhashService(Db, EventBus);
+                var orientationService = new OrientationService(Db, EventBus);
+                var dispatcherService = new DispatcherService();
+                var thumbnailWorker = new ThumbnailWorker(thumbnailService);
+                var photosState = new GalleryPhotosState(photoService, EventBus, ToastService, dispatcherService, thumbnailWorker);
+                var filtersState = new GalleryFiltersState();
+                var selectionState = new GallerySelectionState(photoService, ToastService);
+                var displayState = new GalleryDisplayState();
+                var scrollState = new GalleryScrollState();
+                var galleryViewModel = new GalleryViewModel(
+                    photoService,
+                    worldService,
+                    phashService,
+                    ToastService,
+                    dispatcherService,
+                    photosState,
+                    filtersState,
+                    selectionState,
+                    displayState,
+                    scrollState);
+                var settingsViewModel = new SettingsViewModel(settingsService, new DialogService());
+                var tagMasterViewModel = new TagMasterViewModel(Db, ToastService);
+                var templatePageViewModel = new TemplatePageViewModel(settingsService, worldService, ToastService);
+                var photoModalState = new PhotoModalState(photoService, ToastService);
 
-            ViewModel = new ShellViewModel(
-                settingsService,
-                Db,
-                scanner,
-                phashService,
-                orientationService,
-                worldService,
-                EventBus,
-                ToastService,
-                galleryViewModel,
-                settingsViewModel,
-                tagMasterViewModel,
-                templatePageViewModel,
-                photoModalState,
-                dispatcherService,
-                thumbnailWorker);
+                ViewModel = new ShellViewModel(
+                    settingsService,
+                    Db,
+                    scanner,
+                    phashService,
+                    orientationService,
+                    worldService,
+                    EventBus,
+                    ToastService,
+                    galleryViewModel,
+                    settingsViewModel,
+                    tagMasterViewModel,
+                    templatePageViewModel,
+                    photoModalState,
+                    dispatcherService,
+                    thumbnailWorker,
+                    photoService);
+            }
+            catch
+            {
+                RestoreRegistry();
+                throw;
+            }
         }
 
         /// <summary>一意の一時ディレクトリを持つ Harness を作成する。</summary>
@@ -522,15 +590,42 @@ public sealed class ShellViewModelBehaviorTests
         /// <summary>イベント購読を解除し、一時ディレクトリを削除する。</summary>
         public async ValueTask DisposeAsync()
         {
-            try { await ViewModel.DisposeAsync(); }
-            catch { }
-            try { ViewModel.galleryViewModel.selectionState.Dispose(); }
-            catch { }
-            try { await ViewModel.galleryViewModel.photosState.DisposeAsync(); }
-            catch { }
-            try { Directory.Delete(tempDir, recursive: true); }
-            catch { }
+            if (disposed) return;
+            disposed = true;
+            try
+            {
+                try { await ViewModel.DisposeAsync(); }
+                catch { }
+                try { ViewModel.galleryViewModel.selectionState.Dispose(); }
+                catch { }
+                try { await ViewModel.galleryViewModel.photosState.DisposeAsync(); }
+                catch { }
+                using var connection = new Microsoft.Data.Sqlite.SqliteConnection(new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = DbPath }.ToString());
+                Microsoft.Data.Sqlite.SqliteConnection.ClearPool(connection);
+                Assert.StartsWith(Path.GetFullPath(Path.Combine(Path.GetTempPath(), "Alpheratz.ShellViewModel.Tests")) + Path.DirectorySeparatorChar, Path.GetFullPath(tempDir));
+                try { Directory.Delete(tempDir, recursive: true); }
+                catch { }
+            }
+            finally { RestoreRegistry(); }
         }
+
+        /// <summary>後続処理の終了後にHKCUを戻し、保持した元handleから所有keyだけを削除する。</summary>
+        private void RestoreRegistry()
+        {
+            if (registryMapped)
+            {
+                Assert.Equal(0, RestorePredefinedKey(CurrentUserHandle, 0));
+                registryMapped = false;
+            }
+            isolatedRegistry.Dispose();
+            registryRoot.DeleteSubKeyTree(registryPath, throwOnMissingSubKey: false);
+            using var remaining = registryRoot.OpenSubKey(registryPath);
+            Assert.Null(remaining);
+            registryRoot.Dispose();
+        }
+
+        [DllImport("advapi32.dll")] private static extern int RegOverridePredefKey(nint key, SafeRegistryHandle replacement);
+        [DllImport("advapi32.dll", EntryPoint = "RegOverridePredefKey")] private static extern int RestorePredefinedKey(nint key, nint replacement);
     }
 
     /// <summary>

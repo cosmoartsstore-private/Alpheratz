@@ -332,7 +332,7 @@ public sealed class GalleryFilterPanelLogicTests
         var filtered = GalleryFilterPanelLogic.FilterWorldOptions(worlds, "night");
         var unknown = GalleryFilterPanelLogic.FilterWorldOptions(worlds, "不明");
 
-        Assert.Equal(WorldFilterValues.Unknown, GalleryFilterPanelLogic.GetWorldFilterValue(""));
+        Assert.Equal("__ALPHERATZ_UNKNOWN_WORLD__", GalleryFilterPanelLogic.GetWorldFilterValue(""));
         Assert.Equal("ワールド不明", GalleryFilterPanelLogic.GetWorldDisplayName(null));
         Assert.Equal(15, GalleryFilterPanelLogic.TotalWorldCount(worlds));
         Assert.Single(filtered);
@@ -363,7 +363,7 @@ public sealed class GalleryFilterPanelLogicTests
         Assert.Equal("ワールド：3件", choices.CountLabel);
         Assert.True(choices.HasVisitedWorlds);
         Assert.Equal(new FilterChoiceRow("すべてのワールド", "15枚", false, null), choices.Rows[0]);
-        Assert.Equal(new FilterChoiceRow("ワールド不明", "2枚", true, WorldFilterValues.Unknown), choices.Rows[1]);
+        Assert.Equal(new FilterChoiceRow("ワールド不明", "2枚", true, "__ALPHERATZ_UNKNOWN_WORLD__"), choices.Rows[1]);
 
         Assert.False(noMatch.HasVisitedWorlds);
         Assert.Single(noMatch.Rows);
@@ -415,8 +415,8 @@ public sealed class GalleryFilterPanelLogicTests
         Assert.Equal(
             new FilterPanelSyncPlan(FavoriteToggle: true),
             GalleryFilterPanelLogic.SyncPlanForFilterProperty(nameof(GalleryFiltersState.FavoritesOnly)));
-        Assert.Equal(FilterPanelSyncPlan.All, GalleryFilterPanelLogic.SyncPlanForFilterProperty("BatchCompleted"));
-        Assert.Equal(FilterPanelSyncPlan.None, GalleryFilterPanelLogic.SyncPlanForFilterProperty("Other"));
+        Assert.Equal(new FilterPanelSyncPlan(ActiveStates: true, Badge: true, DateTrigger: true, FavoriteToggle: true, TagSummary: true, WorldSummary: true, TagChoices: true, WorldChoices: true), GalleryFilterPanelLogic.SyncPlanForFilterProperty("BatchCompleted"));
+        Assert.Equal(new FilterPanelSyncPlan(ActiveStates: false, Badge: false, DateTrigger: false, FavoriteToggle: false, TagSummary: false, WorldSummary: false, TagChoices: false, WorldChoices: false), GalleryFilterPanelLogic.SyncPlanForFilterProperty("Other"));
     }
 
     /// <summary>

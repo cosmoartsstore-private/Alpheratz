@@ -92,7 +92,7 @@ public sealed class PhotoModalStateAdditionalTests : IDisposable
         Assert.NotNull(state.SelectedPhoto);
         Assert.Contains(
             toastService.toasts,
-            toast => toast.Msg == MessageCatalog.getMsg("PhotoModalState.tagLoadFailed"));
+            toast => toast.Msg == "写真のタグを読み込めませんでした。写真詳細を閉じて、写真を開き直してください。");
     }
 
     /// <summary>

@@ -20,7 +20,7 @@ public sealed class PhotoGridLogicTests
     public void TrackHeight_SubtractsPaddingAndKeepsMinimum()
     {
         Assert.Equal(752, PhotoGridLogic.TrackHeight(800));
-        Assert.Equal(PhotoGridLogic.MinimumTrackHeight, PhotoGridLogic.TrackHeight(20));
+        Assert.Equal(1d, PhotoGridLogic.TrackHeight(20));
     }
 
     /// <summary>
@@ -56,7 +56,7 @@ public sealed class PhotoGridLogicTests
             PhotoGridLogic.ScrollbarThumb(actualHeight: 848, extentHeight: 2000, viewportHeight: 500, verticalOffset: 500));
 
         Assert.Equal(
-            new PhotoGridScrollbarThumb(Top: 782, Height: PhotoGridLogic.MinimumThumbHeight),
+            new PhotoGridScrollbarThumb(Top: 782, Height: 18d),
             PhotoGridLogic.ScrollbarThumb(actualHeight: 848, extentHeight: 80000, viewportHeight: 500, verticalOffset: 79500));
     }
 }

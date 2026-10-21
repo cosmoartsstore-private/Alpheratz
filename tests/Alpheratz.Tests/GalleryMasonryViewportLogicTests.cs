@@ -225,9 +225,9 @@ public sealed class GalleryMasonryViewportLogicTests
         Assert.False(GalleryMasonryViewportLogic.ShouldReloadImage("C:/same.jpg", "C:/same.jpg"));
 
         Assert.True(GalleryMasonryViewportLogic.ShouldRetryImageLoad(1, isInsideOverscan: true));
-        Assert.True(GalleryMasonryViewportLogic.ShouldRetryImageLoad(GalleryMasonryViewportLogic.MaxImageLoadRetries, isInsideOverscan: true));
+        Assert.True(GalleryMasonryViewportLogic.ShouldRetryImageLoad(2, isInsideOverscan: true));
         Assert.False(GalleryMasonryViewportLogic.ShouldRetryImageLoad(0, isInsideOverscan: true));
-        Assert.False(GalleryMasonryViewportLogic.ShouldRetryImageLoad(GalleryMasonryViewportLogic.MaxImageLoadRetries + 1, isInsideOverscan: true));
+        Assert.False(GalleryMasonryViewportLogic.ShouldRetryImageLoad(3, isInsideOverscan: true));
         Assert.False(GalleryMasonryViewportLogic.ShouldRetryImageLoad(1, isInsideOverscan: false));
 
         Assert.True(GalleryMasonryViewportLogic.IsCurrentImageLoadCallback(
@@ -288,7 +288,7 @@ public sealed class GalleryMasonryViewportLogicTests
                 HighlightWidth: 128,
                 StartOffset: -128,
                 EndOffset: 320,
-                DurationMilliseconds: GalleryMasonryViewportLogic.ShimmerDurationMilliseconds),
+                DurationMilliseconds: 1500),
             GalleryMasonryViewportLogic.ShimmerMetrics(320));
     }
 

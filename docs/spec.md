@@ -1,22 +1,29 @@
 # Specification
 
-この文書は、現行の .NET / WinUI 3 実装から確認できる Alpheratz の機能仕様を記録する。将来案、旧 WebView 実装、完了済みの改修履歴は含めない。
+Alpheratzの利用者操作と自動処理について、前提、判断、成功・部分成功・取消し・失敗後の結果を記録する。技術構造は[Architecture](architecture.md)、保存形式は[Database Schema](database.md)を参照する。
+
+## Document Control
+
+| Field | Value |
+| --- | --- |
+| Application | Alpheratz |
+| Scope | 現行機能の条件、判断順、表示・保存・外部効果。内部構造、schema、開発・配布commandは各専門文書が所有する |
+| Audience | 利用者、仕様を判断する人、機能を変更する人 |
+| Authority | [ShellViewModel](../app/Features/Shell/ShellViewModel.cs)、[GalleryViewModel](../app/Features/Gallery/GalleryViewModel.cs)、[PhotoService](../app/Services/PhotoService.cs)、各featureのsource |
+| Related documents | [README](../README.md)、[Architecture](architecture.md)、[Database Schema](database.md)、[Tech Stack](tech-stack.md)、[Basic Design](basic-design.html) |
+| Source review date | 2026-10-22。sourceの静的照合日であり、実行試験日ではない |
 
 ## Scope
 
-Alpheratz は、利用者が指定した2つまでの写真フォルダをローカルで管理する Windows x64 デスクトップアプリケーションである。
+Alpheratzは利用者が指定した2つまでの写真フォルダをローカルで管理するWindows x64アプリケーションである。
 
-対象範囲は次のとおり。
+- 写真の再帰走査、メタデータとPDQ保存、標準グリッド／メイソンリー閲覧
+- 検索、filter、sort、world grouping、お気に入り、タグ、複数写真操作
+- 投稿templateとX Web Intent、Polaris archiveとPDQ候補によるワールド名補完
+- 完全一致写真の検出と確認後の原本削除、同じDB内へのお気に入り・タグ保存と復元
+- 一般設定、サムネイル、logのローカル保存
 
-- 写真ファイルの再帰走査とメタデータ保存
-- 標準グリッド／メイソンリーによる閲覧
-- 検索、フィルタ、並べ替え、ワールド単位のグループ化
-- お気に入り、タグ、複数写真への一括操作
-- 投稿テンプレートと Twitter/X Web Intent の起動
-- Polaris archive と PDQ 類似度を使ったワールド名補完
-- 設定、サムネイル、ログのローカル保存
-
-現行範囲に含まれないものは、クラウド同期、アカウント、外部 API による投稿、オンラインストレージ、写真原本の編集、StellaRecord 連携 UI である。
+クラウド同期、account、外部API投稿、online storage、写真原本編集、StellaRecord連携UIは対象外である。登録helperの存在を利用者向け連携機能とは扱わない。
 
 ## Terms
 
@@ -24,250 +31,252 @@ Alpheratz は、利用者が指定した2つまでの写真フォルダをロー
 | --- | --- |
 | 1st / primary | `source_slot = 1` の写真フォルダ |
 | 2nd / secondary | `source_slot = 2` の写真フォルダ |
-| Unknown world | `world_name` が null・空・空白だけで、かつ `world_id IS NULL` の写真 |
-| Known world | 空でない `world_name` を持つ写真 |
-| Standard view | 固定6列を基準にした標準グリッド |
-| Gallery view | 画像比率に応じたメイソンリーレイアウト |
-| PDQ | 256 bit の知覚ハッシュ。0°、90°、180°、270°の4バリアントを `|` 区切りで保持する |
-| Match distance | PDQ 間のハミング距離。小さいほど近い |
-| Display match rate | `round((1 - distance / 256) * 100)` で表示する一致率 |
+| Unknown world | `world_name`がnull・空・空白だけ、かつ`world_id IS NULL`の写真。補完対象の定義 |
+| Known world | 空でない`world_name`を持つ写真 |
+| Standard view | 固定6列を基準とする標準グリッド |
+| Gallery view | 画像比率に応じたメイソンリー |
+| PDQ | 256 bitの知覚hash。4回転variantを保存する。距離はハミング距離 |
+| Display match rate | `round((1 - distance / 256) * 100)`の表示値 |
+| Photo user data backup | 同じDB内にファイル名単位で保存するお気に入り・タグ。外部backupとは異なる |
 
-## Runtime Architecture
+## Startup and Shutdown
 
-```text
-Alpheratz.exe (launcher)
-└─ Alpheratz.Frontend.exe
-   ├─ App / MainWindow / ShellPage
-   ├─ Features
-   │  ├─ Gallery
-   │  ├─ PhotoModal
-   │  ├─ Settings + TagMaster + Template
-   │  └─ WorldResolve
-   ├─ Services
-   │  ├─ Photo / Thumbnail / Settings
-   │  ├─ World / PDQ / Orientation
-   │  └─ Dialog / Toast / Dispatcher
-   └─ Core
-      ├─ PhotoScanner / PDQ imaging
-      ├─ AlpheratzDb
-      ├─ LocalEventBus
-      └─ AppConfig / AppPaths / AppLogger
-```
+<a id="startup"></a>
 
-プロセスは frontend の単一 .NET プロセスである。依存関係は起動時に DI コンテナーへ singleton として登録する。WinUI に結び付く状態変更は `DispatcherService` を介して UI スレッドへ戻す。
+1. 設定theme、WinUI resources、Window、DBを初期化し、Bootstrapにロゴと著作権を表示する。初期化の疑似percentageは表示しない。
+2. 起動直後に1秒待って500 msでfade-inする。listener・設定を初期化し、未完了folder cleanupを写真一覧より先に再開する。
+3. cleanup成功後、写真・tag・filter候補を読む。設定済みfolderのscanはbackgroundで始まり、Shell表示時に完了済みとは限らない。
+4. Shell初期化とfade-in後の最低1.5秒を待ち、350 msでsplashをfade-outしてShellへ切り替える。
+5. DB初期化失敗は起動失敗表示へ進む。pending cleanup失敗では旧写真を表示せず新scanを止め、次回起動やfolder操作で再試行する。
 
-## Startup
+通常終了はWindowを閉じる操作である。完了済みの保存と未完了のbackground処理を区別し、通常終了が全taskの完了待ちを行う保証はない。終了時の実配線は[Concurrency and Lifecycle](architecture.md#concurrency-and-lifecycle)を参照する。
 
-1. Debug は明示的な Windows App SDK bootstrap、Release は self-contained の reg-free WinRT 初期化を行う。
-2. WinUI resources、DI、SQLite schema、`MainWindow` を初期化する。
-3. `BootstrapPage` にロゴと著作権表示を出す。起動直後に1秒待ち、500 msでフェードインする。
-4. 設定、イベント購読、未完了のフォルダ整理、写真・タグ・フィルタ候補を初期化する。
-5. 写真フォルダが設定済みなら、写真走査をバックグラウンドで開始する。
-6. Shell の初期化が完了し、フェードイン完了後から最低1.5秒を経過したら、350 msでスプラッシュをフェードアウトして `ShellPage` へ切り替える。
+## Feature Specifications
 
-スプラッシュには初期化フェーズやパーセントを表示しない。
+### Photo Scan
 
-## Photo Scan
+| Item | Specification |
+| --- | --- |
+| Purpose and Entry | 設定済み写真folderを起動後などに走査し、検索用indexを更新する |
+| Preconditions and Input | 最大2folder。`.png` / `.jpg` / `.jpeg`を大文字小文字無視で再帰列挙。同一・親子folderは拒否。設定済みfolderが存在しない場合は片方だけ続けずerrorで終了 |
+| Decision and Processing | 完全列挙slotだけ欠落indexを整理し、新規・再出現・slot変更・内容変更を解析する。filenameだけの変更は既存metadataを保持してpath情報更新。初回解析記録のないPNGはmetadataだけ取得 |
+| Success and Output | 撮影時刻、world、寸法、向き、処理件数を更新。通常成功時は終端進捗とscan完了を通知し、後処理を開始 |
+| Persistence | 最大500写真ずつ保存。DB pathは`/`区切り。batchの詳細は[Write Transactions and Invariants](database.md#write-transactions-and-invariants) |
+| Cancellation and Failure | scanの取消しは正常中止として通知。commit済みbatchは残る。読めないdirectoryやreparse pointを含むslotは不完全として欠落行削除を延期し、警告する |
+| Source and Constraints | [PhotoScanner](../app/Core/Scanner/PhotoScanner.cs)。mtime比較による差分であり、同mtimeの任意の内容差まで検出する保証はない |
 
-### Inputs
+#### Inputs
 
-- 1st と 2nd のうち、存在する設定済みフォルダ
-- 対応拡張子: `.png`, `.jpg`, `.jpeg`
-- 除外ディレクトリ名: `node_modules`, `vendor`, `cache`, `$recycle.bin`, `system volume information`, `thumbnails`
+除外directory名は`node_modules`、`vendor`、`cache`、`$recycle.bin`、`system volume information`、`thumbnails`。reparse pointは走査せずslotを不完全とする。
 
-1st と 2nd が同一ディレクトリ、または一方が他方の配下である場合は走査を開始しない。ディレクトリの再訪を検出し、シンボリックリンク等による循環走査を防ぐ。
+#### Change Detection
 
-### Change Detection
+path、filename、source slot、更新時刻、欠落状態を比較する。mtime記録なし・不正は内容変更、記録との差が1秒を超える場合も内容変更とする。内容変更時は旧world情報とPDQを破棄して再構築するが、お気に入りと写真tagは保持する。
 
-既存レコードとファイルのパス、ファイル名、source slot、更新時刻、欠落状態を比較する。
+変更なしの写真は`match_source = unresolved`を含め再解析・DB書込みしない。PNGの初回解析でworld情報がなければ`unresolved`として「解析済み・情報なし」を記録する。
 
-- 新規、再出現、slot 変更、内容変更: 対応する全写真を初回解析する。
-- ファイル名だけの変更: 既存メタデータを保持してパス情報を更新する。
-- ワールド情報も解析結果も未記録の PNG: 未完了の初回解析として metadata だけを取得する。
-- 変更なし: `match_source = unresolved` を含めて再解析せず、DB 書込みも行わない。
+#### Metadata
 
-内容変更を検出した場合は、旧画像に属する可能性があるワールド情報と PDQ を破棄し、新しい画像から再構築する。
-初回解析で PNG 内にワールド情報が無い場合は `match_source = unresolved` とし、「解析済み・情報なし」を表す。通常スキャンでは再試行しない。
+VRChat filenameの撮影日時を優先し、取得不能ならlocal更新時刻、時刻取得例外なら現在時刻を使う。PNG XMP/iTXtのworld情報を採用した場合は`metadata`とする。画像headerから幅・高さ・向きを得て、JPEGはEXIF回転後の見た目で判定する。正方形はlandscape、補完時に読めない画像は`unreadable`となり、通常は繰り返し再解析しない。
 
-### Metadata
+#### Post-scan Workflow
 
-- VRChat ファイル名から撮影日時を取得する。取得できない場合はファイル時刻を使う。
-- PNG の XMP/iTXt から `world_name` と `world_id` を取得できた場合、`match_source = metadata` とする。
-- 画像ヘッダーから幅、高さ、向きを取得する。JPEG は EXIF 回転後の見た目に合わせて縦横を判定する。読めない画像は再試行を繰り返さない状態として扱う。
-- DB の写真パスは `/` 区切りへ正規化する。
+Polaris archive→向き・寸法→PDQ→filter候補→一覧再読込の順で後処理する。保存は段階ごとに独立し、取消しや段階失敗でscan済み結果を戻さない。後処理完了は全段階成功の証明ではない。
 
-画像解析は論理 CPU 数の半分を基準に1〜4並列で実行し、最大500件を1 DB batch とする。進捗通知は100 ms間隔を上限とし、最後に必ず `processed = total` を発行する。並列処理のため、中間通知に含まれるワールド名の順序は保証しない。
+### Gallery
 
-フォルダを完全に列挙できた slot だけ、今回見つからなかった DB 行を削除する。アクセス拒否や I/O エラーで不完全だった slot は削除を延期し、警告する。
+| Item | Specification |
+| --- | --- |
+| Purpose and Entry | Shellの写真一覧で閲覧、検索、分類対象選択、表示切替を行う |
+| Preconditions and Input | 可視index写真。header world入力、filter、sort、view mode、group、複数選択 |
+| Decision and Processing | 検索・各filter領域はAND、複数worldはOR、複数tagはAND。標準は6列・表示領域4行を基準に行高を算出する。条件一致の写真は全件取得し、UIで仮想化する。galleryはresponsive masonry |
+| Success and Output | 条件に合う写真、件数、月件数を表示。group drill-downはcardの写真を優先し、なければ同じworld名をDBから取得 |
+| Persistence | view modeだけ設定へ保存し、保存成功後に切り替える。filter / sort / group / 選択はsession状態 |
+| Cancellation and Failure | 旧一覧loadの遅延反映を世代で抑止。fallback group query失敗は空一覧。galleryへの切替時はgroupingをnoneへ戻す |
+| Source and Constraints | [GalleryViewModel](../app/Features/Gallery/GalleryViewModel.cs)、[GalleryPhotosState](../app/Features/Gallery/GalleryPhotosState.cs)。groupingはStandardのみ |
 
-### Post-scan Workflow
+#### Display Modes
 
-`scan:completed` 後は、DB 書込みが競合しないよう次の処理を直列実行する。
+Standardでは`none` / `world`のgroupingを選べる。trim後world名でまとめ、null・空・空白だけは同じ「不明なワールド」groupになる。Gallery viewではgroupingを利用できない。月移動は撮影日時順で利用する。
 
-1. Polaris archive による未知ワールド補完
-2. 未確定の向き・寸法の補完
-3. 未計算 PDQ の生成
-4. ワールド候補・タグ件数の再読込
-5. `scan:enrich_completed` の発行とギャラリー再読込
-
-## Gallery
-
-### Display Modes
-
-- **Standard**: 固定6列を基準とするグリッド。ページサイズは表示領域から4行分を算出する。
-- **Gallery**: 表示幅に応じたメイソンリー。グループ化は利用できない。
-- 表示モードは `setting.json` に保存する。
-
-標準表示では `none` または `world` のグループ化を選べる。null、空文字、空白だけのワールド名は同じ「不明なワールド」グループにまとめる。グループカードが保持する写真一覧をドリルダウンへ引き継ぎ、保持されていない場合だけ DB から同じワールド名を完全一致検索する。
-
-### Search and Filters
+#### Search and Filters
 
 | Control | Behavior |
 | --- | --- |
-| World search | 部分一致候補を最大5件表示し、Enter で前後空白を除いた文字列を確定する |
-| Date | 今日、直近7日、今月、先月、半年、1年、カスタム範囲 |
+| World search | 入力中は既読world候補を最大5件表示し、Enterまたは候補選択でtrim後の文字列を確定。入力だけでは写真queryを再実行しない |
+| Date | 今日、直近7日、今月、先月、半年、1年、custom。終端日は23:59:59まで |
 | Orientation | すべて、横長、縦長 |
-| World | 複数ワールドの完全一致 |
-| Tags | 複数タグ。指定したタグをすべて持つ写真を対象にする |
-| Favorite | お気に入りだけを表示 |
-| Sort | 撮影日時の降順、ワールド名の昇順 |
-| Grouping | なし、ワールド。Standard のみ |
+| World | 複数worldのtrim後完全一致。unknown filterはworld名だけで判断し、補完対象のworld_id条件とは異なる |
+| Tags | 指定したすべてのtagを持つ写真 |
+| Favorite / Source | お気に入り、1st / 2ndのsource条件 |
+| Sort | 撮影日時降順、world名昇順 |
+| Grouping / Reset | Standardだけworld grouping。resetはsort / group / sourceも既定へ戻す |
 
-検索文字列の編集だけでは DB を再読込しない。Enter 確定後に `WorldQuery` を更新する。コマンド検索構文は持たない。
+検索文字列の`%`、`_`、backslashは文字として扱い、LIKE命令やcommand構文にはしない。
 
-### Photo Operations
+#### Photo Operations
 
-- カードのお気に入りを切り替える。
-- 写真へ25文字以内のタグを1件または複数追加し、個別に削除する。
-- 複数選択では、お気に入り設定、複数タグ追加、反対側の写真フォルダへのコピーを行う。
-- 一括操作は写真ごとの成功・失敗を返す。成功分だけ画面状態へ反映し、失敗分だけを再試行用に選択状態へ残す。
-- コピー先に同名ファイルがある場合は上書きしない。
+単体favoriteはDB成功後だけ表示へ反映し、失敗時は旧表示を保持する。tagはtrim後1〜25文字で、空・大文字小文字無視の重複を拒否する。追加はmasterと写真関連を保存し、写真からの削除は関連だけを外してmasterを残す。
 
-## Photo Details
+| Operation | Result and failure |
+| --- | --- |
+| 複数favorite / tag | 写真ごとに保存し、成功分だけ反映。失敗分を再試行用に選択へ残す。ただし操作中に選択世代が変われば新しい選択を上書きしない。API取消しは写真間で確認し、実行中の1写真は完了させる |
+| 別folderへcopy | folder pickerで利用者が選んだ任意folderへ同じfilenameでcopyする。反対source slotへの自動固定はしない。同名fileは上書きせず個別skipし、成功・skip件数を通知する。元の選択を維持し、失敗写真だけへの絞込みは行わない |
 
-写真詳細は Shell の modal layer に表示する。
+copyのpicker取消しは無操作。copy結果は原本の別fileであり、favorite / tagの複製やコピー先index登録を同じ操作で確定するものではない。入口は[BulkCopy_Click](../app/Features/Gallery/GalleryPage.xaml.cs)→SettingsViewModelのfolder picker→PhotoServiceである。
 
-- 選択写真、ワールド名、撮影日時、タグを表示する。
-- 左右キーまたは画像端のナビゲーションで、現在の表示リスト内を前後移動する。
-- お気に入りを切り替える。
-- タグマスタから未付与タグを複数選択して追加し、付与済みタグを削除する。
-- Explorer の `/select,<path>` で原本を選択表示する。
-- 有効な `wrld_` ID がある場合は VRChat ワールドページを開く。
-- アクティブな投稿テンプレートがある場合は投稿準備を実行する。
+### Photo Details
 
-投稿準備では画像を Windows clipboard に置き、本文だけを `https://twitter.com/intent/tweet?text=...` で開く。画像は Web Intent に直接添付されないため、利用者が投稿画面へ貼り付ける。設定が有効で `world_id` がある場合は、投稿画面の後に VRChat ワールドページも開く。
+| Item | Specification |
+| --- | --- |
+| Purpose and Entry | Gallery / drill-downから写真詳細を開き、拡大、前後移動、favorite / tag、外部操作を行う |
+| Preconditions and Input | 選択写真と現在の表示list。有効world IDとactive templateは対応する外部操作の前提 |
+| Decision and Processing | 左右keyまたは画像端で渡されたlist内を移動。tag masterから複数追加・付与済みtag削除。world IDがないworld操作は無操作 |
+| Success and Output | 写真、world名、時刻、filename、tagを表示。Explorerは原本を選択表示し、worldはVRChat pageを開く |
+| Persistence | favorite / tagはGalleryと同じ保存経路。詳細表示・前後履歴自体は保存しない |
+| Cancellation and Failure | 写真切替・closeで補助tag取得を取消し、適用時pathも照合。closeで選択・履歴を消す。外部起動失敗は通知 |
+| Source and Constraints | [PhotoModalState](../app/Features/PhotoModal/PhotoModalState.cs)、[WorldService](../app/Services/WorldService.cs)。画像解放の入口別範囲は[Architecture](architecture.md#concurrency-and-lifecycle) |
 
-## Settings
+### Settings
 
-設定は最大1120×820 pxの modal 内で、左ナビゲーションから1セクションずつ表示する。
+設定は最大1120×820 pxのmodal内で左navigationから1sectionずつ表示する。General、Duplicate Photos、Tags、Templates、Creditsはそれぞれ別の機能目的を持つ。
 
-### General
+#### General
 
-- 1st / 2nd 写真フォルダの選択とリセット
-- Windows ログイン時の自動起動
-- 投稿画面を開くときの VRChat ワールドページ表示
-- Light / Dark テーマ
-- ワールド名補完の起動と PDQ 解析進捗
+| Item | Specification |
+| --- | --- |
+| Purpose and Entry | Generalで1st / 2nd folder、startup、投稿時world page、Light / Dark、補完起動を管理する |
+| Preconditions and Input | folder pickerで存在するdirectoryを選択。1st / 2ndの同一・親子関係は禁止。World Resolve起動はPDQ未解析件数0が前提 |
+| Decision and Processing | 未設定slotの初回folder設定は直接適用。既存pathの変更とresetは確認後に実行。同一folder選択とpicker取消しは無操作 |
+| Success and Output | 対象slotのindex / cacheを整理して新設定を適用。resetはfolderを未設定へ戻す。原本は削除しない |
+| Persistence | pathとpending cleanupを同時保存。theme / viewは保存成功後UI反映。startupはRun登録とJSONを調整 |
+| Cancellation and Failure | 確認後にpathが変われば旧確認を適用しない。保存前失敗は旧設定を保持、保存後のcleanup失敗はpendingを残す。startup / 投稿world設定の保存失敗はSettings VMを旧値へ戻す |
+| Source and Constraints | [ShellPage](../app/Features/Shell/ShellPage.xaml.cs)、[ShellViewModel](../app/Features/Shell/ShellViewModel.cs)。StellaRecord登録UIは非表示 |
 
-ワールド名補完ボタンは PDQ 未解析件数が0になるまで無効である。StellaRecord の登録 UI は現行画面では非表示である。
+#### Tag Master
 
-フォルダ変更またはリセットは確認後に実行する。進行中の scan と post-scan、共有サムネイル生成を停止し、対象 slot の DB 行とキャッシュを削除してから設定を再読込し、新しい scan を開始する。整理要求は設定と同時に保存し、途中で終了した場合は次回起動時に再実行する。
+| Item | Specification |
+| --- | --- |
+| Purpose and Entry | Tagsで候補tagの登録・削除を行う |
+| Preconditions and Input | trim後1〜25文字。大文字小文字無視の重複を拒否 |
+| Decision and Processing | 追加はmasterへ保存。削除はmasterと全写真の関連を1transactionで削除 |
+| Success and Output | master一覧と写真tagを更新 |
+| Persistence | `tags`と`photo_tags`。写真原本は変更しない |
+| Cancellation and Failure | DB失敗はdraft / 一覧保持。保存後の再読込だけ失敗した場合は現在一覧へ結果を補完し、再試行可能な状態を保つ |
+| Source and Constraints | [TagMasterViewModel](../app/Features/TagMaster/TagMasterViewModel.cs)。過去の付与情報backupにはtag名が残り、復元で再作成され得る |
 
-### Tag Master
+#### Duplicate Photos
 
-- 前後空白を除いた1〜25文字のタグを登録する。
-- 大文字小文字を無視した重複は登録しない。
-- タグ削除時は `photo_tags` の関連付けも削除する。
+| Item | Specification |
+| --- | --- |
+| Purpose and Entry | Duplicate Photosで完全一致原本を検出し、選択・確認後に削除する |
+| Preconditions and Input | DB登録済み可視写真。各groupに1枚以上を未選択で残す。初期選択はなし |
+| Decision and Processing | file size→PDQ候補→SHA-256。同size群の全PDQが有効なら回転variant集合で絞り、不正・未算出があれば群全体を比較。SHA-256一致2枚以上を容量順に表示 |
+| Success and Output | count / size確認後、登録・slot・size・hash・保持写真を再検証して原本削除。削除済みpathのcache / DBを整理 |
+| Persistence | 原本変更が先、DB整理が後。原本とSQLiteをまたぐtransactionはない |
+| Cancellation and Failure | 読めない・変化した写真はskipし再検出できる。保持確認不能groupは削除しない。DB整理失敗は原本削除失敗と区別。既削除原本は戻らない |
+| Source and Constraints | [PhotoService](../app/Services/PhotoService.cs)、[DuplicatePhotosViewModel](../app/Features/Settings/DuplicatePhotosViewModel.cs)。現行画面は検出 / 削除用CancellationTokenを渡さず、serviceの取消し対応を画面cancel機能とは扱わない |
 
-### Post Templates
+保持写真は書換え・削除を許可しないread handleを処理中保持する。`StorageDeleteOption.Default`は保存先によってごみ箱を使わず完全削除になる。似ているだけの写真は対象にしない。
 
-- テンプレートの追加、編集、削除、アクティブ選択を行う。
-- 入力欄の実文字数と X 互換の加重文字数が、どちらも280以下である必要がある。
-- NFC 正規化後、一般的な文字は1、日本語等と emoji sequence は2、URLは23として数える。
-- 置換後の超過に備え、プレースホルダーを含み残り20文字以下の場合は注意を表示する。
-- 投稿準備時に写真情報とタグを置換した最終本文を再計算し、280を超える場合は画像コピーと投稿画面の起動を行わない。
+#### Photo User Data Backup
 
-対応プレースホルダー:
+| Item | Specification |
+| --- | --- |
+| Purpose and Entry | Generalの保存 / 復元を確認後に実行し、folder再読込後も付与情報を使えるようにする |
+| Preconditions and Input | 現在の全可視写真。filename単位でfavorite / tagを扱い、path・slot・内容hashをkeyにしない |
+| Decision and Processing | 保存は同名favoriteをOR、tagを和集合に統合。0写真なら既存backup保持、1件以上なら全置換。復元は同名の全可視写真へfavorite上書き・tag追加 |
+| Success and Output | 現在tagは削除せず、不足masterを作成。一致写真なしは無操作 |
+| Persistence | 同じDBの`photo_user_data_backup`に操作全体を1transactionで保存。外部fileは生成しない |
+| Cancellation and Failure | DB操作失敗時はtransactionを戻す。処理中は両buttonをdisable。folder resetはbackupを消さない |
+| Source and Constraints | [Database](../app/Core/Database/AlpheratzDb.cs)。異なる内容でも同filenameなら反映され、DB削除・uninstallでは失う。原本・world・PDQ・設定は対象外 |
+
+#### Post Templates
+
+| Item | Specification |
+| --- | --- |
+| Purpose and Entry | Templatesで追加・編集・削除・使用対象選択、PhotoModalで投稿準備 |
+| Preconditions and Input | active template、入力実長と加重長がともに280以下。trim後重複を拒否 |
+| Decision and Processing | NFC後、通常文字1、日本語等2、emoji sequence2、URL23で独自計算。placeholderがあり残り20以下で注意。展開した最終本文も280以下を確認 |
+| Success and Output | 本文生成→画像clipboard→X Web Intent→設定有効かつ有効world IDならVRChat pageの順 |
+| Persistence | template配列とactiveをJSONへ保存し、成功後だけ一覧確定・draft消去 |
+| Cancellation and Failure | 保存失敗は旧保存値と入力を保持し同じ入力で再試行可。本文超過・生成失敗は画像copy / browser起動なし。clipboard失敗ならIntentなし。Intent失敗後もclipboardは残る。world pageだけ失敗してもIntentは既に開いている |
+| Source and Constraints | [TemplatePageViewModel](../app/Features/Template/TemplatePageViewModel.cs)。独自加重計算はXサービスとの完全一致保証ではない。Web Intentへ画像は直接添付せず利用者が貼り付ける |
 
 | Token | Value |
 | --- | --- |
-| `{world}`, `{world-name}`, `{world_name}` | ワールド名。不明な場合は利用者向けの不明表示 |
+| `{world}`, `{world-name}`, `{world_name}` | world名。不明なら利用者向け不明表示 |
 | `{world_id}` | VRChat world ID |
-| `{date}` | `yyyy-MM-dd HH:mm` 相当 |
-| `{timestamp}` | 保存済み timestamp |
-| `{file}` | ファイル名 |
+| `{date}` | `yyyy-MM-dd HH:mm`相当 |
+| `{timestamp}` | 保存済みtimestamp |
+| `{file}` | filename |
 | `{memo}` | 現行では空文字 |
-| `{tags}` | 空白を除いた `#tag` の列 |
+| `{tags}` | 空白を除去した`#tag`列 |
 
-## World Resolution
+Creditsは明示clickで外部linkを既定browserへ開く。通常利用に外部API認証・telemetry・写真同期はない。
 
-### Archive Resolution
+### World Resolution
 
-Polaris の `HKCU\Software\CosmoArtsStore\Polaris\InstallLocation` から `archive` を探す。`output_log_*.txt` をファイル名順に読み、`Entering Room` と `OnLeftRoom` から訪問区間を保存する。未知写真の撮影時刻が訪問区間に含まれる場合、`world_name` を保存して `match_source = polaris_archive` とする。
+#### Archive Resolution
 
-### PDQ-assisted Confirmation
+| Item | Specification |
+| --- | --- |
+| Purpose and Entry | post-scanでPolaris訪問logから未知写真のworld名を自動補完する |
+| Preconditions and Input | HKCUのPolaris `InstallLocation/Data/archive`にある非圧縮`output_log_*.txt`。存在しなければ0件 |
+| Decision and Processing | filename順で`Entering Room` / `OnLeftRoom`を訪問区間化し、撮影時刻を含む最新joinを採用。次のEnteringだけでは前区間を閉じずleave=null |
+| Success and Output | 未知写真のworld名と由来`polaris_archive`を更新。既知world、favorite、tag、元logを保持 |
+| Persistence | 訪問作業tableを全置換。写真補完は別保存単位 |
+| Cancellation and Failure | 個別log読取失敗は警告して続行し、読めた訪問情報を使う。Polaris起動や外部API呼出しはしない |
+| Source and Constraints | [AppPaths](../app/Core/AppPaths.cs)、[PhotoScanner](../app/Core/Scanner/PhotoScanner.cs)、[WorldService](../app/Services/WorldService.cs) |
 
-対象は、未知ワールドかつ有効な PDQ を持つ写真である。候補は同じ `source_slot` の既知ワールド写真だけから選ぶ。
+#### PDQ-assisted Confirmation
 
-- 既知候補の4回転ハッシュは先に packed 形式へ変換し、未知写真ごとに再パースしない。
-- 同一 `source_slot + phash` の未知写真は同じ解析結果を共有する。
-- 候補探索は UI 用に1論理 CPUを残し、最大12並列で実行する。
-- 進捗通知は125 ms間隔を下限とする。
-- 距離75以下だけを自動候補として表示する。表示上は71%以上に相当し、距離76は70%となる。
-- 候補一覧はワールド名を大文字小文字無視で重複排除し、距離、ワールド名の順に並べる。
-- 閾値内候補がない場合も、ワールド名を手入力できる。
-- 対象写真と候補写真を拡大プレビューできる。
-- すべて適用、すべて適用しない、個別切替の後、選択分だけを確定保存する。
+| Item | Specification |
+| --- | --- |
+| Purpose and Entry | GeneralからWorld Resolveを開き、未知写真の候補を比較して確定する |
+| Preconditions and Input | PDQ未解析0。未知写真は有効PDQを持ち、候補は同slotの既知world写真 |
+| Decision and Processing | 4回転の最短距離75以下、表示71%以上を候補提示。world名を大文字小文字無視で重複排除し、距離・world名順。候補なしでもtrim後空でない手入力を許可 |
+| Success and Output | preview、別候補、全適用 / 全skip / 個別切替後、選択分だけ確認保存。候補由来は`phash_confirmed`、手入力は`manual` |
+| Persistence | 写真ごとの独立更新。手入力でworld IDを新規入力せず、null ID指定は既存IDを保持 |
+| Cancellation and Failure | 候補を見るだけではDBを変えない。途中失敗までの保存は残り、全件rollback・失敗分だけの再選択は保証しない。適用中はcloseを抑止し、探索中closeは取消し・完了待ちを行う |
+| Source and Constraints | [WorldResolveViewModel](../app/Features/WorldResolve/WorldResolveViewModel.cs)。候補外は自動確定しない。自動更新service APIは現行UI / post-scanから呼ばない |
 
-自動候補の確定は `match_source = phash_confirmed`、手入力は `match_source = manual` とする。UI は利用者の確定なしに PDQ 候補を DB へ書き込まない。`WorldService.ResolveUnknownWorldsFromSimilarPhotosAsync` という自動更新可能なサービスメソッドは存在するが、現行 UI と起動後フローからは呼び出さない。
+## Workflows and State Transitions
 
-画面を閉じるときは候補探索、候補サムネイル、UI 更新の停止完了を待ち、閉じた画面へ遅延結果を反映しない。
+| Workflow | State transition and confirmed effects |
+| --- | --- |
+| folder change / reset | 既存pathの確認→scan停止待ち→新pathまたは空pathとpending保存→生成停止待ち→対象slot DB / cache整理→pending解除→再読込。途中終了後は次回起動でpendingから再実行 |
+| scan / enrichment | 欠落整理→差分解析batch→scan完了→archive→向き→PDQ→候補・一覧更新。既に保存した段階は後段失敗で戻さない |
+| duplicate delete | 保持を残す選択→確認→進行処理停止→原本再検証→原本削除→cache / DB整理。DB失敗で原本を復元しない。後の完全scanは欠落indexを整理できる |
+| user data backup / restore | 確認→1transactionで保存全置換または復元→結果表示。外部backupや原本の複製にはならない |
 
-## Persistence and Events
-
-永続データの場所は [Database Schema](database.md) と [README](../README.md#data-and-privacy) を参照する。
-
-主要イベント:
-
-| Event | Payload | Meaning |
-| --- | --- | --- |
-| `scan:progress` | `ScanProgressDto` | 走査件数と現在表示用情報 |
-| `scan:completed` | null | 写真メタデータの取込完了 |
-| `scan:warning` | string | 続行可能な警告 |
-| `scan:cancelled` | string | 利用者操作または画面遷移による正常な中止 |
-| `scan:error` | string | 走査エラー |
-| `orientation_progress` | `OrientationProgressEvent` | 向き・寸法補完進捗 |
-| `orientation_complete` | null | 向き・寸法補完完了 |
-| `phash_progress` | `PhashProgressEvent` | PDQ 解析進捗 |
-| `phash_complete` | null | PDQ 解析完了 |
-| `scan:enrich_completed` | null | post-scan とフィルタ情報更新の完了 |
-
-UI 文言は `app/Messages/messages.ja.properties` を正本とする。`{{` と `}}` は properties 内でリテラルの波括弧を表す。未定義キー、不正なキー、重複キー、必要な置換値の不足はエラーとする。
+folder操作はDB整理失敗時にpendingが残る一方、cache削除だけの失敗は警告としてDB成功を維持し、pendingが解除され得る。技術的なgate / task / eventは[Main Data Flows](architecture.md#main-data-flows)、保存単位は[Database Schema](database.md)が正本である。
 
 ## Concurrency and Failure Handling
 
-- SQLite 接続は操作ごとに開き、connection pooling を利用する。書込み use case はサービス側の gate またはワークフロー順序で直列化する。
-- 写真 scan は500件単位、PDQ 更新は30件単位で transaction にまとめる。
-- PDQ は30件を1 chunk とし、CPUの半分を基準に1〜8並列、1 batchあたり2 waveを処理する。
-- サムネイル生成は共有 worker 2本で処理し、写真ごとの無制限な `Task.Run` は作らない。
-- 読み込みは UI スレッドを占有しない。UI collection と property の変更は Dispatcher へ戻す。
-- キャンセル、世代番号、完了待ちにより、画面遷移後の stale update と削除済み cache の再生成を防ぐ。
-- 通常ログは fatal のみ。詳細ログは `ALPHERATZ_VERBOSE_LOGS=1` で明示的に有効化する。
+- 操作の完了は対応する保存単位の結果であり、scan・enrichment・外部起動を一括でrollbackしない。
+- 複数favorite / tagとWorld Resolveは写真単位、folder cleanupと重複削除は原本・index・設定の効果を別に扱う。
+- 古い一覧load、候補探索、補助tag取得はそれぞれ世代やpathを確認する。全UI / 画像control / cache / DBへの共通のstale防止保証ではない。
+- 操作結果・回復可能な失敗はtoast、入力validationは局所表示、破壊的操作は確認dialogを使う。
+- 通常logはFatal、明示verbose時だけError / Warn / Info、Traceはverboseと`TRACE_LOGGING` buildの双方が必要。保存契約は[Data Storage](database.md#storage-and-ownership)を参照する。
 
 ## External Effects and Validation
 
-- DB SQL は値を parameter bind する。
-- VRChat URL は `wrld_` に続く英数字、`-`、`_` だけを許可する。
-- 投稿 Intent は HTTPS、`twitter.com` または `x.com`、`/intent/tweet`、`text` queryだけを許可する。
-- Explorer は Windows directory 配下の `explorer.exe` を直接起動し、対象パスを `ArgumentList` の1引数として渡す。
-- 利用者が選んだ写真フォルダ、写真ファイル、Polaris archive は、その Windows ユーザーのアクセス権で読む。
-- 自動削除は、確認済みの source slot に属する DB 行・thumbnail cache、または installer 管理下のファイルに限定する。写真原本は削除しない。
-- Installerは同梱したMicrosoft Visual C++ Redistributable（x64）の必要versionを確認する。不足または旧versionの場合はUAC承認後にmachine-wide runtimeを導入してからappを置き換える。
+- 写真folder、原本、Polaris archiveは実行Windows userの権限で読む。原本削除は重複写真で選択・確認した対象だけ、copyは選択folderへ行う。
+- SQL値はparameter bind。VRChat URLは`wrld_`後の英数字・`-`・`_`だけを許可する。
+- 投稿IntentはHTTPS、`twitter.com` / `x.com`、`/intent/tweet`、`text` queryに限定。ExplorerはWindows directoryの実行fileへ`/select,<path>`を1引数で渡す。
+- installerは不足VC++ runtimeをapp置換前に導入する。通常uninstallは標準Data/db・logs・cacheを削除し、写真原本と共有VC++ runtimeは保持する。
 
 ## Current Constraints
 
-- Windows 10 Build 19041以降、x64のみ。
-- UI と利用者向け文言は日本語のみ。
-- code signing は行っていないため、配布物で SmartScreen 警告が出る場合がある。
-- Web Intent は画像を添付できない。画像は clipboard から手動で貼り付ける。
-- Gallery view ではワールドグループ化を利用できない。
+- Windows build19041以降、x64、日本語UIのみ。製品code signingはなくSmartScreen警告が出る場合がある。
+- Gallery viewのgrouping、画像のWeb Intent直接添付、StellaRecord登録UIは提供しない。
+- 画像処理の取消しと解放は入口ごとに実装する。WorldResolve shutdown、PhotoModal通常close、thumbnail生成取消しを、あらゆるunload後のSource更新防止へ一般化しない。
+- 通常終了時の全background task完了待ちは接続されていない。DB内付与情報backupはDB削除・uninstallへの保護ではない。
+
+## References
+
+<a id="runtime-architecture"></a>
+<a id="persistence-and-events"></a>
+
+内部構造・状態・eventの旧節は[Architecture](architecture.md)へ移した。保存形式・保持は[Database Schema](database.md)、versions・開発・CI・配布は[Tech Stack](tech-stack.md)、画面構造は[Basic Design](basic-design.html)を参照する。

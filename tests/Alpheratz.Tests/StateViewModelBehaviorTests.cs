@@ -366,6 +366,19 @@ public sealed class StateViewModelBehaviorTests : IDisposable
         Assert.Contains(toastService.toasts, toast => toast.Msg.Contains("ワールドページを開けませんでした"));
     }
 
+    [Fact]
+    public async Task PhotoModalExternalFailurePreservesSelectionAndReportsInvalidExplorerPathWithoutLaunching()
+    {
+        var scanner = new PhotoScanner(new AppConfig(Path.Combine(tempDir, "explorer-settings")), db, new LocalEventBus());
+        var state = new PhotoModalState(photoService, toastService); var vm = new PhotoModalViewModel(state, new WorldService(db, scanner), toastService);
+        await vm.handleOpenExplorer(); Assert.Empty(toastService.toasts);
+        var photo = Thumb("", "保持写真.jpg", "保持ワールド"); vm.onSelectPhoto(photo);
+        await vm.handleOpenExplorer(); Assert.Same(photo, state.SelectedPhoto);
+        Assert.Contains(toastService.toasts, toast => toast.Type == Alpheratz.Shared.Models.ToastType.error && toast.Msg == "写真をエクスプローラーで表示できませんでした。写真ファイルが移動または削除されていないか確認してください。");
+        vm.onSelectPhoto(Thumb("/photo/next.jpg", "next.jpg", "次ワールド"), true); vm.goBackPhoto(); Assert.Same(photo, state.SelectedPhoto);
+        vm.closePhotoModal(); Assert.Null(state.SelectedPhoto); Assert.Empty(state.photoHistory);
+    }
+
     /// <summary>
     /// TemplatePageViewModel が設定からテンプレート一覧とアクティブテンプレートを正規化することを確認する。
     ///
@@ -525,7 +538,7 @@ public sealed class StateViewModelBehaviorTests : IDisposable
 
         viewModel.TagDraft = "   ";
         await viewModel.createTag();
-        viewModel.TagDraft = new string('x', TagMasterViewModel.MaxTagLength + 1);
+        viewModel.TagDraft = new string('x', 26);
         await viewModel.createTag();
         viewModel.TagDraft = "  night  ";
         await viewModel.createTag();
@@ -535,15 +548,13 @@ public sealed class StateViewModelBehaviorTests : IDisposable
         Assert.Equal("", viewModel.TagDraft);
         Assert.Empty(viewModel.masterTags);
         Assert.Empty(await db.GetAllTagsAsync());
+        Assert.Contains(toastService.toasts, toast => toast.Msg == "タグは25文字以内で入力してください。");
         Assert.Contains(
             toastService.toasts,
-            toast => toast.Msg.Contains($"{TagMasterViewModel.MaxTagLength}文字以内"));
+            toast => toast.Msg == "タグを保存しました。");
         Assert.Contains(
             toastService.toasts,
-            toast => toast.Msg == MessageCatalog.getMsg("TagMasterViewModel.tagSaved"));
-        Assert.Contains(
-            toastService.toasts,
-            toast => toast.Msg == MessageCatalog.getMsg("TagMasterViewModel.tagDeleted"));
+            toast => toast.Msg == "タグと写真への設定を削除しました。");
     }
 
     /// <summary>

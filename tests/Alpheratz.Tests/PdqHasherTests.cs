@@ -116,8 +116,8 @@ public sealed class PdqHasherTests
     /// 十分なサイズのluma配列から32バイトのハッシュと0..1の品質値が生成されることを確認する。
     ///
     /// 入力には単調なグラデーションを使う。
-    /// 具体的なハッシュ値はDCT係数に強く依存するため固定しすぎず、
-    /// 出力サイズ、hex長、品質範囲、回転バリアント形式を検証する。
+    /// 回転ごとの公開entryとバリアント生成の整合を確認する。
+    /// 品質は入力の勾配総和16320から得た独立値へ照合し、hashの固定値は別caseで確認する。
     /// </summary>
     [Fact]
     public void GeneratePdq_ProducesHashQualityAndRotationVariants()
@@ -138,11 +138,87 @@ public sealed class PdqHasherTests
         };
 
         Assert.NotNull(result);
-        Assert.Equal(PdqHasher.HashLength, result.Value.Hash.Length);
+        Assert.Equal(32, result.Value.Hash.Length);
         Assert.InRange(result.Value.Quality, 0f, 1f);
+        Assert.InRange(MathF.Abs(result.Value.Quality - 0.7111111f), 0, 0.000004f);
         Assert.Equal(64, PdqHasher.ToHex(result.Value.Hash).Length);
         Assert.Equal(4, variants.Length);
         Assert.All(variants, value => Assert.Equal(64, value.Length));
         Assert.Equal(expectedVariants, variants);
+    }
+
+    /// <summary>
+    /// 公開C++参照の固定hashで、通常entry・4方向の順序・入力保持・連続要求を照合する。
+    /// 参照版: https://github.com/facebook/ThreatExchange/tree/85978d7cabdf631c0e4be9cb2be2816b2b9a6911/pdq
+    /// 期待値は同じlumaを物理回転して得た参照出力であり、本体のhash／回転helperから作らない。
+    /// </summary>
+    [Theory]
+    [InlineData(64, 64, "3da424b013df17da1e497071c0442174e6499b5f61e3543b5d3db965a21e6e9f|579353ec90f2e909dd188dcc6d96e439a5746ab39069a00e6d8ef65a752679a8|68f18e1a468abd704b1cdadb95118bdeb31c31f134b6fe91086813cff70bc435|02c6f946c5a743a3e94d276638c3de93f821ca5bc53c8ba538dbdcf13073d302")]
+    [InlineData(67, 73, "2abf26ca9c133469a05489446aeeee8b161ac361f5035d353b653a6cc69a7d3f|783756268e7965e8f24c24e6969b512c96570b19c708fdc686d2db48b6f6e42c|7fea8c6049469ec3f50123ee3f3b4421434f69cba056f79f663090c493cfd694|2d62fc8cdb2ccf42a7198e4cc3cefb86c102a1b3925d566cd38771e2e3a34e86")]
+    [InlineData(192, 256, "e5dd02a2b17d8ecb36d9c9c933309869bbb18b2f36c707e6f94eda82b430480b|989db592903976f18d79932b9b6da3e99a6900f926cdb6b7c118850d6e66b0b4|399845d58c66b5d97fd9aaeef7f77e8901a499b7e0868d19d8a9964a9046f000|49ea5260aa6ad55554cd7e555ad545958abc42d343d527559b1957a5527d520f")]
+    public void GeneratePdq_MatchesIndependentReferenceHashesAndPreservesInput(int width, int height, string expectedVariants)
+    {
+        var luma = new float[width * height];
+        for (var y = 0; y < height; y++)
+            for (var x = 0; x < width; x++)
+                luma[y * width + x] = (x * 37 + y * 53 + x * y * 11 + (x ^ y) * 17 + 19) % 256;
+        var original = luma.ToArray();
+        var result = PdqHasher.GeneratePdq(luma, width, height);
+
+        Assert.NotNull(result);
+        Assert.Equal(Convert.FromHexString(expectedVariants[..64]), result.Value.Hash);
+        Assert.Equal(1f, result.Value.Quality);
+        Assert.Equal(expectedVariants, PdqHasher.ComputeHashVariantsHex(luma, width, height));
+        Assert.Equal(expectedVariants, PdqHasher.ComputeHashVariantsHex(luma, width, height));
+        Assert.Equal(original, luma);
+    }
+
+    /// <summary>64×63本の隣接辺と独立した固定品質値で、連続勾配の現行契約を照合する。</summary>
+    [Theory]
+    [InlineData(0, 0, 0, 0f)]
+    [InlineData(0, 0, 128, 0f)]
+    [InlineData(0, 0, 255, 0f)]
+    [InlineData(1, 0, 0, 0.1756863f)]
+    [InlineData(0, 1, 0, 0.1756863f)]
+    [InlineData(1, 1, 0, 0.3513726f)]
+    [InlineData(4, 0, 0, 0.7027451f)]
+    public void QualityMetric_MatchesIndependentGradientTotals(int xStep, int yStep, int offset, float expected)
+    {
+        var buffer = Enumerable.Range(0, 64).Select(y => Enumerable.Range(0, 64).Select(x => (float)(x * xStep + y * yStep + offset)).ToArray()).ToArray();
+        var quality = PdqHasher.QualityMetric(buffer);
+        Assert.InRange(MathF.Abs(quality - expected), 0, 0.00002f);
+    }
+
+    /// <summary>全ての隣接辺が0と255を結ぶ格子では、品質を上限1へ固定する。</summary>
+    [Fact]
+    public void QualityMetric_ClampsCheckerboardAtOne()
+    {
+        var buffer = Enumerable.Range(0, 64).Select(y => Enumerable.Range(0, 64).Select(x => (float)((x + y) % 2 * 255)).ToArray()).ToArray();
+        Assert.Equal(1f, PdqHasher.QualityMetric(buffer));
+    }
+
+    /// <summary>幅か高さが最小寸法5未満なら、hashと保存用バリアントを生成しない。</summary>
+    [Theory]
+    [InlineData(4, 5)]
+    [InlineData(5, 4)]
+    [InlineData(0, 5)]
+    [InlineData(5, 0)]
+    public void GeneratePdq_RejectsEachDimensionBelowMinimum(int width, int height)
+    {
+        var luma = new float[width * height];
+        Assert.Null(PdqHasher.GeneratePdq(luma, width, height));
+        Assert.Equal(string.Empty, PdqHasher.ComputeHashVariantsHex(luma, width, height));
+    }
+
+    /// <summary>最小寸法5×5の黒画像は、全係数0による32byteの0と品質0を返す。</summary>
+    [Fact]
+    public void GeneratePdq_AcceptsMinimumDimensionsAndPreservesZeroInput()
+    {
+        var luma = new float[25];
+        var result = PdqHasher.GeneratePdq(luma, 5, 5);
+        Assert.NotNull(result);
+        Assert.Equal(new byte[32], result.Value.Hash);
+        Assert.Equal(0f, result.Value.Quality);
+        Assert.Equal(new float[25], luma);
     }
 }

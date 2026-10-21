@@ -45,11 +45,36 @@ public sealed class MonthNavLogicTests
 
         Assert.Collection(
             items,
-            item => Assert.Equal(MonthNavRenderItem.YearHeader(2026), item),
+            item => Assert.Equal(new MonthNavRenderItem(MonthNavRenderKind.YearHeader, 2026, null, null), item),
             item => AssertMonthButton(item, "2026-06", "6月", isActive: false),
             item => AssertMonthButton(item, "2026-05", "5月", isActive: true),
-            item => Assert.Equal(MonthNavRenderItem.YearHeader(2025), item),
+            item => Assert.Equal(new MonthNavRenderItem(MonthNavRenderKind.YearHeader, 2025, null, null), item),
             item => AssertMonthButton(item, "2025-12", "12月", isActive: false));
+    }
+
+    /// <summary>先頭・末尾・範囲外のactive indexで、年見出しの固定値と月ボタンの表示を照合する。</summary>
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void BuildRenderItems_FixesYearHeadersAndActiveIndexBoundaries(int activeIndex)
+    {
+        var items = MonthNavLogic.BuildRenderItems(SampleGroups(), activeIndex);
+        Assert.Collection(items,
+            item => Assert.Equal(new MonthNavRenderItem(MonthNavRenderKind.YearHeader, 2026, null, null), item),
+            item => AssertMonthButton(item, "2026-06", "6月", isActive: activeIndex == 0),
+            item => AssertMonthButton(item, "2026-05", "5月", isActive: false),
+            item => Assert.Equal(new MonthNavRenderItem(MonthNavRenderKind.YearHeader, 2025, null, null), item),
+            item => AssertMonthButton(item, "2025-12", "12月", isActive: activeIndex == 2));
+    }
+
+    /// <summary>月グループが空の場合は、年見出しと月ボタンを生成しない。</summary>
+    [Fact]
+    public void BuildRenderItems_EmptyGroupsProduceNoRowsOrYearStart()
+    {
+        Assert.Empty(MonthNavLogic.BuildRenderItems([], activeIndex: 0));
+        Assert.False(MonthNavLogic.IsYearStart([], 0));
     }
 
     /// <summary>
@@ -65,10 +90,10 @@ public sealed class MonthNavLogicTests
         var group = new GalleryMonthGroup("2026-06", 2026, 6, "Jun", 0, 8);
 
         Assert.Equal(
-            new MonthNavButtonDisplay("6月", MonthNavFontWeight.SemiBold, MonthNavLogic.RestMonthForegroundKey, null),
+            new MonthNavButtonDisplay("6月", MonthNavFontWeight.SemiBold, "ATextDim", null),
             MonthNavLogic.MonthButton(group, isActive: false));
         Assert.Equal(
-            new MonthNavButtonDisplay("6月", MonthNavFontWeight.ExtraBold, MonthNavLogic.ActiveMonthForegroundKey, MonthNavLogic.ActiveMonthBackgroundKey),
+            new MonthNavButtonDisplay("6月", MonthNavFontWeight.ExtraBold, "ATextOnPrimary", "APrimary"),
             MonthNavLogic.MonthButton(group, isActive: true));
     }
 
@@ -79,16 +104,17 @@ public sealed class MonthNavLogicTests
     private static void AssertMonthButton(MonthNavRenderItem item, string key, string label, bool isActive)
     {
         Assert.Equal(MonthNavRenderKind.MonthButton, item.Kind);
+        Assert.Null(item.Year);
         Assert.Equal(key, item.Group?.Key);
         Assert.Equal(label, item.Button?.Label);
         Assert.Equal(
             isActive ? MonthNavFontWeight.ExtraBold : MonthNavFontWeight.SemiBold,
             item.Button?.FontWeight);
         Assert.Equal(
-            isActive ? MonthNavLogic.ActiveMonthForegroundKey : MonthNavLogic.RestMonthForegroundKey,
+            isActive ? "ATextOnPrimary" : "ATextDim",
             item.Button?.ForegroundKey);
         Assert.Equal(
-            isActive ? MonthNavLogic.ActiveMonthBackgroundKey : null,
+            isActive ? "APrimary" : null,
             item.Button?.BackgroundKey);
     }
 

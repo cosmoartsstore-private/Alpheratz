@@ -65,11 +65,11 @@ public sealed class ConvertersAndModelsBehaviorTests
     {
         var converter = new MatchPercentConverter();
 
-        Assert.Equal(MessageCatalog.getMsg("MatchPercentConverter.value", ("percent", 100)), converter.Convert(0, typeof(string), "", ""));
-        Assert.Equal(MessageCatalog.getMsg("MatchPercentConverter.value", ("percent", 52)), converter.Convert(124, typeof(string), "", ""));
-        Assert.Equal(MessageCatalog.getMsg("MatchPercentConverter.value", ("percent", 0)), converter.Convert(256, typeof(string), "", ""));
-        Assert.Equal(MessageCatalog.getMsg("MatchPercentConverter.value", ("percent", 0)), converter.Convert(999, typeof(string), "", ""));
-        Assert.Equal(MessageCatalog.getMsg("MatchPercentConverter.empty"), converter.Convert(null!, typeof(string), "", ""));
+        Assert.Equal("一致率：100%", converter.Convert(0, typeof(string), "", ""));
+        Assert.Equal("一致率：52%", converter.Convert(124, typeof(string), "", ""));
+        Assert.Equal("一致率：0%", converter.Convert(256, typeof(string), "", ""));
+        Assert.Equal("一致率：0%", converter.Convert(999, typeof(string), "", ""));
+        Assert.Equal("一致率：—", converter.Convert(null!, typeof(string), "", ""));
         Assert.Throws<NotSupportedException>(() => converter.ConvertBack("一致率：100%", typeof(int), "", ""));
     }
 

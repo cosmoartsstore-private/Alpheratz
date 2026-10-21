@@ -26,7 +26,7 @@ public sealed class GalleryGridStageLogicTests
                 PhotoGridVisible: true,
                 MasonryVisible: false,
                 MonthNavVisible: true,
-                MonthNavWidth: GalleryGridStageLogic.MonthNavVisibleWidth),
+                MonthNavWidth: 56d),
             GalleryGridStageLogic.ViewModeDisplay(masonryActive: false));
 
         Assert.Equal(
@@ -34,7 +34,7 @@ public sealed class GalleryGridStageLogicTests
                 PhotoGridVisible: false,
                 MasonryVisible: true,
                 MonthNavVisible: true,
-                MonthNavWidth: GalleryGridStageLogic.MonthNavVisibleWidth),
+                MonthNavWidth: 56d),
             GalleryGridStageLogic.ViewModeDisplay(masonryActive: true));
     }
 
@@ -76,7 +76,7 @@ public sealed class GalleryGridStageLogicTests
                 LoadingVisible: true,
                 EmptyVisible: false,
                 MonthNavVisible: true,
-                MonthNavWidth: GalleryGridStageLogic.MonthNavVisibleWidth),
+                MonthNavWidth: 56d),
             GalleryGridStageLogic.LoadingDisplay(isLoading: true, totalCount: 0));
 
         Assert.Equal(
@@ -92,7 +92,7 @@ public sealed class GalleryGridStageLogicTests
                 LoadingVisible: false,
                 EmptyVisible: false,
                 MonthNavVisible: true,
-                MonthNavWidth: GalleryGridStageLogic.MonthNavVisibleWidth),
+                MonthNavWidth: 56d),
             GalleryGridStageLogic.LoadingDisplay(isLoading: false, totalCount: 3));
     }
 

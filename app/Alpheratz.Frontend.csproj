@@ -53,7 +53,7 @@
       - SelfContained=true: .NET 本体を publish 出力に同梱 (apphost ダイアログ排除)
       - WindowsAppSDKSelfContained=true: WinAppSDK Framework 中身を AppLocal にコピー
       - WindowsAppSdkUndockedRegFreeWinRTInitialize=true: reg-free WinRT で活性化
-      - InvariantGlobalization=true: ICU データ削減 (~30 MB)
+      - InvariantGlobalization=false: 日本語のタグ候補の比較・並び順で culture を使用する
       Debug ビルドではこれらは無効。dotnet build しかしないとバンドル DLL が
       AppLocal に置かれず XAML parse でクラッシュするため、開発時は従来通り
       Bootstrap.Initialize でシステム MSIX を使う。
@@ -62,7 +62,7 @@
     <SelfContained>true</SelfContained>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <WindowsAppSdkUndockedRegFreeWinRTInitialize>true</WindowsAppSdkUndockedRegFreeWinRTInitialize>
-    <InvariantGlobalization>true</InvariantGlobalization>
+    <InvariantGlobalization>false</InvariantGlobalization>
   </PropertyGroup>
 
   <ItemGroup>

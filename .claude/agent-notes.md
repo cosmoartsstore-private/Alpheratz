@@ -19,7 +19,7 @@
 - Group drill-downはclicked cardの`GroupPhotos`を優先し、存在しない場合だけDB fallbackを使う。
 - PhotoModalの前後移動はkeyboard左右keyと画像端のhover affordanceを使う。円形button chrome、履歴back button、match source／source slot badgeは表示しない。
 - Photo cardはvirtualizationで再利用されるため、favorite等のvisual stateを`Loaded`だけでなく`DataContextChanged`でも同期する。
-- Settingsは最大1120×820 px、左navigationでGeneral／Tags／Templates／Creditsを切り替え、選択sectionだけを表示する。旧single-column 760 px構成へ戻さない。
+- Settingsは最大1120×820 px、左navigationでGeneral／Duplicate Photos／Tags／Templates／Creditsを切り替え、選択sectionだけを表示する。旧single-column 760 px構成へ戻さない。
 - Tag上限はGallery、PhotoModal、TagMasterを通して25文字。投稿templateは実文字数とX加重文字数の双方で280以下とする。
 - Bootstrapはlogoとcopyrightだけを表示する。phase percentage、progress bar、補間timerを戻さない。
 - 視覚変更は現行resource tokenとlayout directionを維持し、long world/tag/file名と狭いwindowで確認する。
@@ -29,12 +29,17 @@
 - Folder change/resetはscan、post-scan、thumbnail生成の停止完了を待つ。対象slotのDB/cache cleanup要求を`pendingFolderCleanup`として先に保存し、終了後も次回起動で再実行できる状態を保つ。
 - 1stと2ndに同一folderまたは親子folderを設定しない。scan時も重複を再検証する。
 - Scan完了後はarchive resolution、orientation、PDQ、filter metadata refreshを直列実行し、最後に`scan:enrich_completed`を発行する。
+- `AppPaths.GetPolarisArchiveDir`はPolarisの`InstallLocation/Data/archive`を探す。Polaris側の非圧縮logを読み、元logを変更しない。存在しない場合は補完0件で終了する。
 - PDQ候補のUI採用閾値はdistance 75以下、表示一致率71%以上。World Resolveは同じsource slotの候補だけを表示し、利用者の確定を必須とする。
 - `WorldService.ResolveUnknownWorldsFromSimilarPhotosAsync`は自動DB更新可能なservice APIとして存在するが、現行UIとpost-scan workflowは呼ばない。UIを自動更新経路へ戻す変更と混同しない。
 - World Resolveのcandidateが閾値外または存在しない場合もmanual world nameを入力できる。確定由来は自動候補が`phash_confirmed`、manualが`manual`である。
 - `openWorldLinkOnPost`は投稿画面を開いた後、写真に有効な`world_id`があるときだけVRChat pageを開く永続設定である。
-- AppLoggerは通常`Fatal`だけを保存する。`ALPHERATZ_VERBOSE_LOGS=1`でError／Warn／Infoを有効化し、Traceは`TRACE_LOGGING` buildに限る。queueは512行、messageは8000文字、`info.log`は1 MiBで1世代rotateする。
+- 重複写真はファイルサイズとPDQで候補を絞り、SHA-256で確定する。各組の保持写真を再検証して読取りhandleを保持してから、確認済み原本を`StorageDeleteOption.Default`で削除する。ファイル削除とDB整理に跨るrollback保証を記載しない。
+- `photo_user_data_backup`は同じDB内のファイル名キーによるお気に入り・タグの保存領域である。source slot resetで消さず、可視写真0件のbackup操作も既存行を保持する。外部媒体へのDB backupと混同しない。
+- AppLoggerは通常`Fatal`だけを保存する。`ALPHERATZ_VERBOSE_LOGS=1`でError／Warn／Infoを有効化し、Traceはverboseと`TRACE_LOGGING` buildの双方が必要。queueは512行、messageは8000文字、`info.log`はflush前に1 MiB超を判定して1世代rotateする。厳密なfile最大値ではない。
 - `UiObservableCollection`と`UiThreadSafeObservableObject`はnotificationだけをmarshalする。UI-bound mutationは`DispatcherService.RunOnUiThread`へ明示的に戻す。
+- Scan／post-scan／PDQとfolder cleanupのguardを、全UI／画像control／cache／DB書込みのstale防止保証へ広げない。画像取消し・解放と通常終了の実配線は公開ArchitectureのConcurrency and Lifecycleを参照する。
+- ToastHostのItemsSourceは`toastState.toasts`。templateは保存成功後に一覧とdraftを確定し、startup／投稿world設定保存失敗はSettings VMを旧値へ戻す。旧障害を現行制約へ複製しない。Releaseは`InvariantGlobalization=false`である。
 
 ## Data Compatibility Kept by Current Source
 

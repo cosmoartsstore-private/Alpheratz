@@ -9,8 +9,8 @@ namespace Alpheratz.Shared.Services;
 
 /// <summary>
 /// 画面右上に重ねて出る Toast 通知を管理するサービス。
-/// 表示は <see cref="toasts"/> コレクションを ToastHost コントロールが GalleryViewModel 等から
-/// 間接的にバインドして自動更新する。各 toast は duration ms 経過後に自動削除される。
+/// ToastHost は ShellViewModel.toastState を通して <see cref="toasts"/> を表示する。
+/// 各 toast は duration ms 経過後に自動削除される。
 /// </summary>
 public sealed class ToastService
 {

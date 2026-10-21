@@ -40,7 +40,7 @@ public sealed class ExternalIntegrationBehaviorTests : IDisposable
         using var reader = cmd.ExecuteReader();
         Assert.True(reader.Read());
         Assert.Equal("Alpheratz", reader.GetString(0));
-        Assert.Equal(MessageCatalog.getMsg("StellaRecordRegistration.appDescription"), reader.GetString(1));
+        Assert.Equal("VRChat写真のギャラリー表示とワールドページの閲覧を支援するアプリ", reader.GetString(1));
         Assert.Equal("F:/apps/Alpheratz.exe", reader.GetString(2));
         Assert.Equal(4, reader.GetInt32(3));
         Assert.False(reader.Read());

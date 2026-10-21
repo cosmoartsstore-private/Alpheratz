@@ -503,11 +503,11 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         foreach (var photoRef in result.SucceededPhotos)
             updatePhoto(photoRef.photo_path, photo => photo.IsFavorite = isFavorite);
 
-        retainFailedBulkSelection(result, selectionVersion);
+        var failedSelectionRetained = retainFailedBulkSelection(result, selectionVersion);
         var successMessage = isFavorite
             ? getMsg("GalleryViewModel.bulkFavoriteAdded", ("count", result.SucceededCount))
             : getMsg("GalleryViewModel.bulkFavoriteRemoved", ("count", result.SucceededCount));
-        notifyBulkUpdateResult(result, successMessage, getMsg("GalleryViewModel.favoriteOperationLabel"));
+        notifyBulkUpdateResult(result, successMessage, getMsg("GalleryViewModel.favoriteOperationLabel"), failedSelectionRetained);
     }
 
     /// <summary>一括タグ結果の完了済み写真だけへ要求タグを反映し、失敗写真を再試行対象として残す。</summary>
@@ -530,23 +530,23 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
             });
         }
 
-        retainFailedBulkSelection(result, selectionVersion);
+        var failedSelectionRetained = retainFailedBulkSelection(result, selectionVersion);
         var successMessage = normalizedTags.Count == 1
             ? getMsg("GalleryViewModel.bulkSingleTagAdded", ("tag", normalizedTags[0]), ("photoCount", result.SucceededCount))
             : getMsg("GalleryViewModel.bulkTagsAdded", ("tagCount", normalizedTags.Count), ("photoCount", result.SucceededCount));
-        notifyBulkUpdateResult(result, successMessage, getMsg("GalleryViewModel.tagOperationLabel"));
+        notifyBulkUpdateResult(result, successMessage, getMsg("GalleryViewModel.tagOperationLabel"), failedSelectionRetained);
     }
 
     /// <summary>部分失敗時は完了済み写真を選択から外し、失敗写真だけを再実行できる状態にする。</summary>
-    private void retainFailedBulkSelection(PhotoBulkUpdateResult result, long? selectionVersion)
+    private bool retainFailedBulkSelection(PhotoBulkUpdateResult result, long? selectionVersion)
     {
         if (result.FailedCount == 0)
-            return;
+            return true;
         if (selectionVersion is { } expectedVersion
             && selectionState.SelectionVersion != expectedVersion)
         {
             AppLogger.Trace("GalleryViewModel.retainFailedBulkSelection: skip (selection changed)");
-            return;
+            return false;
         }
 
         var failedRefs = result.FailedPhotos
@@ -576,10 +576,11 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         }
 
         selectionState.setSelectedPhotoRefs(failedRefs);
+        return true;
     }
 
     /// <summary>一括更新の完了件数と失敗写真名を、既存のトースト通知へ変換する。</summary>
-    private void notifyBulkUpdateResult(PhotoBulkUpdateResult result, string successMessage, string operationLabel)
+    private void notifyBulkUpdateResult(PhotoBulkUpdateResult result, string successMessage, string operationLabel, bool failedSelectionRetained)
     {
         if (result.FailedCount == 0)
         {
@@ -606,7 +607,10 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         var completed = result.SucceededCount > 0
             ? getMsg("GalleryViewModel.bulkUpdateCompleted", ("count", result.SucceededCount))
             : string.Empty;
-        toastService.addToast(getMsg("GalleryViewModel.bulkUpdateFailureSummary", ("status", status), ("completed", completed), ("failedCount", result.FailedCount), ("names", nameSummary)), ToastType.error, duration: 7000);
+        var summaryKey = failedSelectionRetained
+            ? "GalleryViewModel.bulkUpdateFailureSummary"
+            : "GalleryViewModel.bulkUpdateFailureSelectionChanged";
+        toastService.addToast(getMsg(summaryKey, ("status", status), ("completed", completed), ("failedCount", result.FailedCount), ("names", nameSummary)), ToastType.error, duration: 7000);
     }
 
     // 選択中写真を指定フォルダへコピーし、コピー件数とスキップ件数を通知する。

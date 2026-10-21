@@ -5,6 +5,8 @@ using Alpheratz.Features.WorldResolve;
 using Alpheratz.Messages;
 using Alpheratz.Services;
 using Alpheratz.Shared.Services;
+using Microsoft.Data.Sqlite;
+using System.Text.Json;
 
 namespace Alpheratz.Tests;
 
@@ -98,7 +100,7 @@ public sealed class WorldResolveViewModelBehaviorTests : IDisposable
         Assert.Equal(2, viewModel.SearchProgressProcessed);
         Assert.Equal(2, viewModel.SearchProgressTotal);
         Assert.Equal(
-            MessageCatalog.getMsg("WorldResolveViewModel.searchProgress", ("processed", 2), ("total", 2)),
+            "2/2件",
             viewModel.SearchProgressText);
     }
 
@@ -249,6 +251,250 @@ public sealed class WorldResolveViewModelBehaviorTests : IDisposable
             finishCancellation.TrySetResult();
             await localViewModel.StopGenerationAsync().WaitAsync(TimeSpan.FromSeconds(5));
         }
+    }
+
+    /// <summary>途中の保存失敗で既存の成功分と未保存分を区別し、同じ選択を再適用する。</summary>
+    [Fact]
+    public async Task ApplyConfirmedAsync_PartialWriteFailurePreservesSelectionAndRetries()
+    {
+        await InsertKnownAsync("/known/exact.jpg", "exact.jpg", "確定ワールド", "wrld_exact", Hash(0x00));
+        await InsertUnknownAsync("/unknown/a.jpg", "a.jpg", Hash(0x00));
+        await InsertUnknownAsync("/unknown/b.jpg", "b.jpg", Hash(0x00));
+        await viewModel.InitializeAsync(); viewModel.ApplyAll();
+        Assert.Equal(["/unknown/a.jpg", "/unknown/b.jpg"], viewModel.Items.Select(item => item.TargetPhotoPath).ToArray());
+        var knownBefore = PhotoSnapshot("/known/exact.jpg"); var secondBefore = PhotoSnapshot("/unknown/b.jpg");
+        var unrelatedColumns = PhotoSnapshot("/unknown/a.jpg", "photo_path, photo_filename, timestamp, phash, source_slot, is_favorite, orientation, image_width, image_height");
+        ExecuteSql("CREATE TRIGGER owned_fail_second_world BEFORE UPDATE OF world_name ON photos WHEN NEW.photo_path = '/unknown/b.jpg' BEGIN SELECT RAISE(ABORT, 'owned second world failure'); END");
+        try
+        {
+            var failure = await Assert.ThrowsAsync<SqliteException>(() => viewModel.ApplyConfirmedAsync());
+            Assert.Contains("owned second world failure", failure.Message); Assert.False(viewModel.IsApplying);
+            Assert.Equal(2, viewModel.ApplyCount); Assert.All(viewModel.Items, item => Assert.True(item.IsApplied));
+            var savedFirst = await db.GetPhotoRecordAsync("/unknown/a.jpg", includePhash: true); Assert.NotNull(savedFirst);
+            Assert.Equal("確定ワールド", savedFirst.world_name); Assert.Equal("wrld_exact", savedFirst.world_id); Assert.Equal("phash_confirmed", savedFirst.match_source);
+            Assert.Equal(secondBefore, PhotoSnapshot("/unknown/b.jpg")); Assert.Equal(knownBefore, PhotoSnapshot("/known/exact.jpg"));
+            Assert.Equal(unrelatedColumns, PhotoSnapshot("/unknown/a.jpg", "photo_path, photo_filename, timestamp, phash, source_slot, is_favorite, orientation, image_width, image_height"));
+            Assert.Equal("ワールド名の保存を完了できませんでした。一部が保存されている場合があります。もう一度適用してください。", Assert.Single(toastService.toasts).Msg);
+        }
+        finally { ExecuteSql("DROP TRIGGER owned_fail_second_world"); }
+
+        Assert.Equal(2, await viewModel.ApplyConfirmedAsync()); Assert.False(viewModel.IsApplying);
+        foreach (var path in new[] { "/unknown/a.jpg", "/unknown/b.jpg" })
+        {
+            var saved = await db.GetPhotoRecordAsync(path, includePhash: true); Assert.NotNull(saved);
+            Assert.Equal("確定ワールド", saved.world_name); Assert.Equal("wrld_exact", saved.world_id); Assert.Equal("phash_confirmed", saved.match_source); Assert.Equal(Hash(0x00), saved.phash);
+        }
+        Assert.Equal(knownBefore, PhotoSnapshot("/known/exact.jpg")); Assert.Single(toastService.toasts);
+    }
+
+    /// <summary>開始前の取消しは保存せず、同じ選択の後続保存を妨げない。</summary>
+    [Fact]
+    public async Task ApplyConfirmedAsync_PreCancelledTokenPreservesDataAndAllowsRetry()
+    {
+        await InsertKnownAsync("/known/exact.jpg", "exact.jpg", "確定ワールド", "wrld_exact", Hash(0x00));
+        await InsertUnknownAsync("/unknown/a.jpg", "a.jpg", Hash(0x00)); await viewModel.InitializeAsync(); viewModel.ApplyAll();
+        var before = PhotoSnapshot("/unknown/a.jpg"); using var cancellation = new CancellationTokenSource(); cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => viewModel.ApplyConfirmedAsync(cancellation.Token));
+        Assert.Equal(before, PhotoSnapshot("/unknown/a.jpg")); Assert.False(viewModel.IsApplying); Assert.Equal(1, viewModel.ApplyCount); Assert.True(Assert.Single(viewModel.Items).IsApplied);
+        Assert.Equal("ワールド名の保存を完了できませんでした。一部が保存されている場合があります。もう一度適用してください。", Assert.Single(toastService.toasts).Msg);
+        Assert.Equal(1, await viewModel.ApplyConfirmedAsync()); var saved = await db.GetPhotoRecordAsync("/unknown/a.jpg", includePhash: true); Assert.NotNull(saved);
+        Assert.Equal("確定ワールド", saved.world_name); Assert.Equal("phash_confirmed", saved.match_source); Assert.False(viewModel.IsApplying);
+    }
+
+    /// <summary>候補の実DB読込失敗でpickerを閉じ、同じDBの復旧後に候補を再取得する。</summary>
+    [Fact]
+    public async Task OpenCandidatePickerAsync_DatabaseReadFailureClosesAndRecovers()
+    {
+        await InsertKnownAsync("/known/exact.jpg", "exact.jpg", "確定ワールド", "wrld_exact", Hash(0x00));
+        var before = PhotoSnapshot("/known/exact.jpg"); var item = new WorldResolveItem("/unknown/a.jpg", "a.jpg", Hash(0x00), 1);
+        ExecuteSql("ALTER TABLE photos RENAME TO owned_unavailable_photos");
+        try
+        {
+            await viewModel.OpenCandidatePickerAsync(item); Assert.False(viewModel.IsCandidateLoading); Assert.False(viewModel.IsCandidatePickerOpen); Assert.Null(viewModel.ActivePickerItem); Assert.Empty(viewModel.CandidateList);
+            Assert.Equal("候補写真を読み込めませんでした。もう一度候補を開いてください。", Assert.Single(toastService.toasts).Msg);
+        }
+        finally { ExecuteSql("ALTER TABLE owned_unavailable_photos RENAME TO photos"); }
+
+        Assert.Equal(before, PhotoSnapshot("/known/exact.jpg")); await viewModel.OpenCandidatePickerAsync(item);
+        Assert.True(viewModel.IsCandidatePickerOpen); Assert.False(viewModel.IsCandidateLoading); Assert.Same(item, viewModel.ActivePickerItem);
+        var candidate = Assert.Single(viewModel.CandidateList); Assert.Equal("確定ワールド", candidate.WorldName); Assert.Equal("wrld_exact", candidate.WorldId); Assert.Equal(0, candidate.Distance); Assert.Single(toastService.toasts);
+        viewModel.CloseCandidatePicker(); Assert.Null(viewModel.ActivePickerItem);
+    }
+
+    /// <summary>実DBの書込待機中の再entryを拒否し、待機解除後に一度だけ保存する。</summary>
+    [Fact]
+    public async Task ApplyConfirmedAsync_ConcurrentEntryDoesNotDuplicateInFlightSave()
+    {
+        await InsertKnownAsync("/known/exact.jpg", "exact.jpg", "確定ワールド", "wrld_exact", Hash(0x00));
+        await InsertUnknownAsync("/unknown/a.jpg", "a.jpg", Hash(0x00)); await viewModel.InitializeAsync(); viewModel.ApplyAll();
+        using var blocker = new SqliteConnection($"Data Source={Path.Combine(tempDir, "Alpheratz.db")};Pooling=False"); blocker.Open(); using var transaction = blocker.BeginTransaction(deferred: false);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void ObserveApplying(object? sender, System.ComponentModel.PropertyChangedEventArgs args) { if (args.PropertyName == nameof(viewModel.IsApplying) && viewModel.IsApplying) entered.TrySetResult(); }
+        viewModel.PropertyChanged += ObserveApplying; var first = Task.Run(() => viewModel.ApplyConfirmedAsync());
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5)); Assert.False(first.IsCompleted);
+            Assert.Equal(0, await viewModel.ApplyConfirmedAsync().WaitAsync(TimeSpan.FromSeconds(5))); Assert.True(viewModel.IsApplying);
+            Assert.Equal(1, viewModel.ApplyCount); Assert.True(Assert.Single(viewModel.Items).IsApplied);
+        }
+        finally { viewModel.PropertyChanged -= ObserveApplying; transaction.Commit(); }
+        Assert.Equal(1, await first.WaitAsync(TimeSpan.FromSeconds(5))); Assert.False(viewModel.IsApplying); Assert.Empty(toastService.toasts);
+        var saved = await db.GetPhotoRecordAsync("/unknown/a.jpg", includePhash: true); Assert.NotNull(saved); Assert.Equal("確定ワールド", saved.world_name); Assert.Equal("phash_confirmed", saved.match_source);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InitializeAsync_ReadFailureOrCancellationPreservesDataAndAllowsRetry(bool cancel)
+    {
+        await InsertKnownAsync("/known/exact.jpg", "exact.jpg", "日本語ワールド", "wrld_exact", Hash(0x00));
+        await InsertUnknownAsync("/unknown/a.jpg", "a.jpg", Hash(0x00));
+        var knownBefore = PhotoSnapshot("/known/exact.jpg"); var unknownBefore = PhotoSnapshot("/unknown/a.jpg");
+        using var cancellation = new CancellationTokenSource();
+        if (cancel) cancellation.Cancel(); else ExecuteSql("ALTER TABLE photos RENAME TO owned_unavailable_photos;");
+        try
+        {
+            await viewModel.InitializeAsync(cancellation.Token).WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(viewModel.IsLoading); Assert.Empty(viewModel.Items);
+            Assert.Equal(0, viewModel.SearchProgressProcessed); Assert.Equal(0, viewModel.SearchProgressTotal);
+            Assert.Equal("対象の写真を確認しています…", viewModel.SearchProgressText);
+            if (cancel) Assert.Empty(toastService.toasts);
+            else Assert.Equal("ワールド名補完を開始できませんでした。画面を閉じてから、もう一度実行してください。", Assert.Single(toastService.toasts).Msg);
+        }
+        finally { if (!cancel) ExecuteSql("ALTER TABLE owned_unavailable_photos RENAME TO photos;"); }
+
+        Assert.Equal(knownBefore, PhotoSnapshot("/known/exact.jpg")); Assert.Equal(unknownBefore, PhotoSnapshot("/unknown/a.jpg"));
+        await viewModel.InitializeAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        var item = Assert.Single(viewModel.Items); Assert.False(viewModel.IsLoading);
+        Assert.Equal("/unknown/a.jpg", item.TargetPhotoPath); Assert.Equal("日本語ワールド", item.MatchWorldName);
+        Assert.Equal("wrld_exact", item.MatchWorldId); Assert.Equal(0, item.MatchDistance);
+        Assert.Equal(1, viewModel.SearchProgressProcessed); Assert.Equal(1, viewModel.SearchProgressTotal);
+        Assert.Equal(cancel ? 0 : 1, toastService.toasts.Count);
+        Assert.Equal(knownBefore, PhotoSnapshot("/known/exact.jpg")); Assert.Equal(unknownBefore, PhotoSnapshot("/unknown/a.jpg"));
+    }
+
+    [Fact]
+    public async Task InitializeAsync_EmptyDataLeavesLoadingStateAndCanFindNewPhotosOnRetry()
+    {
+        await viewModel.InitializeAsync();
+        Assert.False(viewModel.IsLoading); Assert.Empty(viewModel.Items);
+        Assert.Equal(0, viewModel.SearchProgressProcessed); Assert.Equal(0, viewModel.SearchProgressTotal); Assert.Empty(toastService.toasts);
+        await InsertUnknownAsync("/unknown/no-candidate.jpg", "no-candidate.jpg", Hash(0x00));
+        var before = PhotoSnapshot("/unknown/no-candidate.jpg"); await viewModel.InitializeAsync();
+        var item = Assert.Single(viewModel.Items); Assert.False(viewModel.IsLoading);
+        Assert.Equal("/unknown/no-candidate.jpg", item.TargetPhotoPath); Assert.False(item.HasMatch); Assert.False(item.CanApply);
+        viewModel.ApplyAll(); viewModel.ToggleApply(item);
+        Assert.False(item.IsApplied); Assert.Equal(0, viewModel.ApplyCount); Assert.Equal(0, await viewModel.ApplyConfirmedAsync());
+        Assert.False(viewModel.IsApplying); Assert.Equal(before, PhotoSnapshot("/unknown/no-candidate.jpg")); Assert.Empty(toastService.toasts);
+    }
+
+    [Fact]
+    public async Task OpenCandidatePickerAsync_PreCancelledTokenClosesWithoutNoticeAndAllowsRetry()
+    {
+        await InsertKnownAsync("/known/exact.jpg", "exact.jpg", "日本語ワールド", "wrld_exact", Hash(0x00));
+        await InsertUnknownAsync("/unknown/a.jpg", "a.jpg", Hash(0x00)); var before = PhotoSnapshot("/unknown/a.jpg");
+        var item = new WorldResolveItem("/unknown/a.jpg", "a.jpg", Hash(0x00), 1);
+        using var cancellation = new CancellationTokenSource(); cancellation.Cancel();
+        await viewModel.OpenCandidatePickerAsync(item, cancellation.Token);
+        Assert.False(viewModel.IsCandidateLoading); Assert.False(viewModel.IsCandidatePickerOpen); Assert.Null(viewModel.ActivePickerItem);
+        Assert.Empty(viewModel.CandidateList); Assert.Empty(toastService.toasts); Assert.Equal(before, PhotoSnapshot("/unknown/a.jpg"));
+        await viewModel.OpenCandidatePickerAsync(item);
+        Assert.True(viewModel.IsCandidatePickerOpen); Assert.False(viewModel.IsCandidateLoading); Assert.Same(item, viewModel.ActivePickerItem);
+        var candidate = Assert.Single(viewModel.CandidateList); Assert.Equal("日本語ワールド", candidate.WorldName);
+        Assert.Equal("wrld_exact", candidate.WorldId); Assert.Equal(0, candidate.Distance);
+        Assert.Empty(toastService.toasts); Assert.Equal(before, PhotoSnapshot("/unknown/a.jpg"));
+    }
+
+    [Fact]
+    public async Task ManualWorldSelectionTrimsInputPreservesOtherDataAndCanReturnToAutomaticCandidate()
+    {
+        await InsertKnownAsync("/known/exact.jpg", "exact.jpg", "自動候補", "wrld_exact", Hash(0x00));
+        await InsertUnknownAsync("/unknown/a.jpg", "a.jpg", Hash(0x00));
+        const string unrelatedColumns = "photo_filename, photo_path, timestamp, phash, orientation, image_width, image_height, source_slot, is_favorite, is_missing";
+        var knownBefore = PhotoSnapshot("/known/exact.jpg"); var unrelatedBefore = PhotoSnapshot("/unknown/a.jpg", unrelatedColumns);
+        Assert.False(viewModel.SelectManualWorldName("対象なし")); await viewModel.InitializeAsync();
+        var item = Assert.Single(viewModel.Items); await viewModel.OpenCandidatePickerAsync(item);
+        Assert.False(viewModel.SelectManualWorldName(" \t\r\n ")); Assert.True(viewModel.IsCandidatePickerOpen);
+        Assert.Same(item, viewModel.ActivePickerItem); Assert.False(item.IsManualMatch); Assert.Equal("自動候補", item.MatchWorldName);
+        Assert.True(viewModel.SelectManualWorldName("  手動の日本語ワールド  "));
+        Assert.False(viewModel.IsCandidatePickerOpen); Assert.Null(viewModel.ActivePickerItem);
+        Assert.True(item.IsManualMatch); Assert.True(item.CanApply); Assert.True(item.HasMatch); Assert.False(item.HasMatchPhoto);
+        Assert.Null(item.MatchPhotoPath); Assert.Null(item.MatchPhotoFilename); Assert.Null(item.MatchThumbPath);
+        Assert.Null(item.MatchWorldId); Assert.Null(item.MatchDistance); Assert.Equal("手動の日本語ワールド", item.MatchWorldName);
+        viewModel.ToggleApply(item); Assert.Equal(1, viewModel.ApplyCount); Assert.Equal(1, await viewModel.ApplyConfirmedAsync());
+        var manual = await db.GetPhotoRecordAsync("/unknown/a.jpg", includePhash: true); Assert.NotNull(manual);
+        Assert.Equal("手動の日本語ワールド", manual.world_name); Assert.Null(manual.world_id); Assert.Equal("manual", manual.match_source);
+        Assert.Equal(unrelatedBefore, PhotoSnapshot("/unknown/a.jpg", unrelatedColumns));
+        await viewModel.OpenCandidatePickerAsync(item); viewModel.SelectCandidate(Assert.Single(viewModel.CandidateList));
+        Assert.False(item.IsManualMatch); Assert.True(item.HasMatchPhoto); Assert.Equal("自動候補", item.MatchWorldName);
+        Assert.Equal("wrld_exact", item.MatchWorldId); Assert.Equal(0, item.MatchDistance); Assert.Equal(1, await viewModel.ApplyConfirmedAsync());
+        var automatic = await db.GetPhotoRecordAsync("/unknown/a.jpg", includePhash: true); Assert.NotNull(automatic);
+        Assert.Equal("自動候補", automatic.world_name); Assert.Equal("wrld_exact", automatic.world_id); Assert.Equal("phash_confirmed", automatic.match_source);
+        Assert.Equal(unrelatedBefore, PhotoSnapshot("/unknown/a.jpg", unrelatedColumns)); Assert.Equal(knownBefore, PhotoSnapshot("/known/exact.jpg"));
+        Assert.False(viewModel.IsApplying); Assert.Empty(toastService.toasts);
+    }
+
+    /// <summary>実画像の初期候補・候補変更のthumbnailと、確定後のDB再利用まで画面なしで接続する。</summary>
+    [Fact]
+    public async Task RealImagesDeliverTargetAndChangedCandidateThumbnailsBeforeConfirmedWorldReopens()
+    {
+        var target = Alpheratz.Core.AppPaths.NormalizePathForDb(Path.Combine(tempDir, "対象.png"));
+        var first = Alpheratz.Core.AppPaths.NormalizePathForDb(Path.Combine(tempDir, "候補A.png"));
+        var second = Alpheratz.Core.AppPaths.NormalizePathForDb(Path.Combine(tempDir, "候補B.png"));
+        foreach (var path in new[] { target, first, second })
+        {
+            await using var file = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
+            using var stream = file.AsRandomAccessStream();
+            var encoder = await Windows.Graphics.Imaging.BitmapEncoder.CreateAsync(Windows.Graphics.Imaging.BitmapEncoder.PngEncoderId, stream);
+            var pixels = Enumerable.Range(0, 32 * 48).SelectMany(_ => new byte[] { 30, 80, 160, 255 }).ToArray();
+            encoder.SetPixelData(Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8, Windows.Graphics.Imaging.BitmapAlphaMode.Ignore, 32, 48, 96, 96, pixels); await encoder.FlushAsync();
+        }
+        var bytes = new[] { target, first, second }.ToDictionary(path => path, File.ReadAllBytes);
+        await InsertKnownAsync(first, "候補A.png", "Aのワールド", "wrld_a", Hash(0));
+        await InsertKnownAsync(second, "候補B.png", "Bのワールド", "wrld_b", SingleBitHash());
+        await InsertUnknownAsync(target, "対象.png", Hash(0));
+        await viewModel.InitializeAsync(); var item = Assert.Single(viewModel.Items);
+        await WaitForThumbnails(item, () => item.TargetThumbPath is not null && item.MatchThumbPath is not null);
+        Assert.Equal(first, item.MatchPhotoPath); var firstThumb = item.MatchThumbPath;
+        await AssertDecodedThumbnail(item.TargetThumbPath!); await AssertDecodedThumbnail(firstThumb!);
+        await viewModel.OpenCandidatePickerAsync(item); var selected = Assert.Single(viewModel.CandidateList, candidate => candidate.PhotoPath == second);
+        viewModel.SelectCandidate(selected);
+        await WaitForThumbnails(item, () => item.MatchThumbPath is not null && item.MatchThumbPath != firstThumb);
+        Assert.Equal(second, item.MatchPhotoPath); Assert.Equal("Bのワールド", item.MatchWorldName); await AssertDecodedThumbnail(item.MatchThumbPath!);
+        Assert.False(viewModel.IsCandidatePickerOpen); viewModel.ToggleApply(item); Assert.Equal(1, await viewModel.ApplyConfirmedAsync());
+        var reopened = await new AlpheratzDb(Path.Combine(tempDir, "Alpheratz.db")).GetPhotoRecordAsync(target);
+        Assert.NotNull(reopened); Assert.Equal("Bのワールド", reopened.world_name); Assert.Equal("wrld_b", reopened.world_id); Assert.Equal("phash_confirmed", reopened.match_source);
+        foreach (var (path, original) in bytes) Assert.Equal(original, File.ReadAllBytes(path));
+        await viewModel.StopGenerationAsync(); Assert.Empty(toastService.toasts);
+    }
+
+    private static async Task WaitForThumbnails(WorldResolveItem item, Func<bool> ready)
+    {
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Changed(object? sender, System.ComponentModel.PropertyChangedEventArgs args) { if (ready()) completed.TrySetResult(); }
+        item.PropertyChanged += Changed;
+        try { if (ready()) completed.TrySetResult(); await completed.Task.WaitAsync(TimeSpan.FromSeconds(15)); }
+        finally { item.PropertyChanged -= Changed; }
+    }
+
+    private static async Task AssertDecodedThumbnail(string path)
+    {
+        using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read); using var stream = file.AsRandomAccessStream();
+        var decoder = await Windows.Graphics.Imaging.BitmapDecoder.CreateAsync(stream); Assert.True(decoder.PixelWidth > 0); Assert.True(decoder.PixelHeight > 0);
+        Assert.NotEmpty((await decoder.GetPixelDataAsync()).DetachPixelData());
+    }
+
+    private void ExecuteSql(string sql)
+    {
+        using var connection = new SqliteConnection($"Data Source={Path.Combine(tempDir, "Alpheratz.db")};Pooling=False"); connection.Open();
+        using var command = connection.CreateCommand(); command.CommandText = sql; command.ExecuteNonQuery();
+    }
+
+    private string PhotoSnapshot(string path, string columns = "*")
+    {
+        using var connection = new SqliteConnection($"Data Source={Path.Combine(tempDir, "Alpheratz.db")};Pooling=False"); connection.Open();
+        using var command = connection.CreateCommand(); command.CommandText = $"SELECT {columns} FROM photos WHERE photo_path = $path"; command.Parameters.AddWithValue("$path", path);
+        using var reader = command.ExecuteReader(); Assert.True(reader.Read()); var values = new object[reader.FieldCount]; reader.GetValues(values); Assert.False(reader.Read()); return JsonSerializer.Serialize(values);
     }
 
     /// <summary>

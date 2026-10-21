@@ -124,12 +124,12 @@
 <body>
   <header>
     <h1>Alpheratz 基本設計書</h1>
-    <p>現行 WinUI 3 実装の画面構成、レイヤー、主要操作、表示状態を外部設計レベルで示す。</p>
+    <p>現行 WinUI 3 実装の画面構成、レイヤー、主要操作、表示状態を外部設計レベルで示す。静的な画面設計資料であり、実操作manualや動作sampleではない。</p>
     <div class="meta">
-      <div><div class="label">Document</div><div class="value">docs/basic-design.html</div></div>
-      <div><div class="label">Platform</div><div class="value">Windows x64 / WinUI 3</div></div>
-      <div><div class="label">Shell</div><div class="value">Header 44 px + Stage</div></div>
-      <div><div class="label">Authority</div><div class="value">Current source</div></div>
+      <div><div class="label">Application / Scope</div><div class="value">Alpheratz。画面構造・layer・表示状態。機能条件、内部構造、保存形式は専門文書を参照。</div></div>
+      <div><div class="label">Audience</div><div class="value">画面仕様を確認する人、開発者。Windows x64 / WinUI 3。</div></div>
+      <div><div class="label">Source review date</div><div class="value">2026-10-22。sourceの静的照合日。実行試験日ではない。</div></div>
+      <div><div class="label">Authority / Related documents</div><div class="value"><a href="../app/Features/Shell/ShellPage.xaml.cs">ShellPage</a>と各featureの現行source。<a href="../README.md">README</a>、<a href="spec.md">Specification</a>、<a href="architecture.md">Architecture</a>、<a href="database.md">Database Schema</a>、<a href="tech-stack.md">Tech Stack</a>。</div></div>
     </div>
   </header>
 
@@ -146,7 +146,7 @@
           <tr><td>Filter Panel</td><td>Galleryの検索条件編集。</td><td>sort、date、orientation、world、tag、favorite、group、reset。</td><td><code>Gallery/Controls/GalleryFilterPanel</code></td></tr>
           <tr><td>Group Drill Down</td><td>選択したworld group内の写真表示。</td><td>group内閲覧、写真詳細の起動。</td><td><code>Features/Gallery</code></td></tr>
           <tr><td>Photo Modal</td><td>選択写真の詳細と操作。</td><td>前後移動、favorite、tag、post、world page、Explorer。</td><td><code>Features/PhotoModal</code></td></tr>
-          <tr><td>Settings</td><td>設定とmaster dataの管理。</td><td>folder、startup、post、theme、tag、template、credits、world resolve起動。</td><td><code>Features/Settings</code></td></tr>
+          <tr><td>Settings</td><td>設定とmaster dataの管理。</td><td>folder、startup、post、theme、重複写真、付与情報のbackup／restore、tag、template、credits、world resolve起動。</td><td><code>Features/Settings</code></td></tr>
           <tr><td>World Resolve</td><td>ワールド名不明写真の補完内容を確認。</td><td>候補選択、手動入力、preview、apply toggle、一括確定。</td><td><code>Features/WorldResolve</code></td></tr>
         </tbody>
       </table>
@@ -165,7 +165,7 @@
    │  ├─ ScanningOverlay
    │  └─ ToastHost
    ├─ FilterOverlay: fixed 612 px left panel
-   └─ ConfirmOverlay: folder reset/change confirmation</pre>
+   └─ ConfirmOverlay: folder / duplicate delete / backup / restore</pre>
       <p>Group Drill Downから写真を開く場合、Photo Modalは中位modalの上に表示する。SettingsとWorld Resolveを同じ中位layerで同時表示しない。Escは最上位の開いているviewから順に閉じる。</p>
     </section>
 
@@ -179,7 +179,7 @@
           <tr><td>Middle modal</td><td>Settings、World Resolve、Group Drill Down専用。Gallery stateとscroll位置を保持する。</td></tr>
           <tr><td>Top modal</td><td>Photo Modal専用。中位modalからも起動できる。</td></tr>
           <tr><td>Progress</td><td>scan、gallery load、PDQ、World Resolve candidate searchは、実際の処理状態と件数をwave bar、overlay、status textで表示する。</td></tr>
-          <tr><td>Feedback</td><td>局所validationは入力欄付近、操作結果と回復可能な失敗はtoast、破壊的folder操作はconfirm dialogを使う。</td></tr>
+          <tr><td>Feedback</td><td>局所validationは入力欄付近、操作結果と回復可能な失敗はtoast、既存folderの変更・reset、重複削除、付与情報保存・復元はconfirm dialogを使う。未設定folderの初回選択は直接適用する。</td></tr>
           <tr><td>Responsive behavior</td><td>狭いwindowではcontentをwrapまたはscrollし、長いworld/tag/file名でmodal幅を拡張しない。主要操作をviewport外へ固定しない。</td></tr>
         </tbody>
       </table>
@@ -247,11 +247,13 @@
           <p>outer surfaceは最大1120×820 px、margin 24 px。左navigationは164 pxで、右側は選択sectionだけを表示する。</p>
           <pre class="wireframe">┌ Settings ───────────────────────────────────── close ┐
 │ General    │ folders 1st / 2nd                      │
-│ Tags       │ startup / open world on post / theme   │
-│ Templates  │ world resolve + PDQ state              │
+│ Duplicates │ startup / open world on post / theme   │
+│ Tags       │ world resolve + PDQ state              │
+│ Templates  │ favorite / tag backup and restore      │
 │ Credits    │                                        │
 │            │ selected section content               │
 └──────────────────────────────────────────────────────┘</pre>
+          <p>重複写真セクションはSHA-256が一致する組を示し、各組に1枚以上を残して削除対象を選ぶ。削除の確認後に原本を再検証する。付与情報のbackup／restoreは全般設定から確認後に実行し、同じDBへ保存する。</p>
         </article>
 
         <article class="screen">
@@ -297,10 +299,12 @@
         <tbody>
           <tr><td>Gallery load</td><td>Header controls are available when no blocking overlay is open.</td><td>Top wave progress and loading veil。0件ならempty stateへ切り替える。</td></tr>
           <tr><td>World search</td><td>入力候補を最大5件表示し、Enterで検索を確定。</td><td>入力だけでは再loadしない。候補0件でもplain textとして確定可能。</td></tr>
-          <tr><td>Multi-select</td><td>選択件数とbulk actionsを下部barに表示。</td><td>partial failure時は失敗写真だけを選択状態に残し、toastで再試行を案内。</td></tr>
+          <tr><td>Multi-select</td><td>選択件数とbulk actionsを下部barに表示。copy先はfolder pickerで選ぶ。</td><td>favorite／tagのpartial failureは失敗写真を選択へ残す。copyは選択を維持し、成功・skip件数を通知する。</td></tr>
           <tr><td>PDQ analysis</td><td>完了後にWorld Resolveを開ける。</td><td>解析中はbuttonをdisableし、件数とprogressを同じ領域に表示。</td></tr>
           <tr><td>World Resolve</td><td><code>CanApply</code>の行だけtoggle・一括適用対象。</td><td>candidateなしはmanual inputを案内。保存失敗は一部保存の可能性を明示。</td></tr>
-          <tr><td>Folder change</td><td>利用者のconfirm後に実行。</td><td>scan、post-scan、thumbnail完了を待つ。cleanup失敗時は新しいscanを開始しない。</td></tr>
+          <tr><td>Folder change</td><td>初回設定は直接適用、既存path変更／resetはconfirm後に実行。</td><td>scan、post-scan、thumbnail停止完了を待つ。DB cleanup失敗はpendingを残し新scanを止める。cache削除だけの失敗は警告として扱う。</td></tr>
+          <tr><td>Duplicate photos</td><td>各組に1枚以上を残し、選択分をconfirm後に削除。</td><td>処理中は選択と実行をdisableする。ファイルごとの失敗と、削除後のDB整理失敗を区別する。</td></tr>
+          <tr><td>Photo user data backup</td><td>backup／restoreそれぞれconfirm後に実行。</td><td>処理中は両buttonをdisableしてspinnerを表示する。写真0件時は既存backupを保持する。</td></tr>
           <tr><td>Post</td><td>active templateがある場合だけ実行。</td><td>clipboard、browser、optional world pageを段階別messageで通知。</td></tr>
         </tbody>
       </table>
@@ -324,7 +328,7 @@
 
     <section aria-labelledby="references">
       <h2 id="references">7. References</h2>
-      <p>機能の判定条件と処理順は <a href="spec.md">Specification</a>、保存形式は <a href="database.md">Database Schema</a>、buildとruntimeの制約は <a href="tech-stack.md">Tech Stack and Architecture Decisions</a> を参照する。</p>
+      <p>機能の条件と結果は <a href="spec.md">Specification</a>、state・event・停止と解放の実経路は <a href="architecture.md">Architecture</a>、保存形式と寿命は <a href="database.md">Database Schema</a>、build・CI・配布は <a href="tech-stack.md">Tech Stack and Architecture Decisions</a> を参照する。Toastは現行sourceのtoastState.toastsへ接続し、template保存は成功後に一覧を確定する。画像取消し・unloadの保護は入口ごとに異なり、通常終了で全taskの完了を待つ保証はない。静的なsource照合を実画面全経路の動作確認とは扱わない。</p>
     </section>
   </main>
 </body>

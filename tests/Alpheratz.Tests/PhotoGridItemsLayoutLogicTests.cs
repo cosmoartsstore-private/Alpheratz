@@ -38,31 +38,58 @@ public sealed class PhotoGridItemsLayoutLogicTests
     }
 
     /// <summary>
-    /// 代表的な狭幅からワイド幅まで、標準グリッドのセル寸法が破綻しないことを確認する。
-    ///
-    /// 6列を最大値にしつつ、幅不足時は列数を落とす。各セルは利用可能幅を超えず、
-    /// 画像領域は常に 16:9 になる。
+    /// 代表幅の列数とカード寸法を固定値で照合し、各セルが利用可能幅に収まることを確認する。
     /// </summary>
     [Theory]
-    [InlineData(200)]
-    [InlineData(320)]
-    [InlineData(640)]
-    [InlineData(700)]
-    [InlineData(1024)]
-    [InlineData(1920)]
-    public void CalculateCardLayout_KeepsResponsiveCellsInsideAvailableWidth(double availableWidth)
+    [InlineData(200, 1, 168, 176, 162)]
+    [InlineData(320, 2, 140, 148, 146)]
+    [InlineData(640, 5, 115, 123, 132)]
+    [InlineData(700, 6, 104, 112, 126)]
+    [InlineData(1024, 6, 158, 166, 156)]
+    [InlineData(1920, 6, 308, 316, 241)]
+    public void CalculateCardLayout_KeepsResponsiveCellsInsideAvailableWidth(double availableWidth, int columns, double imageWidth, double itemWidth, double itemHeight)
     {
         var layout = GalleryLayout(availableWidth);
-        var usable = availableWidth - PhotoGridItemsLayoutLogic.GridPadding;
+        var usable = availableWidth - 24;
 
-        Assert.InRange(layout.Columns, 1, PhotoGridItemsLayoutLogic.MaxColumns);
+        Assert.InRange(layout.Columns, 1, 6);
         Assert.True(layout.ImageWidth > 0);
         Assert.True(layout.ItemWidth > 0);
-        Assert.True(layout.ItemHeight > PhotoGridItemsLayoutLogic.InfoHeight);
+        Assert.True(layout.ItemHeight > 56);
         Assert.True(layout.ItemWidth * layout.Columns <= usable);
 
-        var imageHeight = layout.ItemHeight - PhotoGridItemsLayoutLogic.InfoHeight - PhotoGridItemsLayoutLogic.CardMarginVertical;
-        Assert.Equal(Math.Floor(layout.ImageWidth * 9.0 / 16.0), imageHeight);
+        Assert.Equal((columns, imageWidth, itemWidth, itemHeight), (layout.Columns, layout.ImageWidth, layout.ItemWidth, layout.ItemHeight));
+    }
+
+    /// <summary>最小セルと列数変更の直前・境界で、返却寸法を本体の計算から独立した値へ照合する。</summary>
+    [Theory]
+    [InlineData(24.5, 1, 1, 1, 68)]
+    [InlineData(131.999, 1, 99, 107, 123)]
+    [InlineData(132, 1, 100, 108, 124)]
+    [InlineData(239.999, 1, 207, 215, 184)]
+    [InlineData(240, 2, 100, 108, 124)]
+    [InlineData(347.999, 2, 153, 161, 154)]
+    [InlineData(348, 3, 100, 108, 124)]
+    [InlineData(455.999, 3, 135, 143, 143)]
+    [InlineData(456, 4, 100, 108, 124)]
+    [InlineData(563.999, 4, 126, 134, 138)]
+    [InlineData(564, 5, 100, 108, 124)]
+    [InlineData(671.999, 5, 121, 129, 136)]
+    [InlineData(672, 6, 100, 108, 124)]
+    [InlineData(780, 6, 118, 126, 134)]
+    public void CalculateCardLayout_FixesMinimumCellAndColumnTransitionDimensions(double availableWidth, int columns, double imageWidth, double itemWidth, double itemHeight)
+    {
+        var layout = GalleryLayout(availableWidth);
+        Assert.Equal((columns, imageWidth, itemWidth, itemHeight), (layout.Columns, layout.ImageWidth, layout.ItemWidth, layout.ItemHeight));
+    }
+
+    /// <summary>負の幅と左右余白しかない幅は、描画対象のカード寸法を返さない。</summary>
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(24)]
+    public void CalculateCardLayout_RejectsWidthWithoutUsableArea(double availableWidth)
+    {
+        Assert.Null(PhotoGridItemsLayoutLogic.CalculateCardLayout(availableWidth));
     }
 
     /// <summary>
@@ -174,10 +201,10 @@ public sealed class PhotoGridItemsLayoutLogicTests
         var empty = new PhotoThumbnailItem();
 
         Assert.Equal(
-            new GridImageRequest(@"C:\thumbs\grid.jpg", PhotoGridItemsLayoutLogic.GridDecodePixelWidth),
+            new GridImageRequest(@"C:\thumbs\grid.jpg", 300),
             PhotoGridItemsLayoutLogic.ImageRequest(withThumb));
         Assert.Equal(
-            new GridImageRequest(@"C:\photos\source.jpg", PhotoGridItemsLayoutLogic.GridDecodePixelWidth),
+            new GridImageRequest(@"C:\photos\source.jpg", 300),
             PhotoGridItemsLayoutLogic.ImageRequest(withSourceOnly));
         Assert.Null(PhotoGridItemsLayoutLogic.ImageRequest(empty));
     }

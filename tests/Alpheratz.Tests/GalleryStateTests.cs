@@ -182,8 +182,8 @@ public sealed class GalleryStateTests
     /// Masonry レイアウトが指定列数を幅に応じて制限し、各写真を列へ配置することを確認する。
     ///
     /// Masonry は最も低い列へ次のカードを置く貪欲法を使う。
-    /// ここでは、狭いパネルでは列数が最小幅に合わせて制限されること、
-    /// 返却される各アイテムの幅が列幅と一致すること、総高さが0より大きくなることを確認する。
+    /// 通常幅と狭い幅の列数、各カードの座標・寸法、総高さを固定値で照合する。
+    /// 狭い幅では3枚目が低い列へ入り、元の写真参照を保持することも確認する。
     /// </summary>
     [Fact]
     public void GalleryMasonryLayout_BuildsStableColumnLayout()
@@ -198,12 +198,19 @@ public sealed class GalleryStateTests
         var result = GalleryMasonryLayout.Build(photos, panelWidth: 900, requestedColumnCount: 4);
 
         Assert.Equal(4, result.ColumnCount);
+        Assert.Equal(212, result.ColumnWidth);
+        Assert.Equal(14, result.Gap);
         Assert.Equal(3, result.Items.Count);
-        Assert.All(result.Items, item => Assert.Equal(result.ColumnWidth, item.Width));
-        Assert.True(result.TotalHeight > 0);
+        Assert.Equal([(0d, 0d, 212d, 119d), (0d, 226d, 212d, 377d), (0d, 452d, 212d, 212d)], result.Items.Select(item => (item.Top, item.Left, item.Width, item.Height)));
+        Assert.Equal(377, result.TotalHeight);
+        for (var index = 0; index < 3; index++) Assert.Same(photos[index], result.Items[index].Photo);
         var narrow = GalleryMasonryLayout.Build(photos, panelWidth: 400, requestedColumnCount: 4);
         Assert.Equal(2, narrow.ColumnCount);
-        Assert.All(narrow.Items, item => Assert.True(item.Width >= 180));
+        Assert.Equal(189, narrow.ColumnWidth);
+        Assert.Equal(14, narrow.Gap);
+        Assert.Equal([(0d, 0d, 189d, 106d), (0d, 203d, 189d, 336d), (120d, 0d, 189d, 189d)], narrow.Items.Select(item => (item.Top, item.Left, item.Width, item.Height)));
+        Assert.Equal(336, narrow.TotalHeight);
+        for (var index = 0; index < 3; index++) Assert.Same(photos[index], narrow.Items[index].Photo);
     }
 
     /// <summary>
@@ -231,8 +238,8 @@ public sealed class GalleryStateTests
         var result = GalleryMasonryLayout.Build([unknown, portrait], panelWidth: 334, requestedColumnCount: 1);
 
         Assert.Equal(326, result.ColumnWidth);
-        Assert.Equal(Math.Round(result.ColumnWidth / (16.0 / 9.0)), result.Items[0].Height);
-        Assert.Equal(Math.Round(result.ColumnWidth / (9.0 / 16.0)), result.Items[1].Height);
+        Assert.Equal(183, result.Items[0].Height);
+        Assert.Equal(580, result.Items[1].Height);
     }
 
     /// <summary>

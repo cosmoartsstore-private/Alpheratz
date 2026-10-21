@@ -575,11 +575,7 @@ public sealed partial class ShellPage : Page
                     OnStartEdit = viewModel.templatePageViewModel.startEdit,
                     OnDeleteTemplate = template => viewModel.templatePageViewModel.deleteTemplate(template, viewModel.buildSettingPayload()),
                     OnSaveTemplate = () => viewModel.templatePageViewModel.saveTemplate(viewModel.buildSettingPayload()),
-                    OnSelectTemplate = async template =>
-                    {
-                        viewModel.templatePageViewModel.ActiveTweetTemplate = template;
-                        await viewModel.templatePageViewModel.saveTemplates(viewModel.buildSettingPayload()).ConfigureAwait(false);
-                    },
+                    OnSelectTemplate = viewModel.templatePageViewModel.selectTemplate,
                 };
             }
             SyncSettingsWorldAnalysisState();

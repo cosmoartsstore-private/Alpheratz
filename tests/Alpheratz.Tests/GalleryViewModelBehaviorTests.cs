@@ -476,13 +476,10 @@ public sealed class GalleryViewModelBehaviorTests : IDisposable
         Assert.True(File.Exists(Path.Combine(destinationDir, "a.jpg")));
         Assert.Contains(
             toastService.toasts,
-            toast => toast.Msg == MessageCatalog.getMsg("GalleryViewModel.photosCopied", ("count", 1)));
+            toast => toast.Msg == "1枚の写真をコピーしました。");
         Assert.Contains(
             toastService.toasts,
-            toast => toast.Msg == MessageCatalog.getMsg(
-                "GalleryViewModel.photosCopiedWithFailures",
-                ("copied", 0),
-                ("failed", 1)));
+            toast => toast.Msg == "0枚をコピーし、1枚はコピーできませんでした。");
     }
 
     /// <summary>
@@ -498,7 +495,7 @@ public sealed class GalleryViewModelBehaviorTests : IDisposable
 
         Assert.Contains(
             toastService.toasts,
-            toast => toast.Msg == MessageCatalog.getMsg("GalleryViewModel.unknownWorldAnalysisStarted"));
+            toast => toast.Msg == "ワールド不明の写真の分析を開始しました。");
     }
 
     /// <summary>

@@ -3,6 +3,8 @@ using Alpheratz.Core.Database;
 using Alpheratz.Core.Scanner;
 using Alpheratz.Models;
 using Alpheratz.Models.Events;
+using Microsoft.Data.Sqlite;
+using System.Text.Json;
 
 namespace Alpheratz.Tests;
 
@@ -31,13 +33,17 @@ public sealed class PhotoScannerBehaviorTests : IDisposable
     }
 
     /// <summary>
-    /// テストで作成したファイルを削除する。
-    /// 削除失敗は本体仕様の検証対象ではないため、アサーション結果を隠さないように握りつぶす。
+    /// 専用DBの接続プールを解放し、テストで作成したファイルを削除する。
+    /// 清掃失敗はテスト結果へ反映する。
     /// </summary>
     public void Dispose()
     {
-        try { Directory.Delete(tempDir, recursive: true); }
-        catch { }
+        Assert.Equal(Path.Combine(Path.GetTempPath(), "Alpheratz.PhotoScanner.Tests"), Path.GetDirectoryName(tempDir));
+        foreach (var path in Directory.EnumerateFiles(tempDir, "*.db", SearchOption.TopDirectoryOnly))
+        {
+            using var pool = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ToString()); SqliteConnection.ClearPool(pool);
+        }
+        Directory.Delete(tempDir, recursive: true); Assert.False(Directory.Exists(tempDir));
     }
 
     /// <summary>
@@ -703,6 +709,79 @@ public sealed class PhotoScannerBehaviorTests : IDisposable
         Assert.NotNull(await db.GetPhotoRecordAsync(existingPath));
     }
 
+    /// <summary>実行前・進捗待機中・終了後の取消しで保存内容を保持し、同じscannerから再読込できる。</summary>
+    [Fact]
+    public async Task RequestCancel_BeforeDuringAndAfterScanPreservesDataAndAllowsRetry()
+    {
+        var photoRoot = Path.Combine(tempDir, "cancel-photos"); Directory.CreateDirectory(photoRoot);
+        var imagePath = Path.Combine(photoRoot, "VRChat_2026-06-05_10-20-30.123.png"); var imageBytes = PngWithItxt(320, 640, "再試行ワールド", "wrld_retry"); File.WriteAllBytes(imagePath, imageBytes);
+        var sourcePath = AppPaths.NormalizePathForDb(imagePath); var missingPath = AppPaths.NormalizePathForDb(Path.Combine(photoRoot, "missing.png")); var databasePath = Path.Combine(tempDir, "cancel.db");
+        var config = new AppConfig(Path.Combine(tempDir, "cancel-settings")); config.SaveSetting(new AlpheratzSetting { PhotoFolderPath = photoRoot });
+        var db = new AlpheratzDb(databasePath); db.Initialize();
+        await db.UpsertPhotoAsync(new PhotoUpsertData { PhotoPath = sourcePath, PhotoFilename = Path.GetFileName(imagePath), Timestamp = "2026-06-05 10:20:30", WorldId = "wrld_before", WorldName = "保持用", LastModifiedUtc = "2000-01-01T00:00:00Z" });
+        await db.UpsertPhotoAsync(new PhotoUpsertData { PhotoPath = missingPath, PhotoFilename = "missing.png", Timestamp = "2026-05-05 10:00:00", WorldName = "欠落前" });
+        using (var seed = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = databasePath, Pooling = false }.ToString()))
+        {
+            seed.Open(); using var command = seed.CreateCommand(); command.Parameters.AddWithValue("$source", sourcePath); command.Parameters.AddWithValue("$filename", Path.GetFileName(imagePath));
+            command.CommandText = """
+                UPDATE photos SET is_favorite=1, phash='retained-hash' WHERE photo_path=$source;
+                INSERT INTO tags(id,name) VALUES(7,'保持用タグ');
+                INSERT INTO photo_tags(photo_path,tag_id) VALUES($source,7);
+                INSERT INTO photo_user_data_backup(photo_filename,is_favorite,tags) VALUES($filename,1,'["保持用タグ"]');
+                INSERT INTO archive_world_visits(id,source_log_name,world_name,join_time,leave_time) VALUES(9,'output_log_fixture.txt','訪問履歴','2026-05-05 09:00:00','2026-05-05 10:00:00');
+                """;
+            command.ExecuteNonQuery();
+        }
+        var before = ReadScanDatabaseRows(databasePath); var progress = new List<ScanProgressDto>(); var cancelled = new List<string>(); var errors = new List<string>(); var completed = 0;
+        var progressStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously); var releaseProgress = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously); var holdFirstProgress = true;
+        var bus = new LocalEventBus();
+        await using var progressSub = bus.Subscribe<ScanProgressDto>(EventNames.ScanProgress, payload => { progress.Add(payload); if (!holdFirstProgress) return Task.CompletedTask; holdFirstProgress = false; progressStarted.TrySetResult(); return releaseProgress.Task; });
+        await using var cancelledSub = bus.Subscribe<string>(EventNames.ScanCancelled, payload => { cancelled.Add(payload); return Task.CompletedTask; });
+        await using var errorSub = bus.Subscribe<string>(EventNames.ScanError, payload => { errors.Add(payload); return Task.CompletedTask; });
+        await using var completeSub = bus.Subscribe(EventNames.ScanCompleted, () => { completed++; return Task.CompletedTask; });
+        var scanner = new PhotoScanner(config, db, bus); scanner.RequestCancel(); scanner.RequestCancel();
+        Assert.Empty(progress); Assert.Empty(cancelled); Assert.Empty(errors); Assert.Equal(before, ReadScanDatabaseRows(databasePath));
+        var scan = scanner.ScanAsync();
+        try
+        {
+            await progressStarted.Task.WaitAsync(TimeSpan.FromSeconds(5)); Assert.False(scan.IsCompleted);
+            var collecting = Assert.Single(progress); Assert.Equal(0, collecting.processed); Assert.Equal(0, collecting.total); Assert.Equal("写真を確認しています…", collecting.current_world); Assert.Equal("scan", collecting.phase);
+            scanner.RequestCancel(); scanner.RequestCancel(); Assert.False(scan.IsCompleted); releaseProgress.TrySetResult(); await scan.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(new[] { "写真の読み込みを中止しました。" }, cancelled); Assert.Empty(errors); Assert.Equal(0, completed); Assert.Single(progress);
+            var afterCancellation = ReadScanDatabaseRows(databasePath); Assert.Equal(before, afterCancellation); Assert.Equal(imageBytes, File.ReadAllBytes(imagePath));
+            scanner.RequestCancel(); Assert.Single(cancelled); Assert.Equal(before, ReadScanDatabaseRows(databasePath));
+            await scanner.ScanAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(1, completed); Assert.Single(cancelled); Assert.Empty(errors); Assert.Null(await db.GetPhotoRecordAsync(missingPath));
+            var restored = Assert.IsType<PhotoRecordDto>(await db.GetPhotoRecordAsync(sourcePath)); Assert.Equal("再試行ワールド", restored.world_name); Assert.Equal("wrld_retry", restored.world_id);
+            Assert.Equal(new[] { "保持用タグ" }, await db.GetPhotoTagsAsync(sourcePath)); Assert.Equal(imageBytes, File.ReadAllBytes(imagePath));
+            var afterRetry = ReadScanDatabaseRows(databasePath); Assert.Equal(before.Skip(1), afterRetry.Skip(1));
+            using (var verify = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = databasePath, Pooling = false }.ToString()))
+            {
+                verify.Open(); using var command = verify.CreateCommand(); command.CommandText = "SELECT is_favorite FROM photos WHERE photo_path=$source"; command.Parameters.AddWithValue("$source", sourcePath); Assert.Equal(1L, command.ExecuteScalar());
+            }
+            scanner.RequestCancel(); Assert.Single(cancelled); Assert.Equal(1, completed);
+            var evidenceDir = Environment.GetEnvironmentVariable("ALPHERATZ_STARTUP_TEST_EVIDENCE_DIR");
+            if (!string.IsNullOrEmpty(evidenceDir)) File.WriteAllText(Path.Combine(evidenceDir, "alpheratz-scanner-cancellation-lifecycle-evidence.json"), JsonSerializer.Serialize(new {
+                owned_root = tempDir, database_before = before, database_after_cancellation = afterCancellation, database_after_retry = afterRetry,
+                cancelled_messages = cancelled.ToArray(), error_messages = errors.ToArray(), completed_notifications = completed, initial_progress = collecting,
+                source_bytes_preserved = true, same_scanner_retry_succeeded = true, idle_cancel_and_active_cancel_controlled = true, verification_complete = false }));
+        }
+        finally { releaseProgress.TrySetResult(); await scan.WaitAsync(TimeSpan.FromSeconds(5)); }
+    }
+
+    /// <summary>専用DBの全6tableを独立SQLで読み、取消し時の全行と再試行時の対象外tableを比較する。</summary>
+    private static string[] ReadScanDatabaseRows(string databasePath)
+    {
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = databasePath, Pooling = false }.ToString()); connection.Open(); var result = new List<string>();
+        foreach (var table in new[] { "photos", "photo_tags", "tags", "photo_user_data_backup", "archive_world_visits", "sqlite_sequence" })
+        {
+            using var command = connection.CreateCommand(); command.CommandText = $"SELECT * FROM {table} ORDER BY rowid"; using var reader = command.ExecuteReader(); var rows = new List<object?[]>();
+            while (reader.Read()) { var row = new object?[reader.FieldCount]; reader.GetValues(row); rows.Add(row.Select(value => value is DBNull ? null : value).ToArray()); }
+            result.Add(JsonSerializer.Serialize(rows));
+        }
+        return result.ToArray();
+    }
+
     /// <summary>
     /// テスト用の PNG バイト列を作る。
     /// IHDR は PhotoScanner.ProbeImageDimensions が幅高さを読むために必要で、
@@ -782,5 +861,203 @@ public sealed class PhotoScannerBehaviorTests : IDisposable
         buffer[offset + 1] = (byte)(value >> 16);
         buffer[offset + 2] = (byte)(value >> 8);
         buffer[offset + 3] = (byte)value;
+    }
+
+    /// <summary>Exifの8種類の向きを両endianで読み、表示寸法を写真メタデータへ引き渡す。</summary>
+    [Theory]
+    [InlineData(true, 1, "portrait", 80L, 240L)]
+    [InlineData(true, 2, "portrait", 80L, 240L)]
+    [InlineData(true, 3, "portrait", 80L, 240L)]
+    [InlineData(true, 4, "portrait", 80L, 240L)]
+    [InlineData(true, 5, "landscape", 240L, 80L)]
+    [InlineData(true, 6, "landscape", 240L, 80L)]
+    [InlineData(true, 7, "landscape", 240L, 80L)]
+    [InlineData(true, 8, "landscape", 240L, 80L)]
+    [InlineData(false, 1, "portrait", 80L, 240L)]
+    [InlineData(false, 2, "portrait", 80L, 240L)]
+    [InlineData(false, 3, "portrait", 80L, 240L)]
+    [InlineData(false, 4, "portrait", 80L, 240L)]
+    [InlineData(false, 5, "landscape", 240L, 80L)]
+    [InlineData(false, 6, "landscape", 240L, 80L)]
+    [InlineData(false, 7, "landscape", 240L, 80L)]
+    [InlineData(false, 8, "landscape", 240L, 80L)]
+    public void ProbeImageDimensions_JpegExifOrientationsReachPhotoMetadata(bool littleEndian, int exifOrientation, string expectedOrientation, long expectedWidth, long expectedHeight)
+    {
+        var path = Path.Combine(tempDir, "VRChat_2026-06-05_10-20-30.123.jpg");
+        var bytes = JpegExifFixture(ExifOrientationPayload(littleEndian, (ushort)exifOrientation)); File.WriteAllBytes(path, bytes);
+        var probe = PhotoScanner.ProbeImageDimensions(path);
+        var photo = PhotoScanner.AnalyzePhoto(path, Path.GetFileName(path), slot: 2, existing: null, ScanRefreshKind.Full);
+        SaveJpegExifEvidence($"orientation-{littleEndian}-{exifOrientation}", path, bytes, probe, photo);
+        Assert.Equal((expectedOrientation, (long?)expectedWidth, (long?)expectedHeight), probe);
+        Assert.Equal(expectedOrientation, photo.Orientation); Assert.Equal(expectedWidth, photo.ImageWidth); Assert.Equal(expectedHeight, photo.ImageHeight);
+        Assert.Equal("2026-06-05 10:20:30", photo.Timestamp); Assert.Equal(2L, photo.SourceSlot);
+        Assert.Equal(bytes, File.ReadAllBytes(path));
+    }
+
+    /// <summary>Exifが破損していても、通常向きとして有効なSOF寸法を保持する契約を確認する。</summary>
+    [Theory]
+    [InlineData(true, "short-header")]
+    [InlineData(false, "short-header")]
+    [InlineData(true, "invalid-byte-order")]
+    [InlineData(false, "invalid-byte-order")]
+    [InlineData(true, "invalid-magic")]
+    [InlineData(false, "invalid-magic")]
+    [InlineData(true, "ifd-outside")]
+    [InlineData(false, "ifd-outside")]
+    [InlineData(true, "ifd-before-overflow")]
+    [InlineData(false, "ifd-before-overflow")]
+    [InlineData(true, "ifd-near-int-max")]
+    [InlineData(false, "ifd-near-int-max")]
+    [InlineData(true, "ifd-int-max")]
+    [InlineData(false, "ifd-int-max")]
+    [InlineData(true, "ifd-above-int-max")]
+    [InlineData(false, "ifd-above-int-max")]
+    [InlineData(true, "ifd-unsigned-max")]
+    [InlineData(false, "ifd-unsigned-max")]
+    [InlineData(true, "truncated-entry")]
+    [InlineData(false, "truncated-entry")]
+    [InlineData(true, "no-entries")]
+    [InlineData(false, "no-entries")]
+    [InlineData(true, "wrong-type")]
+    [InlineData(false, "wrong-type")]
+    [InlineData(true, "wrong-count")]
+    [InlineData(false, "wrong-count")]
+    [InlineData(true, "orientation-zero")]
+    [InlineData(false, "orientation-zero")]
+    [InlineData(true, "orientation-nine")]
+    [InlineData(false, "orientation-nine")]
+    public void ProbeImageDimensions_JpegExifMalformedMetadataPreservesFrameDimensions(bool littleEndian, string corruption)
+    {
+        var exif = ExifOrientationPayload(littleEndian, 6);
+        switch (corruption)
+        {
+            case "short-header": exif = exif[..10]; break;
+            case "invalid-byte-order": exif[6] = (byte)'Z'; exif[7] = (byte)'Z'; break;
+            case "invalid-magic": exif[8] = 0; exif[9] = 0; break;
+            case "truncated-entry": exif = exif[..27]; break;
+            case "no-entries": exif[14] = 0; exif[15] = 0; break;
+            case "wrong-type": exif[18] = 0; exif[19] = 0; break;
+            case "wrong-count": exif[20] = 0; exif[21] = 0; exif[22] = 0; exif[23] = 0; break;
+            case "orientation-zero": exif = ExifOrientationPayload(littleEndian, 0); break;
+            case "orientation-nine": exif = ExifOrientationPayload(littleEndian, 9); break;
+            default:
+                var offset = corruption switch
+                {
+                    "ifd-outside" => 32u,
+                    "ifd-before-overflow" => 0x7ffffffdu,
+                    "ifd-near-int-max" => 0x7ffffffeu,
+                    "ifd-int-max" => 0x7fffffffu,
+                    "ifd-above-int-max" => 0x80000000u,
+                    "ifd-unsigned-max" => 0xffffffffu,
+                    _ => throw new ArgumentOutOfRangeException(nameof(corruption)),
+                };
+                if (littleEndian) System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(exif.AsSpan(10, 4), offset);
+                else System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(exif.AsSpan(10, 4), offset);
+                break;
+        }
+        var path = Path.Combine(tempDir, "malformed-exif.jpg"); var bytes = JpegExifFixture(exif); File.WriteAllBytes(path, bytes);
+        var probe = PhotoScanner.ProbeImageDimensions(path);
+        SaveJpegExifEvidence($"malformed-{littleEndian}-{corruption}", path, bytes, probe);
+        Assert.Equal(("portrait", (long?)80, (long?)240), probe);
+        Assert.Equal(bytes, File.ReadAllBytes(path));
+    }
+
+    /// <summary>SOF0/SOF2とExifの配置順に依存せず、後続の非Exif APP1で向きを失わない。</summary>
+    [Theory]
+    [InlineData(0xc0, false, false)]
+    [InlineData(0xc0, true, true)]
+    [InlineData(0xc2, false, true)]
+    [InlineData(0xc2, true, false)]
+    public void ProbeImageDimensions_JpegExifSurvivesFrameOrderAndNonExifApp1(int frameMarker, bool exifAfterFrame, bool xmpAfterExif)
+    {
+        var path = Path.Combine(tempDir, "frame-order.JPEG");
+        var bytes = JpegExifFixture(ExifOrientationPayload(false, 7), (byte)frameMarker, exifAfterFrame, xmpAfterExif); File.WriteAllBytes(path, bytes);
+        var probe = PhotoScanner.ProbeImageDimensions(path);
+        SaveJpegExifEvidence($"layout-{frameMarker}-{exifAfterFrame}-{xmpAfterExif}", path, bytes, probe);
+        Assert.Equal(("landscape", (long?)240, (long?)80), probe); Assert.Equal(bytes, File.ReadAllBytes(path));
+    }
+
+    /// <summary>padding後のIFDと先行する別tagを読み飛ばし、2番目のorientationを取得する。</summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ProbeImageDimensions_JpegExifFindsOrientationAfterAnotherIfdEntry(bool littleEndian)
+    {
+        var original = ExifOrientationPayload(littleEndian, 8); var exif = new byte[52]; original.AsSpan(0, 14).CopyTo(exif);
+        if (littleEndian) System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(exif.AsSpan(10, 4), 16);
+        else System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(exif.AsSpan(10, 4), 16);
+        exif[littleEndian ? 22 : 23] = 2;
+        original.AsSpan(16, 12).CopyTo(exif.AsSpan(24)); original.AsSpan(16, 12).CopyTo(exif.AsSpan(36));
+        exif[24] = littleEndian ? (byte)0x23 : (byte)0xc1; exif[25] = littleEndian ? (byte)0xc1 : (byte)0x23;
+        var path = Path.Combine(tempDir, "padded-ifd.jpeg"); var bytes = JpegExifFixture(exif); File.WriteAllBytes(path, bytes);
+        var probe = PhotoScanner.ProbeImageDimensions(path); SaveJpegExifEvidence($"padded-ifd-{littleEndian}", path, bytes, probe);
+        Assert.Equal(("landscape", (long?)240, (long?)80), probe); Assert.Equal(bytes, File.ReadAllBytes(path));
+    }
+
+    /// <summary>存在確認後にfolderが外れた場合はslotを空と扱わず、再接続後の完全scanでだけ整理する。</summary>
+    [Fact]
+    public async Task IncompleteSlotPreservesIndexedPhotosAndWarnsUntilTheSameFolderCanBeRescanned()
+    {
+        var folder = Path.Combine(tempDir, "photos"); var offline = Path.Combine(tempDir, "offline"); Directory.CreateDirectory(folder);
+        var source = Path.Combine(folder, "VRChat_2026-10-20_10-00-00.000.png"); var original = PngWithItxt(80, 40, "再接続ワールド", "wrld_reconnect"); File.WriteAllBytes(source, original);
+        var stale = AppPaths.NormalizePathForDb(Path.Combine(folder, "missing.png")); var db = new AlpheratzDb(Path.Combine(tempDir, "incomplete.db")); db.Initialize();
+        await db.UpsertPhotoAsync(new PhotoUpsertData { PhotoPath = stale, PhotoFilename = "missing.png", SourceSlot = 1, Timestamp = "2026-10-19 10:00:00", WorldName = "保持する旧ワールド" });
+        await db.SetPhotoFavoriteAsync(stale, true); await db.AddPhotoTagAsync(stale, "保持するタグ");
+        await db.UpsertPhotoAsync(new PhotoUpsertData { PhotoPath = "/slot2/keep.jpg", PhotoFilename = "keep.jpg", SourceSlot = 2, Timestamp = "2026-10-19 10:00:00" });
+        var before = JsonSerializer.Serialize(await db.GetPhotoRecordAsync(stale)); var config = new AppConfig(Path.Combine(tempDir, "settings")); config.SaveSetting(new AlpheratzSetting { PhotoFolderPath = folder });
+        var bus = new LocalEventBus(); var moved = false; var warnings = new List<string>();
+        await using var progress = bus.Subscribe<ScanProgressDto>(EventNames.ScanProgress, _ => { if (!moved) { moved = true; Directory.Move(folder, offline); } return Task.CompletedTask; });
+        await using var warning = bus.Subscribe<string>(EventNames.ScanWarning, value => { warnings.Add(value); return Task.CompletedTask; });
+        var scanner = new PhotoScanner(config, db, bus);
+        try { await scanner.ScanAsync(); }
+        finally { if (Directory.Exists(offline)) Directory.Move(offline, folder); }
+        Assert.True(moved); Assert.Equal(before, JsonSerializer.Serialize(await db.GetPhotoRecordAsync(stale)));
+        Assert.NotNull(await db.GetPhotoRecordAsync("/slot2/keep.jpg")); Assert.Equal(original, File.ReadAllBytes(source));
+        Assert.Equal("写真フォルダ1を完全に読み取れませんでした。フォルダへのアクセス権を確認してください。見つからない写真の整理は次回の読み込みまで延期します。", Assert.Single(warnings));
+        await progress.DisposeAsync(); warnings.Clear(); await scanner.ScanAsync();
+        Assert.Null(await db.GetPhotoRecordAsync(stale)); Assert.NotNull(await db.GetPhotoRecordAsync("/slot2/keep.jpg"));
+        var indexed = await db.GetPhotoRecordAsync(AppPaths.NormalizePathForDb(source)); Assert.NotNull(indexed); Assert.Equal("再接続ワールド", indexed.world_name); Assert.Equal(1L, indexed.source_slot);
+        Assert.Empty(warnings); Assert.Equal(original, File.ReadAllBytes(source));
+    }
+
+    /// <summary>標準のTIFF header・IFD0を固定byteで作り、値の格納だけをBCLで行う。</summary>
+    private static byte[] ExifOrientationPayload(bool littleEndian, ushort orientation)
+    {
+        byte[] payload = littleEndian
+            ? [0x45, 0x78, 0x69, 0x66, 0, 0, 0x49, 0x49, 0x2a, 0, 8, 0, 0, 0, 1, 0, 0x12, 1, 3, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            : [0x45, 0x78, 0x69, 0x66, 0, 0, 0x4d, 0x4d, 0, 0x2a, 0, 0, 0, 8, 0, 1, 1, 0x12, 0, 3, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0];
+        if (littleEndian) System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(payload.AsSpan(24, 2), orientation);
+        else System.Buffers.Binary.BinaryPrimitives.WriteUInt16BigEndian(payload.AsSpan(24, 2), orientation);
+        return payload;
+    }
+
+    /// <summary>ヘッダ解析用の80×240 JPEGを作る。圧縮画素のdecodeはこのfixtureの確認範囲外。</summary>
+    private static byte[] JpegExifFixture(byte[] exif, byte frameMarker = 0xc0, bool exifAfterFrame = false, bool xmpAfterExif = false)
+    {
+        using var stream = new MemoryStream(); stream.Write([0xff, 0xd8]);
+        if (exifAfterFrame) WriteSegment(frameMarker, [8, 0, 0xf0, 0, 0x50, 3, 1, 0x11, 0, 2, 0x11, 1, 3, 0x11, 1]);
+        WriteSegment(0xe1, exif);
+        if (xmpAfterExif) WriteSegment(0xe1, "http://ns.adobe.com/xap/1.0/\0<x:xmpmeta/>"u8.ToArray());
+        if (!exifAfterFrame) WriteSegment(frameMarker, [8, 0, 0xf0, 0, 0x50, 3, 1, 0x11, 0, 2, 0x11, 1, 3, 0x11, 1]);
+        stream.Write([0xff, 0xd9]); return stream.ToArray();
+
+        void WriteSegment(byte marker, byte[] payload)
+        {
+            var length = checked((ushort)(payload.Length + 2)); stream.Write([0xff, marker, (byte)(length >> 8), (byte)length]); stream.Write(payload);
+        }
+    }
+
+    /// <summary>選択実行時だけ入力・読取後byte・実測値を新規保存し、失敗した期待値比較にも参照を残す。</summary>
+    private static void SaveJpegExifEvidence(string name, string path, byte[] input, (string? orientation, long? width, long? height) observed, PhotoUpsertData? photo = null)
+    {
+        var evidenceDir = Environment.GetEnvironmentVariable("ALPHERATZ_JPEG_EXIF_TEST_EVIDENCE_DIR"); if (string.IsNullOrEmpty(evidenceDir)) return;
+        var after = File.ReadAllBytes(path);
+        using (var file = new FileStream(Path.Combine(evidenceDir, name + ".jpg"), FileMode.CreateNew, FileAccess.Write, FileShare.None)) file.Write(input);
+        using (var file = new FileStream(Path.Combine(evidenceDir, name + ".after.jpg"), FileMode.CreateNew, FileAccess.Write, FileShare.None)) file.Write(after);
+        using var report = new StreamWriter(new FileStream(Path.Combine(evidenceDir, name + ".json"), FileMode.CreateNew, FileAccess.Write, FileShare.None), new System.Text.UTF8Encoding(false));
+        report.Write(JsonSerializer.Serialize(new { case_name = name, owned_root = Path.GetDirectoryName(path), source_path = path,
+            observed_orientation = observed.orientation, observed_width = observed.width, observed_height = observed.height,
+            metadata_orientation = photo?.Orientation, metadata_width = photo?.ImageWidth, metadata_height = photo?.ImageHeight,
+            source_bytes_preserved = input.AsSpan().SequenceEqual(after), verification_complete = false }));
     }
 }

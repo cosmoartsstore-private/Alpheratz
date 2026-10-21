@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 
 $BuildWorksRoot = Split-Path -Parent $PSScriptRoot
 $RepoRoot = Split-Path -Parent $BuildWorksRoot

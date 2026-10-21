@@ -1077,7 +1077,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         }
     }
 
-    /// <summary>自動起動の希望値を更新し、設定ファイルと OS 側へ保存する。</summary>
+    /// <summary>投稿時にワールドリンクを開く設定を保存し、失敗時は保存済み値を表示する。</summary>
     public async Task handleOpenWorldOnPostPreference(bool enabled)
     {
         AppLogger.Trace($"ShellViewModel.handleOpenWorldOnPostPreference: enter enabled={enabled}");
@@ -1090,6 +1090,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         catch (Exception err)
         {
             AppLogger.Error($"ShellViewModel.handleOpenWorldOnPostPreference: threw: {err}");
+            await dispatcherService.RunOnUiThread(() => settingsViewModel.OpenWorldLinkOnPost = OpenWorldLinkOnPost).ConfigureAwait(false);
             toastService.addToast(getMsg("ShellViewModel.worldLinkSettingUpdateFailed"), ToastType.error);
         }
         AppLogger.Trace("ShellViewModel.handleOpenWorldOnPostPreference: exit");

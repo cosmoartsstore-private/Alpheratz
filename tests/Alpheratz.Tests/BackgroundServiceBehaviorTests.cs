@@ -3,6 +3,7 @@ using Alpheratz.Core.Database;
 using Alpheratz.Messages;
 using Alpheratz.Models.Events;
 using Alpheratz.Services;
+using Microsoft.Data.Sqlite;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
 
@@ -16,7 +17,7 @@ namespace Alpheratz.Tests;
 /// ここでは実画像処理の重い成功パスではなく、軽量な画像ヘッダや unreadable 経路を使って
 /// サービス境界の進捗・完了・DB更新を固定する。
 /// </summary>
-public sealed class BackgroundServiceBehaviorTests : IDisposable
+public sealed partial class BackgroundServiceBehaviorTests : IDisposable
 {
     private readonly string tempDir;
     private readonly AlpheratzDb db;
@@ -36,18 +37,14 @@ public sealed class BackgroundServiceBehaviorTests : IDisposable
 
     /// <summary>
     /// 一時DBとテスト用ファイルを削除する。
-    /// 削除失敗はサービス仕様ではないため、検証結果を隠さないよう握りつぶす。
+    /// fixture固有のconnection poolを解除し、専用の一時領域だけを削除する。
     /// </summary>
     public void Dispose()
     {
-        try
-        {
-            Directory.Delete(tempDir, recursive: true);
-        }
-        catch
-        {
-            // Cleanup failure should not hide the assertion result.
-        }
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "Alpheratz.BackgroundService.Tests")) + Path.DirectorySeparatorChar;
+        Assert.StartsWith(root, Path.GetFullPath(tempDir));
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(tempDir, "Alpheratz.db") }.ToString());
+        SqliteConnection.ClearPool(connection); Directory.Delete(tempDir, recursive: true);
     }
 
     /// <summary>
@@ -280,7 +277,7 @@ public sealed class BackgroundServiceBehaviorTests : IDisposable
         await startTask;
 
         Assert.Equal(0, completeCount);
-        Assert.Equal([MessageCatalog.getMsg("PhashService.cancelled")], errorMessages);
+        Assert.Equal(["類似画像の解析を中断しました。"], errorMessages);
         Assert.Equal("error", notificationOrder[^1]);
         Assert.All(notificationOrder.Take(notificationOrder.Count - 1), item => Assert.Equal("progress", item));
     }

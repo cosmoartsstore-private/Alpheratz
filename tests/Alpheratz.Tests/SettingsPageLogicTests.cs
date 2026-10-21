@@ -88,7 +88,7 @@ public sealed class SettingsPageLogicTests
     public void WorldAnalysisProgress_HidesWhenAnalysisCanStart()
     {
         Assert.Equal(
-            WorldAnalysisProgressDisplay.Hidden,
+            new WorldAnalysisProgressDisplay(ProgressVisible: false, IsIndeterminate: false, Maximum: 1, Value: 0, SummaryText: string.Empty, DetailText: string.Empty),
             SettingsPageLogic.WorldAnalysisProgress(
                 done: 10,
                 total: 10,

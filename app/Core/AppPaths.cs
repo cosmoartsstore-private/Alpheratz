@@ -70,7 +70,7 @@ public static class AppPaths
             using var key = Registry.CurrentUser.OpenSubKey(PolarisKeyPath);
             var path = key?.GetValue("InstallLocation") as string;
             if (string.IsNullOrWhiteSpace(path)) return null;
-            var archiveDir = Path.Combine(path, "archive");
+            var archiveDir = Path.Combine(path, "Data", "archive");
             return Directory.Exists(archiveDir) ? archiveDir : null;
         }
         catch { return null; }

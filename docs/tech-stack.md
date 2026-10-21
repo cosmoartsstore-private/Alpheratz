@@ -1,263 +1,194 @@
 # Tech Stack and Architecture Decisions
 
-この文書は、現行 source と build scripts が採用している技術、version、配布契約、設計判断を記録する。過去実装の作業手順や未採用の将来案は含めない。
+現行sourceとbuild scriptsの依存、採用理由、開発command、CI gate、成果物と配布契約を記録する。module責務と実行flowは[Architecture](architecture.md)を正本とする。
+
+## Document Control
+
+| Field | Value |
+| --- | --- |
+| Application | Alpheratz |
+| Scope | 依存とversion、採用理由、開発・検証command、CI、packaging、導入・更新・削除。機能条件・内部構造・保存形式は各専門文書が所有する |
+| Audience | 開発環境や配布を管理する人 |
+| Authority | [Application project](../app/Alpheratz.Frontend.csproj)、[SDK](../app/global.json)、[Release build](../BuildWorks/scripts/build-release.ps1)、[Installer](../BuildWorks/nsis/Installer.nsi)、[CI](../.github/workflows/ci.yml) |
+| Related documents | [README](../README.md)、[Specification](spec.md)、[Architecture](architecture.md)、[Database Schema](database.md)、[Basic Design](basic-design.html) |
+| Source review date | 2026-10-22。sourceの静的照合日であり、実行試験日ではない |
 
 ## Stack Reference
 
 ### Application
 
-| Area | Technology | Current version / setting |
-| --- | --- | --- |
-| Language | C# | `LangVersion=latest`, nullable enabled |
-| Runtime | .NET | `net8.0-windows10.0.19041.0` |
-| UI | WinUI 3 | Windows App SDK `1.6.250205002` |
-| Architecture | MVVM | CommunityToolkit.Mvvm `8.4.0` |
-| Dependency injection | Microsoft.Extensions.DependencyInjection | `8.0.1` |
-| Database | SQLite | Microsoft.Data.Sqlite `8.0.11` |
-| Image metadata | Windows / local binary readers | PNG XMP/iTXt、画像 header、PDQ luma decode |
-| Perceptual hash | In-repository PDQ implementation | 256 bit、4 rotations |
-| Messages | Embedded UTF-8 properties | `MessageCatalog.getMsg` |
-| Platform | Windows | Build 19041以降、x64のみ |
+| Layer | Dependency | Declared version | Resolved version | Authority | Purpose |
+| --- | --- | --- | --- | --- | --- |
+| Language | C# | `LangVersion=latest`、nullable | compiler依存 | [csproj](../app/Alpheratz.Frontend.csproj) | application実装 |
+| Runtime / target | .NET / Windows | `net8.0-windows10.0.19041.0`、x64 | 配布buildごと | 同上 | build19041以降のWindows |
+| UI | Windows App SDK / WinUI 3 | `1.6.250205002` | lockなし。本書ではrestore結果を固定しない | 同上 | native Window / XAML |
+| State | CommunityToolkit.Mvvm | `8.4.0` | 同上 | 同上 | observable state / command |
+| DI | Microsoft.Extensions.DependencyInjection | `8.0.1` | 同上 | 同上 | 起動時composition |
+| Database | Microsoft.Data.Sqlite | `8.0.11` | 同上 | 同上 | local metadata / user data |
+| Imaging | Windows APIs / repository PDQ | OS API、独自256 bit / 4回転 | package lock対象外 | [Imaging](../app/Core/Imaging) | decode、thumbnail、類似候補 |
+| Messages | embedded UTF-8 properties | `messages.ja.properties` | sourceで管理 | [MessageCatalog](../app/Messages/MessageCatalog.cs) | 日本語UI文言 |
 
-`WindowsPackageType=None` の unpackaged app である。MSIX tooling と PRI generation は project設定で無効にする。
+`WindowsPackageType=None`のunpackaged appで、MSIX / app PRI generation toolingを無効にする。現行ReleaseはNativeAOTではない。field-based `[ObservableProperty]`があり、`MVVMTK0045`をprojectで抑止する。
+
+### Build and Distribution
+
+<a id="distribution"></a>
+
+| Layer | Dependency | Declared version | Resolved version | Authority | Purpose |
+| --- | --- | --- | --- | --- | --- |
+| SDK | .NET SDK | `8.0.420`、`latestPatch` | 実行環境依存 | [app/global.json](../app/global.json) | app配下のSDK選択 |
+| CI SDK | .NET SDK | `8.0.x` | runner実行ごと | [CI](../.github/workflows/ci.yml) | rootからrestore / test / package |
+| Launcher | .NET Windows Forms | net8.0-windows、win-x64 | buildごと | [Launcher project](../BuildWorks/launcher/Alpheratz.Launcher.csproj) | self-contained single-file起動入口 |
+| Installer | NSIS | version固定なし | 導入環境依存 | [build-release](../BuildWorks/scripts/build-release.ps1) | Unicode、PerMonitorV2、current user |
+| Native runtime | Microsoft Visual C++ Redistributable x64 | Microsoft公式配布物 | 取得fileのProductVersionをNSISへ渡す | [prepare-vc-redist](../BuildWorks/scripts/prepare-vc-redist.ps1) | self-contained WinUI依存を同梱 |
+
+SDK宣言は`app/global.json`にあり、rootのcommandやCIの`8.0.x`と同じpatch値を保証するものではない。NuGet dependency lock fileは管理していないため、宣言versionと特定実行環境の解決値を区別する。
 
 ### Tests
 
-| Area | Technology | Version / role |
-| --- | --- | --- |
-| Test framework | xUnit | `2.5.3` |
-| Test host | Microsoft.NET.Test.Sdk | `17.8.0` |
-| Coverage | coverlet collector / MSBuild | `6.0.0` |
-| UI boundary policy | `ExcludeFromCodeCoverage` allowlist | WinUI / OS glueだけを除外 |
+| Layer | Dependency | Declared version | Resolved version | Authority | Purpose |
+| --- | --- | --- | --- | --- | --- |
+| Test framework | xUnit / runner.visualstudio | `2.5.3` | lockなし。本書ではrestore結果を固定しない | [Test project](../tests/Alpheratz.Tests/Alpheratz.Tests.csproj) | logic / service / data / native境界 |
+| Test host | Microsoft.NET.Test.Sdk | `17.8.0` | 同上 | 同上 | test実行 |
+| Coverage | coverlet.collector / coverlet.msbuild | `6.0.0` | 同上 | 同上 | 任意coverage取得 |
 
-テストは `tests/Alpheratz.Tests` から application project を直接参照する。ViewModel、state、database、scanner、PDQ、service、XAML/package契約を UI processなしで検証する。WinUI Page、UserControl、Composition、OS dialog、process entry pointは framework boundaryとして限定的に除外し、判断ロジックは通常の coverage対象に残す。
-
-`.github/workflows/ci.yml`はmainへのpushとmain宛PRをWindows runnerで検証する。全testの後にXBF/PRI、launcher、Microsoft Visual C++ Redistributable、NSISを含む最終installerまで生成し、途中のsoft-failは設けない。
-
-### Distribution
-
-| Component | Technology | Output |
-| --- | --- | --- |
-| Frontend publish | `dotnet publish`, self-contained | `BuildWorks/artifacts/publish/Alpheratz` |
-| Launcher | .NET 8 Windows Forms, single-file | `artifacts/publish/Launcher/Alpheratz.exe` |
-| Installer | NSIS, Unicode, per-monitor V2 | `BuildWorks/Alpheratz-Installer.exe` |
-| Native runtime | Microsoft Visual C++ Redistributable x64 | Microsoft署名を検証してinstallerへ内包 |
-| Install scope | current user | `%LOCALAPPDATA%\CosmoArtsStore\Alpheratz` by default |
-
-launcher は `HKCU\Software\CosmoArtsStore\Alpheratz\RuntimeLocation` を読み、`app\Alpheratz.Frontend.exe` を起動する。値がない場合は既定 LocalAppData pathへフォールバックする。起動失敗時は `Data\logs\launcher_error.log` への記録を試みる。
-
-## Source Layout
-
-```text
-app/
-├─ App.xaml(.cs), Program.cs        startup and DI composition
-├─ Features/
-│  └─ <Feature>/                   Page, ViewModel, state, local logic
-├─ Services/                       use-case and OS integration
-├─ Core/
-│  ├─ Database/                    SQLite gateway and query models
-│  ├─ Imaging/                     thumbnail and PDQ
-│  └─ Scanner/                     file and Polaris log scan
-├─ Models/                         cross-feature DTOs and events
-├─ Messages/                       Japanese message catalog
-├─ Shared/                         reusable controls, services, models
-└─ Themes/                         tokens, brushes, typography, controls
-```
-
-feature固有の状態と操作は同じ `Features/<Feature>` に置く。複数featureから使うI/Oやuse caseだけを `Services`、DB・filesystem・image algorithm等の基盤を `Core`、実際に再利用するUI部品を `Shared` に置く。
+frontendを直接ProjectReferenceし、launcher sourceもtestへlinkする。state / DB / scanner / imagingの検証、source宣言のpackaging検査、専用processでWinUI / OS境界を使う検証を含む。coverageの除外範囲と実画面検証の範囲は別に管理する。
 
 ## Runtime Decisions
 
 ### ADR-001: WinUI 3 Single-process Desktop App
 
-**Decision**
-
-.NET 8 + WinUI 3 の単一 frontend processを使う。
-
-**Current reasons**
-
-- Windows native window、Dispatcher、Composition、file picker、clipboard、Launcherを直接利用できる。
-- UI state、scanner、image analysis、SQLiteをC#内で接続でき、IPC schemaやsidecar processを必要としない。
-- standard gridとvirtualized masonryをWinUI controlsで実装できる。
-
-**Constraints**
-
-- UI objectの変更はDispatcher threadへ戻す。
-- WinUI XAML compilerとunpackaged resource layoutがbuild契約になる。
-- platformはWindows x64に限定される。
+.NET 8 + WinUI 3を採用し、Window、Dispatcher、Composition、picker、clipboardを直接使う。UI、scan、画像解析、SQLiteをC# process内で接続し、IPC schema / sidecarを持たない。Windows x64とunpackaged XAML配置が制約になる。
 
 ### ADR-002: Feature-local MVVM
 
-**Decision**
-
-Pageはevent wiringとframework interaction、ViewModel/stateは観察可能な状態とuse case呼出し、service/coreはI/Oとdomain logicを担当する。
-
-**Rules embodied in current code**
-
-- `UiThreadSafeObservableObject` と `UiObservableCollection` は notification をmarshalするが、mutation自体のthread ownershipは保証しない。
-- background処理からUI-bound stateを変える場合は `DispatcherService.RunOnUiThread` を使う。
-- reusableな純粋判断がある場合だけ `*Logic.cs` へ分ける。表示から消えた機能のhelperは残さない。
-- shellはoverlay/modalの所有者で、feature pageを実行時に複数parent間で移動しない。
-
-CommunityToolkit の field-based `[ObservableProperty]` を使う箇所があり、`MVVMTK0045` は project全体で抑止している。現行 ReleaseはNativeAOTではなく、この設定はruntime要件ではない。
+Pageはframework interaction、VM / stateは表示状態とuse case、service / coreはI/Oやdomain処理を担当する。実際に再利用する純粋判断だけ`*Logic.cs`へ分ける。実依存とsingleton / 短寿命Pageの所有関係は[Composition and State Ownership](architecture.md#composition-and-state-ownership)を参照する。
 
 ### ADR-003: SQLite as Local Metadata Index
 
-**Decision**
-
-写真原本とは別に、検索用metadata、tag、favorite、PDQ、Polaris visitをSQLiteへ保存する。
-
-**Current reasons**
-
-- 全データが単一Windows userのローカル状態であり、server DBを必要としない。
-- WALによりbackground scan/writeとgallery readを共存させられる。
-- transactionでmulti-table tag操作、batch upsert、folder resetの整合性を守れる。
-
-DBは写真原本のbackupではない。原本を削除せず、scanで再構築可能なindexとして扱う。詳細は [Database Schema](database.md) を参照する。
+単一Windows userのlocal状態をSQLiteへ保存する。WALはgallery readとbackground writeの共存、transactionはtag / scan batch / slot整理の整合性に用いる。DBには再生成可能indexだけでなく、再scanから再生成できないfavorite / tagとその復元用backupもある。原本backupとは異なる。
 
 ### ADR-004: Custom PDQ Pipeline
 
-**Decision**
-
-repository内のPDQ実装で、各写真の0°、90°、180°、270° hashを計算する。保存値と比較値は32 byte / 256 bitを4つまで持つ。
-
-**Current implementation choices**
-
-- DCT matrixをcacheする。
-- 一時bufferはpoolして大量解析時のallocationを抑える。
-- comparisonでは64 bit整数4個のpacked hashとpopcountを使う。
-- 保存経路では品質値を必要としないため、4方向hashだけを計算する。
-- PDQ workerは30写真を1 chunk、CPUの半分を基準に最大8並列、2 waveを1 batchとして処理する。
-- World Resolveのcandidate rankingは候補を先にparseし、大規模集合では最大12並列を使う。
-
-PDQの現行用途はワールド名補完候補である。一般的なduplicate cleanup UIは提供しない。
+repositoryのPDQで4回転hashを計算し、DCT matrix cache、buffer pool、packed hash / popcountを用いる。保存経路は品質値を使わずhashを保存する。用途はworld候補と完全重複の候補絞込みであり、削除の確定にはSHA-256を使う。
 
 ### ADR-005: XAML Resource Dictionaries
 
-**Decision**
-
-視覚tokenとstyleは次の順でapplication resourcesへmergeする。
-
-1. `Themes/Tokens.xaml`
-2. `Themes/Brushes.xaml`
-3. `Themes/Typography.xaml`
-4. `Themes/Buttons.xaml`
-5. `Themes/Containers.xaml`
-
-feature固有のlayoutとvisual stateはfeature XAML/code-behindに置き、複数画面で本当に共通のcontrolだけを `Shared/Controls` に置く。Light/Darkはtheme resourceで切り替え、利用者の選択を `setting.json` に保存する。
-
-`XamlControlsResources` は `App.xaml` の初期load中ではなく、`App.OnLaunched` で最初のWindow/Page XAMLより前に挿入する。これはself-contained unpackaged hostのresource resolution契約である。
+Tokens→Brushes→Typography→Buttons→Containersの順でmergeし、feature固有layout / stateはfeature側へ置く。Light / Darkはtheme resourceで切り替える。`XamlControlsResources`は初期App.xaml load時ではなく、`App.OnLaunched`で最初のWindow / Page XAMLより前に挿入する。
 
 ### ADR-006: Enter-submit Search
 
-**Decision**
-
-headerのworld searchはplain textと候補表示だけを持ち、Enterで確定する。
-
-入力中のqueryを即時DB検索へ流さず、`SearchQuery` と確定済み `DebouncedQuery` を分ける。command paletteや特別なprefix parserは持たない。
+world検索はplain textと候補を持ち、Enter等で確定する。入力中queryと確定queryを分け、入力だけを写真DB検索へ流さない。command palette / 特別prefix構文は持たない。
 
 ### ADR-007: Confirmed World Resolution
 
-**Decision**
-
-Polaris archiveによる時間区間補完はpost-scanで自動適用する。PDQ候補はWorld Resolve画面で利用者が確認した項目だけを適用する。
-
-- 同じ source slot の既知写真だけを候補にする。
-- distance 75以下、表示一致率71%以上だけを自動候補として見せる。
-- 候補外は手動world name入力を許可する。
-- 確定済み候補は `phash_confirmed`、手入力は `manual` として由来を保持する。
+Polaris `InstallLocation/Data/archive`は時刻区間による補完に用いる。PDQは同slot候補を利用者が確認した場合だけUIから適用し、距離75以下 / 表示71%以上を候補にする。候補外は手入力を許可し、由来を保存する。
 
 ### ADR-008: Bounded Background Work
 
-**Decision**
+scan、PDQ、candidate ranking、thumbnailは処理ごとの並列上限を持つ。実行task、gate、世代、停止の範囲は[Concurrency and Lifecycle](architecture.md#concurrency-and-lifecycle)が正本であり、全UI / writeに共通する取消し保証へ広げない。
 
-写真数に比例して無制限なtaskを作らず、normal useのUI応答性とmemoryを守る範囲で固定上限を使う。
+<a id="source-layout"></a>
 
-| Work | Bound |
-| --- | --- |
-| Scan image analysis | 1〜4 parallel、500-row DB batch、100 ms progress interval |
-| PDQ analysis | 1〜8 parallel chunks、30 rows/chunk、2 waves/batch |
-| World candidate search | 最大12 parallel、125 ms progress interval |
-| Thumbnail generation | shared workers 2本 |
-| Logger queue | 512 lines、message 8000 chars、file 1 MiB + `.1` |
-
-画面やfolderを切り替える処理は、cancellation tokenだけでなく、実行中taskの完了待ちとgeneration guardも使う。これによりstale UI update、削除後cacheの再作成、旧folderへの遅延DB writeを防ぐ。
+source treeとmodule責務は[Source Responsibility Map](architecture.md#source-responsibility-map)へ集約する。
 
 ## Build and Packaging Contract
 
-### Debug
+### Prerequisites and Debug
 
-`Program.Main` が `WinRT.ComWrappersSupport.InitializeComWrappers()` を呼び、Windows App SDK bootstrap `1.6` を明示初期化する。Debugはsystem-installed Windows App Runtimeを使う。Release用reg-free初期化と同時に有効化しない。
+<a id="debug"></a>
+
+Windows x64、.NET 8 SDK、Windows 10 SDKを利用できる開発環境、Debug用Windows App Runtime 1.6が必要である。installer生成時はNSISを導入する。scriptは`C:\Program Files (x86)\NSIS\makensis.exe`とその`Bin`配下を候補にする。
+
+以下はrepository rootからのcommandである。
 
 ```powershell
 dotnet build app/Alpheratz.Frontend.csproj
 dotnet run --project app/Alpheratz.Frontend.csproj
 ```
 
+Debugは`Program.Main`からCOM wrappersとWindows App SDK bootstrapを明示初期化する。system-installed runtimeを使い、Release reg-free初期化と同processで二重に有効化しない。
+
 ### Release Frontend
 
-Release project設定は次を有効にする。
+Releaseは`SelfContained=true`、`WindowsAppSDKSelfContained=true`、`WindowsAppSdkUndockedRegFreeWinRTInitialize=true`、`InvariantGlobalization=false`、`RuntimeIdentifier=win-x64`。cultureを日本語tag候補の比較・並び順などに使用する。
 
-- `SelfContained=true`
-- `WindowsAppSDKSelfContained=true`
-- `WindowsAppSdkUndockedRegFreeWinRTInitialize=true`
-- `InvariantGlobalization=true`
-- `RuntimeIdentifier=win-x64`
-
-通常の `dotnet publish` だけではこのunpackaged WinUI appに必要なXBF layoutが完成しない。`BuildWorks/scripts/publish-app-release.ps1` は次を追加する。
-
-1. build objの全 `*.xbf` を相対pathを保ってpublish rootへcopyする。
-2. older generated URIとの互換用に `Alpheratz.Frontend/` 以下にもmirrorする。
-3. `Microsoft.UI.Xaml.Controls.pri` をroot `resources.pri` としてcopyする。
-4. root `App.xbf`, `MainWindow.xbf`, `resources.pri` の存在を検証する。
-
-XBF source pathは現在のRelease build layoutに依存するため、package scriptとproject output pathを別々に変更しない。
-
-### Launcher and Installer
-
-launcherはself-contained、single-fileのWindows Forms `WinExe`。installerは次を行う。
-
-- `$INSTDIR\app` にfrontend publishを配置する。
-- `$INSTDIR` にlauncherとuninstallerを配置する。
-- `$INSTDIR\Data` を作成する。
-- 同梱したMicrosoft Visual C++ Redistributableのversionをmachine-wide registryと比較し、不足時はappを置換する前に導入する。
-- HKCUへ`InstallLocation`と`RuntimeLocation`を保存する。
-- Start Menu shortcutを作成し、finish pageで任意のDesktop shortcutを作成する。
-- update時はapp binariesだけを入れ替え、Dataを保持する。
-- uninstall時はapp、shortcuts、Data、Run key、製品registry keyを削除する。
-
-App本体はcurrent-user installで、Program Files配下はinstaller validationで拒否する。Microsoft Visual C++ Redistributableの導入または更新時だけUAC承認が必要である。Release build全体の入口は次だけである。
+通常の`dotnet publish`だけでXBF layoutは完成しない。正式入口は次である。
 
 ```powershell
 .\BuildWorks\scripts\build-release.ps1
+# 有効なVC++ cacheを優先する場合
+.\BuildWorks\scripts\build-release.ps1 -UseCachedVcRedist
 ```
 
-## Verification
+1. frontendをRelease / x64 / win-x64 / self-containedでpublishする。
+2. `app/artifacts/obj/x64/Release/net8.0-windows10.0.19041.0/win-x64`の全XBFを相対path保持でpublish rootへcopyし、旧assembly-name URI用に`Alpheratz.Frontend/`へmirrorする。
+3. `Microsoft.UI.Xaml.Controls.pri`をrootの`resources.pri`としてcopyする。独自app PRIは生成しない。
+4. rootの`App.xbf`、`MainWindow.xbf`、`resources.pri`とcopy件数を確認する。
+5. launcherをself-contained single-file publishし、VC++を準備、file versionをNSISへ渡してinstallerを生成する。
 
-### Source and Tests
+frontend projectのoutput pathとscriptのXBF source pathは一体で変更する。互換XBF mirrorの入力に同mirrorを再帰的に含めない。
 
-```powershell
-dotnet test tests/Alpheratz.Tests/Alpheratz.Tests.csproj
-```
+### Assets, Runtime and Outputs
 
-coverageを取得する場合は `tests/coverlet.runsettings` または生成物だけを除外する `tests/coverlet.generated-only.runsettings` を使う。coverage除外fileと理由は `CoveragePolicyTests` のallowlistで固定する。
+<a id="launcher-and-installer"></a>
 
-### Release Artifact
+| Component | Output / contract |
+| --- | --- |
+| Frontend | `BuildWorks/artifacts/publish/Alpheratz` |
+| Launcher | `artifacts/publish/Launcher/Alpheratz.exe` |
+| Installer | `BuildWorks/Alpheratz-Installer.exe` |
+| VC++ cache | `BuildWorks/runtime/vc_redist.x64.exe`。Microsoft公式URLから取得しAuthenticode status / signer / file identityを検証 |
+| Bitmap / icon | `LogoText.png`、`avatar.jpg`、`icon.ico`、`icon.png`をcopyし、`Logo.png`は除外 |
+| Messages | UTF-8 propertiesを`Alpheratz.Messages.messages.ja.properties`としてembed |
 
-Release/XAML変更では少なくとも次を確認する。
+通常buildはVC++をdownloadし、失敗時も既存valid cacheがあれば再利用する。`-UseCachedVcRedist`はvalid cacheをdownloadより優先する指定であり、署名検証を省略しない。製品署名とVC++配布物の署名検証は別である。
 
-1. `build-release.ps1` が成功する。
-2. `BuildWorks/runtime/vc_redist.x64.exe`にMicrosoftの有効なAuthenticode署名がある。
-3. publish rootに `App.xbf`, `MainWindow.xbf`, `resources.pri` がある。
-4. NSIS installerからcurrent-user installできる。
-5. launcher経由でfrontendが起動し、splashからShellへ遷移する。
-6. install後のApplication event logに新しいstartup crashがない。
+## Verification Commands and CI
 
-詳細な障害原因と変更禁止点はagent専用の `.claude/xaml-packaging-notes.md` に置き、公開文書には現行契約だけを記載する。
+<a id="verification"></a>
+<a id="source-and-tests"></a>
+
+| Purpose | Command | Configuration | Scope | CI gate |
+| --- | --- | --- | --- | --- |
+| Restore | `dotnet restore tests/Alpheratz.Tests/Alpheratz.Tests.csproj` | runnerの.NET 8 | app / test依存 | 実行する |
+| Source and tests | `dotnet test tests/Alpheratz.Tests/Alpheratz.Tests.csproj` | 既定Debug | project内test。native境界も含む | CIはDebug / no-restore / minimalで実行 |
+| Release tests | `dotnet test tests/Alpheratz.Tests/Alpheratz.Tests.csproj --configuration Release` | self-contained、専用XBF / PRI配置 | Release構成で同projectを実行 | CIにはない |
+| Coverage | `dotnet test tests/Alpheratz.Tests/Alpheratz.Tests.csproj --collect:"XPlat Code Coverage" --settings tests/coverlet.generated-only.runsettings` | 指定runsettings | 生成obj以外をpatternで除外せず、属性allowlistは適用 | CIには収集・閾値判定なし |
+| Release artifact | `.\BuildWorks\scripts\build-release.ps1` | Release | XBF / PRI、launcher、VC++、NSIS生成 | 実行する |
+| Installed app | installer導入後、外側launcherからsplash→Shellを確認 | 実配置 | current-user導入、registry、起動、Application event log | 自動CI stepなし |
+
+CIはmain push / main宛PR / workflow_dispatchをwindows-2025で処理し、NSIS導入→restore→Debug test→最終installer生成の順に進む。soft-failはなく、同branchの古いrunは新runでcancelする。installer uploadやrelease公開は行わない。
+
+`tests/coverlet.runsettings`はXAML code-behindなどをfile patternでも除外する別設定である。`CoveragePolicyTests`は`ExcludeFromCodeCoverage`のfile / 理由allowlistを固定するが、現行CIにcoverage 80% gateはない。実行条件・結果・件数・receiptはrunごとの内部証拠で管理し、通常suite成功を全画面・全Release・実installer検証完了とは扱わない。
+
+<a id="release-artifact"></a>
+
+Release / XAML変更の配布確認では、build成功、VC++署名、required XBF / PRI、installed launcherからの起動、splash→Shell、起動時刻後のApplication event logを確認する。これは確認手順であり、この文書の静的照合日に実行したという意味ではない。
+
+## Installation Lifecycle
+
+| Stage | Behavior | Retention, failure and retry |
+| --- | --- | --- |
+| 通常導入 | `Alpheratz-Installer.exe`、既定LocalAppData、current user。Program Files配下は対話 / silentとも拒否 | appはuser scope。不足VC++だけmachine-wide導入 / 更新時にUACが必要 |
+| Runtime確認 | HKLM Installed / Versionと同梱VC++ versionを比較し、必要時に`/install /passive /norestart` | app置換前に実行。失敗は既存appを変更せず中止。3010はreboot flag |
+| 更新 / 再導入 | 同じinstall先のlauncherとappを置換、Dataを作成 / 保持、registryとshortcutを更新 | 使用中fileは配置失敗となり得る。installerはprocessを自動終了しないため、実行中アプリを閉じて再実行する。binary全体のrollback保証はない |
+| 登録 | HKCU InstallLocation / RuntimeLocation、uninstall情報、Start Menu shortcut、任意Desktop shortcut | 自動起動Runはアプリ設定で管理 |
+| 通常uninstall | app、launcher、shortcut、標準Data/db・logs・cache、Run、製品 / uninstall registry、uninstallerを削除 | 写真原本・Polaris archive・共有VC++は保持。Data / install rootは空時だけ削除 |
+| 削除失敗 | 非0結果と再試行案内、未完了fileとuninstallerを残す | 使用中fileや権限を解消して再実行。独自追加した他のData子fileまで再帰削除しない |
+
+データ別の消失・保持と手動backupは[Deletion and Retention](database.md#deletion-and-retention)を参照する。launcherはHKCU RuntimeLocationを優先し、なければLocalAppData既定pathを使用する。起動例外は`Data/logs/launcher_error.log`への記録を試みる。
 
 ## Current Distribution Constraints
 
-- x64のみ。
-- code signingなし。
-- MSIX packageなし。
-- frontendとlauncherはself-containedのため配布サイズが増える。
+- Windows x64のみ、MSIX packageなし。
+- 製品code signingなし。SmartScreen警告が出る場合がある。
+- frontend / launcherはself-containedのため配布sizeが増える。
+- 配布buildはVC++取得またはvalid cacheと署名検証、NSIS、固定XBF配置に依存する。
+
+## References
+
+- [Architecture](architecture.md): source責務、composition、state、event、lifecycle。
+- [Specification](spec.md): 機能と利用者に見える制約。
+- [Database Schema](database.md): 保存形式・transaction・保持・削除。
+- [README](../README.md): 利用・導入と開発入口。

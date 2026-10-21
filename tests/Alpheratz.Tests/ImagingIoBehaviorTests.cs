@@ -1,6 +1,8 @@
 using Alpheratz.Core;
 using Alpheratz.Core.Imaging;
 using Alpheratz.Core.Imaging.Pdq;
+using System.Security.Cryptography;
+using System.Text.Json;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
 
@@ -14,7 +16,7 @@ namespace Alpheratz.Tests;
 /// サムネイル生成キャッシュが動くことを確認する。
 /// </summary>
 [Collection(AppPathsCacheTestCollection.Name)]
-public sealed class ImagingIoBehaviorTests : IDisposable
+public sealed partial class ImagingIoBehaviorTests : IDisposable
 {
     private static readonly byte[] CompleteJpegMarkerSequence = [0xFF, 0xD8, 0x00, 0xFF, 0xD9];
     private readonly string tempDir;
@@ -65,6 +67,115 @@ public sealed class ImagingIoBehaviorTests : IDisposable
         Assert.Null(tiny);
     }
 
+    /// <summary>最小寸法・長辺上限・縦横比の境界を、確保方法の異なる2入口から実PNGで確認する。</summary>
+    [Theory]
+    [InlineData(4, 5, 0, 0)]
+    [InlineData(5, 4, 0, 0)]
+    [InlineData(5, 5, 5, 5)]
+    [InlineData(512, 7, 512, 7)]
+    [InlineData(7, 512, 7, 512)]
+    [InlineData(513, 7, 512, 6)]
+    [InlineData(7, 513, 6, 512)]
+    [InlineData(320, 640, 256, 512)]
+    [InlineData(513, 513, 512, 512)]
+    [InlineData(6000, 5, 512, 1)]
+    [InlineData(5, 6000, 1, 512)]
+    [InlineData(1024, 9, 512, 4)]
+    public async Task PdqReaderDimensionBoundariesPreserveImagesAndAgreeAcrossBufferOwners(int width, int height, int expectedWidth, int expectedHeight)
+    {
+        var path = Path.Combine(tempDir, $"境界 {width}x{height}.png"); await WriteSolidPngAsync(path, (uint)width, (uint)height, 255, 0, 0);
+        var bytes = File.ReadAllBytes(path); var image = await PdqImageReader.ReadLumaAsync(path.Replace('\\', '/'));
+        using var pooled = await PdqImageReader.ReadPooledLumaAsync(path);
+        if (expectedWidth == 0)
+        {
+            Assert.Null(image); Assert.Null(pooled);
+        }
+        else
+        {
+            Assert.NotNull(image); Assert.NotNull(pooled); var decoded = image.Value;
+            Assert.Equal(expectedWidth, decoded.width); Assert.Equal(expectedHeight, decoded.height); Assert.Equal(expectedWidth * expectedHeight, decoded.luma.Length);
+            Assert.Equal(expectedWidth, pooled.Width); Assert.Equal(expectedHeight, pooled.Height); Assert.True(pooled.Buffer.Length >= decoded.luma.Length);
+            Assert.NotSame(decoded.luma, pooled.Buffer); Assert.Equal(decoded.luma, pooled.Buffer.Take(decoded.luma.Length));
+            Assert.All(decoded.luma, value => Assert.InRange(value, 76.2449f, 76.2451f));
+            // readerは元画像で最小寸法を判定する。縮小後に5px未満となる画像はhasher側で拒否する。
+            if (expectedWidth < 5 || expectedHeight < 5) Assert.Equal("", PdqHasher.ComputeHashVariantsHex(decoded.luma, decoded.width, decoded.height));
+        }
+        Assert.Equal(bytes, File.ReadAllBytes(path));
+        WriteImagingEvidence($"boundary-{width}x{height}", new { source = path, width, height, expectedWidth, expectedHeight,
+            actual_width = image?.width, actual_height = image?.height, actual_luma_length = image?.luma.Length, pooled_width = pooled?.Width, pooled_height = pooled?.Height,
+            source_sha256 = Convert.ToHexString(SHA256.HashData(bytes)), original_bytes_preserved = true, two_real_winrt_reads = true, verification_complete = false });
+    }
+
+    /// <summary>BGRA成分と行順を独立した輝度literalで照合し、production係数を期待値へ流用しない。</summary>
+    [Fact]
+    public async Task PdqReaderColorChannelsAndPixelOrderMatchIndependentLumaValues()
+    {
+        var colors = new (byte r, byte g, byte b)[] { (0, 0, 0), (255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 255), (10, 20, 30) };
+        var expected = new[] { 0f, 76.245f, 149.685f, 29.07f, 255f, 18.15f }; var pixels = new byte[6 * 5 * 4];
+        for (var index = 0; index < 30; index++)
+        {
+            var color = colors[index % colors.Length]; pixels[index * 4] = color.b; pixels[index * 4 + 1] = color.g; pixels[index * 4 + 2] = color.r; pixels[index * 4 + 3] = 255;
+        }
+        var path = Path.Combine(tempDir, "RGB 行順.png"); await WriteTestPngAsync(path, 6, 5, pixels); var bytes = File.ReadAllBytes(path);
+        var image = await PdqImageReader.ReadLumaAsync(path); using var pooled = await PdqImageReader.ReadPooledLumaAsync(path);
+        Assert.NotNull(image); Assert.NotNull(pooled); Assert.Equal(6, image.Value.width); Assert.Equal(5, image.Value.height); Assert.Equal(30, image.Value.luma.Length);
+        Assert.Equal(6, pooled.Width); Assert.Equal(5, pooled.Height);
+        for (var index = 0; index < 30; index++)
+        {
+            Assert.InRange(image.Value.luma[index], expected[index % expected.Length] - 0.0001f, expected[index % expected.Length] + 0.0001f);
+            Assert.Equal(image.Value.luma[index], pooled.Buffer[index]);
+        }
+        Assert.Equal(bytes, File.ReadAllBytes(path));
+        WriteImagingEvidence("color-order", new { source = path, expected, actual_luma = image.Value.luma, pooled_luma = pooled.Buffer.Take(30).ToArray(),
+            source_sha256 = Convert.ToHexString(SHA256.HashData(bytes)), independent_luma_literals = true, original_bytes_preserved = true, verification_complete = false });
+    }
+
+    /// <summary>生存中の画像間で配列を共有せず、破棄・所有権移譲の拒否後も他画像の輝度を保持する。</summary>
+    [Fact]
+    public async Task PdqReaderBufferOwnershipKeepsOutstandingImagesIndependentAfterDisposal()
+    {
+        var redPath = Path.Combine(tempDir, "owner-red.png"); var bluePath = Path.Combine(tempDir, "owner-blue.png"); var greenPath = Path.Combine(tempDir, "owner-green.png");
+        await WriteSolidPngAsync(redPath, 5, 5, 255, 0, 0); await WriteSolidPngAsync(bluePath, 5, 5, 0, 0, 255); await WriteSolidPngAsync(greenPath, 5, 5, 0, 255, 0);
+        var imagesBefore = new[] { redPath, bluePath, greenPath }.ToDictionary(path => path, File.ReadAllBytes);
+        var independent = await PdqImageReader.ReadLumaAsync(redPath); using var red = await PdqImageReader.ReadPooledLumaAsync(redPath); using var blue = await PdqImageReader.ReadPooledLumaAsync(bluePath);
+        Assert.NotNull(independent); Assert.NotNull(red); Assert.NotNull(blue); var redBuffer = red.Buffer; var blueBuffer = blue.Buffer;
+        Assert.NotSame(independent.Value.luma, redBuffer); Assert.NotSame(independent.Value.luma, blueBuffer); Assert.NotSame(redBuffer, blueBuffer);
+        Assert.Throws<InvalidOperationException>(() => red.DetachBuffer()); Assert.Same(redBuffer, red.Buffer);
+        blue.Dispose(); blue.Dispose(); Assert.Throws<ObjectDisposedException>(() => blue.Buffer);
+        using var green = await PdqImageReader.ReadPooledLumaAsync(greenPath); Assert.NotNull(green); Assert.NotSame(redBuffer, green.Buffer);
+        Assert.All(independent.Value.luma, value => Assert.InRange(value, 76.2449f, 76.2451f)); Assert.All(red.Buffer.Take(25), value => Assert.InRange(value, 76.2449f, 76.2451f));
+        Assert.All(green.Buffer.Take(25), value => Assert.InRange(value, 149.6849f, 149.6851f));
+        red.Dispose(); red.Dispose(); Assert.Throws<ObjectDisposedException>(() => red.Buffer);
+        Assert.All(independent.Value.luma, value => Assert.InRange(value, 76.2449f, 76.2451f)); Assert.All(green.Buffer.Take(25), value => Assert.InRange(value, 149.6849f, 149.6851f));
+        Assert.All(imagesBefore, item => Assert.Equal(item.Value, File.ReadAllBytes(item.Key)));
+        WriteImagingEvidence("ownership", new { source_directory = tempDir, independent_luma = independent.Value.luma, outstanding_green_luma = green.Buffer.Take(25).ToArray(),
+            source_sha256 = imagesBefore.ToDictionary(row => row.Key, row => Convert.ToHexString(SHA256.HashData(row.Value))),
+            live_buffers_independent = true, pooled_detach_rejected = true, disposed_access_rejected = true, repeated_disposal_succeeds = true,
+            original_bytes_preserved = true, shared_pool_exact_reuse_required = false, verification_complete = false });
+    }
+
+    /// <summary>実共有違反・欠落・壊れたPNGを読込失敗とし、lock解除後に同じfileを読めることを確認する。</summary>
+    [Fact]
+    public async Task PdqReaderIoFailurePreservesSourceAndTheSamePathCanBeRetriedAfterUnlock()
+    {
+        var path = Path.Combine(tempDir, "読込 再試行.png"); await WriteSolidPngAsync(path, 5, 5, 255, 0, 0); var bytes = File.ReadAllBytes(path);
+        using (var exclusive = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            await Assert.ThrowsAnyAsync<IOException>(() => Task.Run(() => File.ReadAllBytes(path)));
+            Assert.Null(await PdqImageReader.ReadLumaAsync(path)); Assert.Null(await PdqImageReader.ReadPooledLumaAsync(path));
+        }
+        Assert.Equal(bytes, File.ReadAllBytes(path)); var retry = await PdqImageReader.ReadLumaAsync(path); using var retryPooled = await PdqImageReader.ReadPooledLumaAsync(path);
+        Assert.NotNull(retry); Assert.NotNull(retryPooled); Assert.Equal(5, retry.Value.width); Assert.Equal(5, retry.Value.height);
+        Assert.All(retry.Value.luma, value => Assert.InRange(value, 76.2449f, 76.2451f)); Assert.Equal(retry.Value.luma, retryPooled.Buffer.Take(25));
+        var missing = Path.Combine(tempDir, "missing.png"); Assert.Null(await PdqImageReader.ReadLumaAsync(missing)); Assert.Null(await PdqImageReader.ReadPooledLumaAsync(missing)); Assert.False(File.Exists(missing));
+        var broken = Path.Combine(tempDir, "broken.png"); var brokenBytes = "PNGではない画像"u8.ToArray(); File.WriteAllBytes(broken, brokenBytes);
+        Assert.Null(await PdqImageReader.ReadLumaAsync(broken)); Assert.Null(await PdqImageReader.ReadPooledLumaAsync(broken));
+        Assert.Equal(bytes, File.ReadAllBytes(path)); Assert.Equal(brokenBytes, File.ReadAllBytes(broken));
+        WriteImagingEvidence("io-failure-retry", new { source_directory = tempDir, source = path, source_sha256 = Convert.ToHexString(SHA256.HashData(bytes)),
+            retry_luma = retry.Value.luma, retry_pooled_luma = retryPooled.Buffer.Take(25).ToArray(), exclusive_os_lock_confirmed = true,
+            missing_file_not_created = true, malformed_image_preserved = true, original_bytes_preserved = true, verification_complete = false });
+    }
+
     /// <summary>キャンセルを読取失敗の null へ変換せず、呼出側へ伝播することを確認する。</summary>
     [Fact]
     public async Task PdqImageReader_ReadLumaAsync_PropagatesCancellation()
@@ -74,8 +185,10 @@ public sealed class ImagingIoBehaviorTests : IDisposable
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            PdqImageReader.ReadLumaAsync(imagePath, cancellation.Token));
+        (float[] luma, int width, int height)? returned = null;
+        var error = await Record.ExceptionAsync(async () => returned = await PdqImageReader.ReadLumaAsync(imagePath, cancellation.Token));
+        var result = returned is null ? "null" : $"image {returned.Value.width}x{returned.Value.height}, luma={returned.Value.luma.Length}";
+        Assert.True(error is OperationCanceledException, $"取消し済みの読込でOperationCanceledExceptionが発生しませんでした。exception={error?.GetType().FullName ?? "none"}, result={result}");
     }
 
     /// <summary>
@@ -286,12 +399,30 @@ public sealed class ImagingIoBehaviorTests : IDisposable
             }
         }
 
+        await WriteTestPngAsync(path, width, height, pixels);
+    }
+
+    private static Task WriteSolidPngAsync(string path, uint width, uint height, byte r, byte g, byte b)
+    {
+        var pixels = new byte[width * height * 4];
+        for (var index = 0; index < pixels.Length; index += 4) { pixels[index] = b; pixels[index + 1] = g; pixels[index + 2] = r; pixels[index + 3] = 255; }
+        return WriteTestPngAsync(path, width, height, pixels);
+    }
+
+    private static async Task WriteTestPngAsync(string path, uint width, uint height, byte[] pixels)
+    {
         await using var fileStream = new FileStream(path, FileMode.Create, FileAccess.ReadWrite, FileShare.None);
         using IRandomAccessStream randomAccessStream = fileStream.AsRandomAccessStream();
         var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, randomAccessStream);
         encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore, width, height, 96, 96, pixels);
         await encoder.FlushAsync();
         await fileStream.FlushAsync();
+    }
+
+    private static void WriteImagingEvidence(string name, object observation)
+    {
+        var directory = Environment.GetEnvironmentVariable("ALPHERATZ_STARTUP_TEST_EVIDENCE_DIR");
+        if (!string.IsNullOrEmpty(directory)) File.WriteAllText(Path.Combine(directory, $"alpheratz-imaging-{name}-evidence.json"), JsonSerializer.Serialize(observation));
     }
 
     private static Task WriteCompleteTestJpegAsync(string path, CancellationToken ct)

@@ -23,15 +23,7 @@ internal static class Program
                 return 2;
             }
 
-            var startInfo = new ProcessStartInfo
-            { FileName = runtimeExe, WorkingDirectory = Path.GetDirectoryName(runtimeExe)!, UseShellExecute = true, };
-
-            foreach (var arg in args)
-            {
-                startInfo.ArgumentList.Add(arg);
-            }
-
-            Process.Start(startInfo);
+            Process.Start(BuildRuntimeStartInfo(runtimeExe, args));
             return 0;
         }
         catch (Exception ex)
@@ -42,6 +34,15 @@ internal static class Program
                 : "Alpheratzを起動できませんでした。エラー情報も保存できませんでした。");
             return 1;
         }
+    }
+
+    /// <summary>runtimeの作業folderと個別引数を保持し、shell文字列へ連結せず引き渡す。</summary>
+    internal static ProcessStartInfo BuildRuntimeStartInfo(string runtimeExe, string[] args)
+    {
+        var startInfo = new ProcessStartInfo
+        { FileName = runtimeExe, WorkingDirectory = Path.GetDirectoryName(runtimeExe)!, UseShellExecute = true, };
+        foreach (var arg in args) startInfo.ArgumentList.Add(arg);
+        return startInfo;
     }
 
     private static string ResolveRuntimeExecutable()

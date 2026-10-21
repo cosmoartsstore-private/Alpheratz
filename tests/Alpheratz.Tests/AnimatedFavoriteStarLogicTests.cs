@@ -27,8 +27,8 @@ public sealed class AnimatedFavoriteStarLogicTests
 
         Assert.Equal(
             new FavoriteStarBrushPlan(
-                AnimatedFavoriteStarLogic.FavoriteBrushKey,
-                AnimatedFavoriteStarLogic.FavoriteBrushKey,
+                "AFavorite",
+                "AFavorite",
                 FavoriteStarBrushFallback.Transparent,
                 FavoriteStarBrushFallback.Gray),
             AnimatedFavoriteStarLogic.BrushPlan(true));
@@ -36,7 +36,7 @@ public sealed class AnimatedFavoriteStarLogicTests
         Assert.Equal(
             new FavoriteStarBrushPlan(
                 null,
-                AnimatedFavoriteStarLogic.FaintTextBrushKey,
+                "ATextFaint",
                 FavoriteStarBrushFallback.Transparent,
                 FavoriteStarBrushFallback.Gray),
             AnimatedFavoriteStarLogic.BrushPlan(false));

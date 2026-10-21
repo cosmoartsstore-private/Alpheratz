@@ -292,38 +292,29 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
     }
 
     /// <summary>
-    /// テンプレートを削除して即座に永続化する。
-    /// 削除後の選択状態フォロー：
+    /// 削除を保存し、成功後だけ一覧と選択・編集状態を更新する。
+    /// 保存成功後の選択状態フォロー：
     ///   - 削除したものがアクティブテンプレートだった場合は先頭テンプレートに切り替え
     ///   - 削除したものが編集中だった場合は cancelEdit でドラフトをクリア
-    /// saveTemplates をその場で await し、削除直後の状態を設定ファイルへ確実に反映する。
+    /// 保存失敗時は削除対象と編集中の入力を保持し、同じ削除操作で再試行できる。
     /// </summary>
     public async Task deleteTemplate(string template, AlpheratzSettingDto currentSetting)
     {
         AppLogger.Trace($"TemplatePageViewModel.deleteTemplate: enter template={template}");
         try
         {
-            if (tweetTemplates.Contains(template))
-            {
-                tweetTemplates.Remove(template);
-            }
-
-            if (ActiveTweetTemplate == template)
-            {
-                ActiveTweetTemplate = tweetTemplates.FirstOrDefault() ?? string.Empty;
-            }
-
-            if (EditingTweetTemplate == template)
-            {
-                cancelEdit();
-            }
-
-            // コレクション変更後に即時保存することで、アプリ再起動でも削除を保持する。
-            await saveTemplates(currentSetting).ConfigureAwait(false);
+            var nextTemplates = tweetTemplates.Where(value => value != template).ToList();
+            var nextActive = ActiveTweetTemplate == template ? nextTemplates.FirstOrDefault() ?? string.Empty : ActiveTweetTemplate;
+            await settingsService.SaveSettingAsync(new AlpheratzSettingDto { tweetTemplates = nextTemplates, activeTweetTemplate = nextActive }).ConfigureAwait(false);
+            tweetTemplates.ReplaceAll(nextTemplates);
+            ActiveTweetTemplate = nextActive;
+            if (EditingTweetTemplate == template) cancelEdit();
+            toastService.addToast(getMsg("TemplatePageViewModel.templateSaved"));
         }
         catch (Exception ex)
         {
             AppLogger.Error($"TemplatePageViewModel.deleteTemplate: threw: {ex}");
+            toastService.addToast(getMsg("TemplatePageViewModel.templateDeleteFailed"), ToastType.error);
         }
         AppLogger.Trace("TemplatePageViewModel.deleteTemplate: exit");
     }
@@ -388,7 +379,7 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
         AppLogger.Trace("TemplatePageViewModel.saveTemplateDraft: exit");
     }
 
-    /// <summary>ドラフトをテンプレート一覧へ反映してから、設定ファイルへ保存する。</summary>
+    /// <summary>入力したテンプレートを保存し、成功後だけ一覧と編集状態を確定する。</summary>
     public async Task saveTemplate(AlpheratzSettingDto currentSetting)
     {
         AppLogger.Trace("TemplatePageViewModel.saveTemplate: enter");
@@ -415,25 +406,55 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
             toastService.addToast(getMsg("TemplatePageViewModel.templateAlreadyExists"), ToastType.error);
             return;
         }
-        saveTemplateDraft();
-        await saveTemplates(currentSetting).ConfigureAwait(false);
-        AppLogger.Trace("TemplatePageViewModel.saveTemplate: exit");
-    }
+        var submittedEditing = EditingTweetTemplate;
+        var nextTemplates = tweetTemplates.ToList();
+        var nextActive = ActiveTweetTemplate;
+        if (submittedEditing is not null)
+        {
+            var index = nextTemplates.IndexOf(submittedEditing);
+            if (index >= 0) nextTemplates[index] = normalized;
+            if (nextActive == submittedEditing) nextActive = normalized;
+        }
+        else
+        {
+            nextTemplates.Add(normalized);
+            if (string.IsNullOrWhiteSpace(nextActive)) nextActive = normalized;
+        }
 
-    /// <summary>現在のテンプレート一覧とアクティブテンプレートを設定ファイルへ保存する。</summary>
-    public async Task saveTemplates(AlpheratzSettingDto currentSetting)
-    {
-        AppLogger.Trace($"TemplatePageViewModel.saveTemplates: enter count={tweetTemplates.Count}");
         try
         {
-            await settingsService.SaveSettingAsync(new AlpheratzSettingDto { tweetTemplates = tweetTemplates, activeTweetTemplate = ActiveTweetTemplate, }).ConfigureAwait(false);
+            // 保存失敗で未保存cardを作らず、同じ入力・保存操作で再試行できる状態を保持する。
+            await settingsService.SaveSettingAsync(new AlpheratzSettingDto { tweetTemplates = nextTemplates, activeTweetTemplate = nextActive }).ConfigureAwait(false);
+            tweetTemplates.ReplaceAll(nextTemplates);
+            ActiveTweetTemplate = nextActive;
+            EditingTweetTemplate = null;
+            TweetTemplateDraft = string.Empty;
             toastService.addToast(getMsg("TemplatePageViewModel.templateSaved"));
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"TemplatePageViewModel.saveTemplates: threw: {ex}");
+            AppLogger.Error($"TemplatePageViewModel.saveTemplate: threw: {ex}");
             toastService.addToast(getMsg("TemplatePageViewModel.templateSaveFailed"), ToastType.error);
         }
-        AppLogger.Trace("TemplatePageViewModel.saveTemplates: exit");
+        AppLogger.Trace("TemplatePageViewModel.saveTemplate: exit");
+    }
+
+    /// <summary>使用対象を保存し、成功後だけ「使用中」の表示と投稿用templateを切り替える。</summary>
+    public async Task selectTemplate(string template)
+    {
+        AppLogger.Trace($"TemplatePageViewModel.selectTemplate: enter template={template}");
+        if (!tweetTemplates.Contains(template)) return;
+        try
+        {
+            await settingsService.SaveSettingAsync(new AlpheratzSettingDto { activeTweetTemplate = template }).ConfigureAwait(false);
+            ActiveTweetTemplate = template;
+            toastService.addToast(getMsg("TemplatePageViewModel.templateSaved"));
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"TemplatePageViewModel.selectTemplate: threw: {ex}");
+            toastService.addToast(getMsg("TemplatePageViewModel.templateSelectionFailed"), ToastType.error);
+        }
+        AppLogger.Trace("TemplatePageViewModel.selectTemplate: exit");
     }
 }

@@ -7,10 +7,11 @@ Alpheratz 固有の内部資料だけを置く。現行機能の正本はproduct
 | Document | Scope |
 | --- | --- |
 | `../README.md` | プロジェクト概要、利用・build・dataの入口 |
-| `../docs/spec.md` | 現行機能、処理順、並行処理、制約 |
-| `../docs/database.md` | SQLite schema、query、transaction、compatibility |
+| `../docs/spec.md` | 現行機能の前提、判断、成功・部分成功・取消し・失敗の結果 |
+| `../docs/architecture.md` | process、module責務、状態所有、event、非同期処理とlifecycle |
+| `../docs/database.md` | SQLite・JSON・cache・log・registry、識別、transaction、寿命、backup |
 | `../docs/tech-stack.md` | version、architecture decision、build・distribution contract |
-| `../docs/basic-design.html` | 画面、layer、layout、interaction state |
+| `../docs/basic-design.html` | 画面、layer、layout、interaction state。操作manualではない |
 
 ## Agent-only Files
 

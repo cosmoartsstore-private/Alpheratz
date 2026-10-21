@@ -249,6 +249,21 @@ public sealed class ShellPageInteractionLogicTests
         Assert.Equal("10", filterOverlay.Attribute("Canvas.ZIndex")?.Value);
     }
 
+    /// <summary>写真サイズ変更はgalleryの操作可能状態でだけ許可し、各操作keyの方向を固定する。</summary>
+    [Fact]
+    public void GallerySizeKeysCannotOperateBehindOverlaysOrInsideTextInput()
+    {
+        Assert.True(ShellPageInteractionLogic.CanAdjustGallerySize(Overlay(), true, false));
+        Assert.False(ShellPageInteractionLogic.CanAdjustGallerySize(Overlay(), false, false));
+        Assert.False(ShellPageInteractionLogic.CanAdjustGallerySize(Overlay(), true, true));
+        foreach (var blocked in new[] { Overlay(photoModalOpen: true), Overlay(middleModalOpen: true), Overlay(filterOpen: true), Overlay(confirmOpen: true), Overlay(galleryModalOpen: true) })
+            Assert.False(ShellPageInteractionLogic.CanAdjustGallerySize(blocked, true, false));
+        Assert.True(ShellPageInteractionLogic.CanAdjustGallerySize(Overlay(multiSelectMode: true), true, false));
+        Assert.Equal(-1, ShellPageInteractionLogic.ResolveGalleryColumnDelta(VirtualKey.W)); Assert.Equal(-1, ShellPageInteractionLogic.ResolveGalleryColumnDelta(VirtualKey.Up));
+        Assert.Equal(1, ShellPageInteractionLogic.ResolveGalleryColumnDelta(VirtualKey.S)); Assert.Equal(1, ShellPageInteractionLogic.ResolveGalleryColumnDelta(VirtualKey.Down));
+        Assert.Equal(0, ShellPageInteractionLogic.ResolveGalleryColumnDelta(VirtualKey.Left)); Assert.Equal(0, ShellPageInteractionLogic.ResolveGalleryColumnDelta(VirtualKey.Enter));
+    }
+
     /// <summary>Shell の overlay 状態を名前付き引数で作成する。</summary>
     private static ShellOverlayState Overlay(
         bool photoModalOpen = false,

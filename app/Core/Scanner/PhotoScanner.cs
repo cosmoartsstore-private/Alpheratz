@@ -496,11 +496,10 @@ public sealed partial class PhotoScanner
             return 1;
 
         var ifdOffsetValue = ReadExifUInt32(tiff, 4, littleEndian);
-        if (ifdOffsetValue > int.MaxValue)
+        // 足し算やint変換の前に範囲を確認し、壊れたExifでJPEG本体の寸法を失わない。
+        if (ifdOffsetValue > (uint)(tiff.Length - 2))
             return 1;
         var ifdOffset = (int)ifdOffsetValue;
-        if (ifdOffset < 0 || ifdOffset + 2 > tiff.Length)
-            return 1;
 
         var entryCount = ReadExifUInt16(tiff, ifdOffset, littleEndian);
         for (var index = 0; index < entryCount; index++)

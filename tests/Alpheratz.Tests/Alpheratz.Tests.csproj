@@ -9,6 +9,10 @@
 
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!-- 隔離childで同じFactを直接実行し、VSTestの再起動による待機を避ける。 -->
+    <GenerateProgramFile>false</GenerateProgramFile>
+    <StartupObject>Alpheratz.Tests.NativeDispatcherQueueTests</StartupObject>
+    <UseAppHost>true</UseAppHost>
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSdkBootstrapInitialize>false</WindowsAppSdkBootstrapInitialize>
     <EnableMsixTooling>false</EnableMsixTooling>
@@ -18,6 +22,16 @@
     <AppxGeneratePrisForPortableLibrariesEnabled>false</AppxGeneratePrisForPortableLibrariesEnabled>
     <AppxGetPackagePropertiesEnabled>false</AppxGetPackagePropertiesEnabled>
     <IncludeProjectPriFile>false</IncludeProjectPriFile>
+  </PropertyGroup>
+
+  <!-- Releaseの専用childは本体と同じ.NET／WinAppSDK配置・globalizationで起動する。 -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <!-- reg-free初期化は本体module initializerを通し、test側の重複生成で欠損を補わない。 -->
+    <WindowsAppSdkUndockedRegFreeWinRTInitialize>false</WindowsAppSdkUndockedRegFreeWinRTInitialize>
+    <InvariantGlobalization>false</InvariantGlobalization>
   </PropertyGroup>
 
   <ItemGroup>
@@ -30,10 +44,22 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\app\Alpheratz.Frontend.csproj" />
+    <!-- launcherと同じsourceを使い、表示境界だけを専用stubへ置き換えて構築/保存logicを検証する。 -->
+    <Compile Include="..\..\BuildWorks\launcher\Program.cs" Link="Launcher\Program.cs" />
   </ItemGroup>
 
   <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
+
+  <!-- 本体の生成LoadComponent URIが参照するassembly名のXBF配置をtest出力にも保持する。 -->
+  <Target Name="CopyStartupXbfLayout" AfterTargets="Build">
+    <ItemGroup>
+      <_StartupXbf Include="$(TargetDir)**\*.xbf" Exclude="$(TargetDir)Alpheratz.Frontend\**\*.xbf" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_StartupXbf)" DestinationFiles="@(_StartupXbf->'$(TargetDir)Alpheratz.Frontend\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <!-- unpackaged Releaseのtheme resource mapを、配布scriptと同じapp-root名へ置く。 -->
+    <Copy Condition="'$(Configuration)' == 'Release'" SourceFiles="$(TargetDir)Microsoft.UI.Xaml.Controls.pri" DestinationFiles="$(TargetDir)resources.pri" SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

@@ -66,6 +66,8 @@ public static class AppLogger
         if (Interlocked.Increment(ref _queuedLines) > MaxQueuedLines)
         {
             Interlocked.Decrement(ref _queuedLines);
+            // 保存先の復旧後は、満杯のqueueからも保持済みlogの書込みを再開する。
+            TryScheduleFlush();
             return;
         }
 

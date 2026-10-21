@@ -7,9 +7,9 @@ namespace Alpheratz.Tests;
 ///
 /// ThumbnailService は標準 imgCache にファイルを生成し、AlpheratzDb.ResetPhotoCacheBySlotAsync は
 /// 同じ imgCache を物理削除する。並列実行すると生成直後のファイルが別テストから消されるため、
-/// この collection に入ったテスト同士は直列化する。
+/// この collection と共有log workerを使うテストは、他collectionとも並行させない。
 /// </summary>
-[CollectionDefinition("AppPaths imgCache")]
+[CollectionDefinition("AppPaths imgCache", DisableParallelization = true)]
 public sealed class AppPathsCacheTestCollection : ICollectionFixture<AppPathsDataDirFixture>
 {
     public const string Name = "AppPaths imgCache";

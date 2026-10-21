@@ -59,7 +59,7 @@ public sealed class PhotoModalPageLogicTests
         Assert.Null(PhotoModalPageLogic.ModalImageRequest("", '#'));
 
         Assert.Equal(
-            new PhotoModalImageRequest("C:#photos#display.jpg", PhotoModalPageLogic.ModalDecodePixelWidth),
+            new PhotoModalImageRequest("C:#photos#display.jpg", 1920),
             PhotoModalPageLogic.ModalImageRequest("C:/photos/display.jpg", '#'));
     }
 
@@ -73,18 +73,18 @@ public sealed class PhotoModalPageLogicTests
     [Fact]
     public void WorldNameAndMatchSource_ReturnUserFacingLabels()
     {
-        Assert.Equal(PhotoModalPageLogic.UnknownWorldName, PhotoModalPageLogic.WorldNameText(null));
-        Assert.Equal(PhotoModalPageLogic.UnknownWorldName, PhotoModalPageLogic.WorldNameText(""));
+        Assert.Equal("ワールド不明", PhotoModalPageLogic.WorldNameText(null));
+        Assert.Equal("ワールド不明", PhotoModalPageLogic.WorldNameText(""));
         Assert.Equal("Moonlight Station", PhotoModalPageLogic.WorldNameText("Moonlight Station"));
 
         Assert.Equal(
-            new WorldActionDisplay(false, PhotoModalPageLogic.WorldActionDisabledLabel, PhotoModalPageLogic.WorldActionDisabledTooltip, "ATextDisabled", 0.42),
+            new WorldActionDisplay(false, "リンクなし", "ワールドページの情報がないため開けません", "ATextDisabled", 0.42),
             PhotoModalPageLogic.WorldAction(null));
         Assert.Equal(
-            new WorldActionDisplay(false, PhotoModalPageLogic.WorldActionDisabledLabel, PhotoModalPageLogic.WorldActionDisabledTooltip, "ATextDisabled", 0.42),
+            new WorldActionDisplay(false, "リンクなし", "ワールドページの情報がないため開けません", "ATextDisabled", 0.42),
             PhotoModalPageLogic.WorldAction(""));
         Assert.Equal(
-            new WorldActionDisplay(true, PhotoModalPageLogic.WorldActionEnabledLabel, PhotoModalPageLogic.WorldActionEnabledTooltip, "ATextFaint", 1.0),
+            new WorldActionDisplay(true, "ワールド", "VRChatのワールドページを開く", "ATextFaint", 1.0),
             PhotoModalPageLogic.WorldAction("wrld_123"));
 
         Assert.Equal(new MatchSourceDisplay(true, "過去の記録から補完"),

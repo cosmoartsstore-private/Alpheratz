@@ -128,6 +128,93 @@ public sealed class WorldServiceBehaviorTests
         Assert.Empty(ranked);
     }
 
+    /// <summary>直列と並列の切替え前後で、全候補の識別情報と既知のビット距離を保持する。</summary>
+    [Theory]
+    [InlineData(511)]
+    [InlineData(512)]
+    [InlineData(513)]
+    public void RankCandidatesByDistance_PreservesEveryCandidateAcrossParallelBoundary(int candidateCount)
+    {
+        var candidates = Enumerable.Range(0, candidateCount)
+            .Select(index => Row($"candidate_{index}", $"World {index}", HashWithBitCount(index * 37 % 257)))
+            .Prepend(Row("invalid", "Invalid", "not-a-hash"))
+            .ToArray();
+        var originalHashes = candidates.Select(row => row.Phash).ToArray();
+        var expectedByPath = candidates.Skip(1).Select((row, index) => (row.PhotoPath, Distance: index * 37 % 257))
+            .ToDictionary(item => item.PhotoPath, item => item.Distance);
+        var expectedRowsByPath = candidates.Skip(1).ToDictionary(row => row.PhotoPath, row => row with { Phash = string.Empty });
+        var expectedDistances = expectedByPath.Values.Order().ToArray();
+        var prepared = WorldService.PrepareKnownWorldRows(candidates);
+
+        Assert.Equal(candidateCount, prepared.Count);
+        Assert.Equal(candidates.Skip(1).Select(row => row with { Phash = string.Empty }), prepared.Select(item => item.Row));
+        foreach (var ranked in new[]
+        {
+            WorldService.RankCandidatesByDistance(Hash(0x00), candidates),
+            WorldService.RankCandidatesByDistance(Hash(0x00), prepared),
+        })
+        {
+            Assert.Equal(expectedDistances, ranked.Select(item => item.Distance).ToArray());
+            Assert.Equal(expectedByPath.Keys.Order(), ranked.Select(item => item.Row.PhotoPath).Order());
+            Assert.All(ranked, item =>
+            {
+                Assert.Equal(expectedByPath[item.Row.PhotoPath], item.Distance);
+                Assert.Equal(expectedRowsByPath[item.Row.PhotoPath], item.Row);
+            });
+        }
+        Assert.Equal(originalHashes, candidates.Select(row => row.Phash).ToArray());
+    }
+
+    /// <summary>採用距離75と拒否距離76を区別し、同距離では入力順の最初の候補を採用する。</summary>
+    [Fact]
+    public void FindBestMatchWithDetails_PreservesThresholdAndFirstEqualCandidate()
+    {
+        var first = Row("first", "First", HashWithBitCount(75));
+        var second = Row("second", "Second", HashWithBitCount(75));
+        var outside = Row("outside", "Outside", HashWithBitCount(76));
+        var target = Hash(0x00);
+
+        var match = WorldService.FindBestMatchWithDetails(target, new[] { outside, first, second });
+        var reversed = WorldService.FindBestMatchWithDetails(target, new[] { second, first, outside });
+
+        Assert.NotNull(match);
+        Assert.NotNull(reversed);
+        Assert.Equal(first with { Phash = string.Empty }, match.Value.Row);
+        Assert.Equal(second with { Phash = string.Empty }, reversed.Value.Row);
+        Assert.Equal(75, match.Value.Distance);
+        Assert.Equal(75, reversed.Value.Distance);
+        Assert.Null(WorldService.FindBestMatchWithDetails(target, new[] { outside }));
+        Assert.Null(WorldService.FindBestMatchWithDetails("not-a-hash", new[] { first }));
+        Assert.Null(WorldService.FindBestMatchWithDetails(target, Array.Empty<AlpheratzDb.KnownWorldRow>()));
+        Assert.True(WorldService.CanAutomaticallyComplete(75));
+        Assert.False(WorldService.CanAutomaticallyComplete(76));
+    }
+
+    /// <summary>候補準備と両overloadは、開始前の取消しtokenを保持して失敗し、同入力を再利用できる。</summary>
+    [Fact]
+    public void CandidateRanking_PreCanceledTokenPreservedAndSameInputCanRetry()
+    {
+        var candidates = new[] { Row("exact", "Exact", Hash(0x00)) };
+        var prepared = WorldService.PrepareKnownWorldRows(candidates);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        Action[] canceledCalls =
+        [
+            () => WorldService.PrepareKnownWorldRows(candidates, cancellation.Token),
+            () => WorldService.FindBestMatchWithDetails(Hash(0x00), candidates, cancellation.Token),
+            () => WorldService.FindBestMatchWithDetails(Hash(0x00), prepared, cancellation.Token),
+            () => WorldService.RankCandidatesByDistance(Hash(0x00), candidates, cancellation.Token),
+            () => WorldService.RankCandidatesByDistance(Hash(0x00), prepared, cancellation.Token),
+        ];
+        foreach (var call in canceledCalls)
+            Assert.Equal(cancellation.Token, Assert.Throws<OperationCanceledException>(call).CancellationToken);
+
+        Assert.Equal(candidates[0].PhotoPath, Assert.Single(WorldService.RankCandidatesByDistance(Hash(0x00), prepared)).Row.PhotoPath);
+        Assert.Equal(0, WorldService.FindBestMatchWithDetails(Hash(0x00), candidates)!.Value.Distance);
+        Assert.Equal(Hash(0x00), candidates[0].Phash);
+    }
+
     /// <summary>
     /// ResolveUnknownWorldsFromSimilarPhotosAsync が DB 上の未知写真へ最短距離の既知ワールドを反映することを確認する。
     ///
@@ -259,6 +346,8 @@ public sealed class WorldServiceBehaviorTests
         var uri = WorldService.BuildWorldUri("wrld_alpha");
 
         Assert.Equal("https://vrchat.com/home/world/wrld_alpha/info", uri.ToString());
+        foreach (var worldId in new[] { "wrld_0", "wrld_a-0_B", "wrld_alpha-beta" })
+            Assert.Equal($"https://vrchat.com/home/world/{worldId}/info", WorldService.BuildWorldUri(worldId).AbsoluteUri);
         Assert.Throws<ArgumentException>(() => WorldService.BuildWorldUri("not-a-world-id"));
         Assert.Throws<ArgumentException>(() => WorldService.BuildWorldUri("wrld_"));
         Assert.Throws<ArgumentException>(() => WorldService.BuildWorldUri("wrld_alpha/info"));
@@ -266,6 +355,8 @@ public sealed class WorldServiceBehaviorTests
         Assert.Throws<ArgumentException>(() => WorldService.BuildWorldUri(""));
         Assert.Throws<ArgumentException>(() => WorldService.BuildWorldUri(null!));
         Assert.Throws<ArgumentException>(() => WorldService.BuildWorldUri("   "));
+        foreach (var worldId in new[] { "WRLD_alpha", "wrld_日本語", "wrld_α", "wrld_a?query", "wrld_a#fragment", "wrld_a%2Finfo", "wrld_a\\info", "wrld_a\n" })
+            Assert.Throws<ArgumentException>(() => WorldService.BuildWorldUri(worldId));
 
         var exception = Assert.Throws<ArgumentException>(() => WorldService.BuildWorldUri("wrld_alpha/beta"));
         Assert.DoesNotContain("wrld_alpha", exception.Message, StringComparison.Ordinal);
@@ -287,6 +378,11 @@ public sealed class WorldServiceBehaviorTests
             "https://x.com/intent/tweet?text=hello%20world",
             WorldService.BuildTweetIntentUri("https://x.com/intent/tweet?text=hello%20world").AbsoluteUri);
 
+        // query本文内の符号化文字と追加parameterの区切りを区別する。
+        Assert.Equal("https://twitter.com/intent/tweet?text=%E6%97%A5%E6%9C%AC%E8%AA%9E%26%3B",
+            WorldService.BuildTweetIntentUri("https://twitter.com/intent/tweet?text=%E6%97%A5%E6%9C%AC%E8%AA%9E%26%3B").AbsoluteUri);
+        Assert.Equal("https://x.com/intent/tweet?text=", WorldService.BuildTweetIntentUri("https://X.COM:443/intent/tweet?text=").AbsoluteUri);
+
         Assert.Throws<ArgumentException>(() => WorldService.BuildTweetIntentUri("https://example.com/intent/tweet?text=hello"));
         Assert.Throws<ArgumentException>(() => WorldService.BuildTweetIntentUri("https://twitter.com/intent/follow?text=hello"));
         Assert.Throws<ArgumentException>(() => WorldService.BuildTweetIntentUri("https://twitter.com/intent/tweet?text=hello&url=https://example.com"));
@@ -298,6 +394,8 @@ public sealed class WorldServiceBehaviorTests
         Assert.Throws<ArgumentException>(() => WorldService.BuildTweetIntentUri(" https://twitter.com/intent/tweet?text=hello "));
         Assert.Throws<ArgumentException>(() => WorldService.BuildTweetIntentUri(""));
         Assert.Throws<ArgumentException>(() => WorldService.BuildTweetIntentUri(null!));
+        foreach (var intentUrl in new[] { "not a URI", "https://twitter.com/intent/tweet", "https://twitter.com/intent/tweet?Text=hello", "https://twitter.com/Intent/tweet?text=hello", "https://twitter.com/intent/tweet?text=a&text=b", "https://twitter.com/intent/tweet?text=a;text=b" })
+            Assert.Throws<ArgumentException>(() => WorldService.BuildTweetIntentUri(intentUrl));
 
         var exception = Assert.Throws<ArgumentException>(() =>
             WorldService.BuildTweetIntentUri("https://example.com/intent/tweet?text=invalid-value"));
@@ -346,6 +444,11 @@ public sealed class WorldServiceBehaviorTests
             await Assert.ThrowsAsync<ArgumentException>(() => service.OpenWorldUrlAsync("not-a-world-id"));
             await Assert.ThrowsAsync<ArgumentException>(() => service.OpenTweetIntentAsync("https://example.com/not-twitter"));
             await Assert.ThrowsAnyAsync<Exception>(() => service.CopyImageToClipboardAsync(Path.Combine(tempDir, "missing.png")));
+
+            using var cancellation = new CancellationTokenSource();
+            cancellation.Cancel();
+            var canceled = await Assert.ThrowsAsync<OperationCanceledException>(() => service.ShowInExplorerAsync(Path.Combine(tempDir, "missing.png"), cancellation.Token));
+            Assert.Equal(cancellation.Token, canceled.CancellationToken);
         }
         finally
         {
@@ -369,6 +472,15 @@ public sealed class WorldServiceBehaviorTests
     {
         var bytes = new byte[32];
         bytes[0] = 0x01;
+        return PdqHasher.ToHex(bytes);
+    }
+
+    /// <summary>ゼロhashとの距離を生成時点で確定させ、順位付けの距離算出に依存しない期待値を作る。</summary>
+    private static string HashWithBitCount(int bitCount)
+    {
+        var bytes = new byte[32];
+        for (var bit = 0; bit < bitCount; bit++)
+            bytes[bit / 8] |= (byte)(1 << (bit % 8));
         return PdqHasher.ToHex(bytes);
     }
 
