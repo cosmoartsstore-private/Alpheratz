@@ -24,8 +24,6 @@ namespace Alpheratz.Features.Template;
 /// </summary>
 public partial class TemplatePageViewModel : UiThreadSafeObservableObject
 {
-    /// <summary>X の標準投稿で利用できる加重文字数。</summary>
-    public const int StandardPostCharacterLimit = 280;
     /// <summary>置換後の超過へ注意を促す残り文字数。</summary>
     public const int PlaceholderWarningRemainingCharacters = 20;
     private const int ShortenedUrlLength = 23;
@@ -120,7 +118,7 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
     }
 
     /// <summary>入力欄へ保持できる文字列かを、実文字数と X の加重文字数の両方で判定する。</summary>
-    public static bool isTemplateInputWithinLimit(string? text) => (text?.Length ?? 0) <= StandardPostCharacterLimit && countPostCharacters(text) <= StandardPostCharacterLimit;
+    public static bool isTemplateInputWithinLimit(string? text) => (text?.Length ?? 0) <= AppConstants.StandardPostCharacterLimit && countPostCharacters(text) <= AppConstants.StandardPostCharacterLimit;
 
     /// <summary>投稿時に内容が展開されるプレースホルダーを含むかを返す。</summary>
     public static bool containsPostPlaceholder(string? text) => !string.IsNullOrEmpty(text) && SupportedPostTemplateTokens.Any(token => text.Contains(token, StringComparison.Ordinal));
@@ -231,10 +229,10 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
             }
 
             var postLength = countPostCharacters(tweetText);
-            if (postLength > StandardPostCharacterLimit)
+            if (postLength > AppConstants.StandardPostCharacterLimit)
             {
                 AppLogger.Trace($"TemplatePageViewModel.openTweetIntent: skip (expanded text too long: {postLength})");
-                toastService.addToast(getMsg("TemplatePageViewModel.postTextTooLong", ("count", postLength), ("max", StandardPostCharacterLimit)), ToastType.error);
+                toastService.addToast(getMsg("TemplatePageViewModel.postTextTooLong", ("count", postLength), ("max", AppConstants.StandardPostCharacterLimit)), ToastType.error);
                 return false;
             }
 
@@ -394,7 +392,7 @@ public partial class TemplatePageViewModel : UiThreadSafeObservableObject
         if (!isTemplateInputWithinLimit(normalized))
         {
             AppLogger.Trace("TemplatePageViewModel.saveTemplate: skip (too long)");
-            toastService.addToast(getMsg("TemplatePageViewModel.templateTooLong", ("count", weightedLength), ("max", StandardPostCharacterLimit)), ToastType.error);
+            toastService.addToast(getMsg("TemplatePageViewModel.templateTooLong", ("count", weightedLength), ("max", AppConstants.StandardPostCharacterLimit)), ToastType.error);
             return;
         }
         var changesToExistingTemplate = EditingTweetTemplate is not null

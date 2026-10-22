@@ -1,3 +1,4 @@
+using static Alpheratz.Messages.MessageCatalog;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -93,7 +94,7 @@ public sealed class ThumbnailService
             if (imgCacheDir is null || !Directory.Exists(imgCacheDir))
                 return 0;
 
-            var nativePhotoPath = photoPath.Replace('/', Path.DirectorySeparatorChar);
+            var nativePhotoPath = AppPaths.ToNativePath(photoPath);
             var filename = Path.GetFileName(nativePhotoPath);
             if (string.IsNullOrWhiteSpace(filename))
                 return 0;
@@ -137,8 +138,8 @@ public sealed class ThumbnailService
         try
         {
             var imgCacheDir = AppPaths.GetImgCacheDir(sourceSlot)
-                ?? throw new InvalidOperationException("imgCache フォルダを取得できません");
-            var nativePhotoPath = photoPath.Replace('/', Path.DirectorySeparatorChar);
+                ?? throw new InvalidOperationException(getMsg("ThumbnailService.cacheDirectoryUnavailable"));
+            var nativePhotoPath = AppPaths.ToNativePath(photoPath);
             var filename = Path.GetFileName(nativePhotoPath);
             var cacheKey = BuildCacheKey(photoPath);
             var thumbPath = Path.Combine(imgCacheDir, $"{filename}.{cacheKey}.thumb.{variant}.jpg");
@@ -170,7 +171,7 @@ public sealed class ThumbnailService
                     await _generateThumbnailAsync(photoPath, temporaryPath, maxSize, ct).ConfigureAwait(false);
                     ct.ThrowIfCancellationRequested();
                     if (!IsUsableThumbnailFile(temporaryPath))
-                        throw new InvalidDataException("生成したサムネイルが完全な JPEG ではありません");
+                        throw new InvalidDataException(getMsg("ThumbnailService.incompleteJpeg"));
 
                     // 同一directory内の rename によって、完成済みファイルだけを最終名へ公開する。
                     // 既存cacheがある場合も、生成が完了するまでは旧ファイルを維持する。
@@ -283,7 +284,7 @@ public sealed class ThumbnailService
     /// <summary>写真パスからcacheファイル名用の短い安定ハッシュを作る。</summary>
     private static string BuildCacheKey(string photoPath)
     {
-        var normalized = photoPath.Replace('\\', '/').ToUpperInvariant();
+        var normalized = AppPaths.NormalizePathForDb(photoPath).ToUpperInvariant();
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(normalized));
         return Convert.ToHexString(hash, 0, 8).ToLowerInvariant();
     }
@@ -304,7 +305,7 @@ public sealed class ThumbnailService
         {
             // StorageFile.GetFileFromPathAsync は Windows 上でも forward-slash 区切りを拒絶し
             // E_INVALIDARG (0x800700A1) を返す。DB 正規化パスは '/' なので '\' に直す。
-            var winPath = sourcePath.Replace('/', Path.DirectorySeparatorChar);
+            var winPath = AppPaths.ToNativePath(sourcePath);
             var sourceFile = await StorageFile.GetFileFromPathAsync(winPath).AsTask(ct).ConfigureAwait(false);
             using var sourceStream = await sourceFile.OpenReadAsync().AsTask(ct).ConfigureAwait(false);
             var decoder = await BitmapDecoder.CreateAsync(sourceStream).AsTask(ct).ConfigureAwait(false);
@@ -373,7 +374,7 @@ public sealed class ThumbnailService
                 if (state < 0)
                     return false;
                 if (state == int.MaxValue)
-                    throw new InvalidOperationException("サムネイル生成ロックの参照数が上限に達しました");
+                    throw new InvalidOperationException(getMsg("ThumbnailService.lockReferenceLimitReached"));
 
                 if (Interlocked.CompareExchange(ref referenceState, state + 1, state) == state)
                     return true;

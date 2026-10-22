@@ -44,7 +44,7 @@ public partial class App : Application
             var settingDir = AppPaths.GetSettingDir();
             if (settingDir is not null)
             {
-                var path = System.IO.Path.Combine(settingDir, "setting.json");
+                var path = System.IO.Path.Combine(settingDir, AppConstants.SettingsFileName);
                 if (System.IO.File.Exists(path))
                 {
                     var json = System.IO.File.ReadAllText(path, System.Text.Encoding.UTF8);

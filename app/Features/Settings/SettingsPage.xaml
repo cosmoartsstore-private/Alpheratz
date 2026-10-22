@@ -1,4 +1,4 @@
-<Page x:Class="Alpheratz.Features.Settings.SettingsPage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:converters="using:Alpheratz.Shared.Converters" xmlns:messages="using:Alpheratz.Messages" xmlns:shared="using:Alpheratz.Shared.Controls" Background="Transparent" IsTabStop="True" KeyDown="Page_KeyDown">
+<Page x:Class="Alpheratz.Features.Settings.SettingsPage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:converters="using:Alpheratz.Shared.Converters" xmlns:core="using:Alpheratz.Core" xmlns:messages="using:Alpheratz.Messages" xmlns:shared="using:Alpheratz.Shared.Controls" Background="Transparent" IsTabStop="True" KeyDown="Page_KeyDown">
     <Page.Resources>
         <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <converters:ThumbnailSourceConverter x:Key="DuplicateThumbnailSourceConverter" DecodePixelWidth="144"/>
@@ -310,7 +310,7 @@
                                                 <ColumnDefinition Width="*"/>
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
-                                            <TextBox x:Name="TagInputBox" Text="{Binding TagMaster.TagDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.tagNamePlaceholder')}" MaxLength="25" KeyDown="TagInput_KeyDown"/>
+                                            <TextBox x:Name="TagInputBox" Text="{Binding TagMaster.TagDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.tagNamePlaceholder')}" MaxLength="{x:Bind core:AppConstants.MaxTagLength}" KeyDown="TagInput_KeyDown"/>
                                             <Button x:Name="AddTagButton" Grid.Column="1" Content="{x:Bind messages:MessageCatalog.getMsg('common.add')}" Style="{StaticResource PrimaryButtonStyle}" IsEnabled="False" Click="AddTag_Click"/>
                                         </Grid>
                                         <TextBlock x:Name="TagValidationText" Visibility="Collapsed" FontSize="{StaticResource AFontSizeSm}" Foreground="{ThemeResource AWarn}" TextWrapping="Wrap"/>
@@ -360,7 +360,7 @@
                                 </Border.Shadow>
                                 <StackPanel Spacing="12">
                                     <TextBlock x:Name="EditorModeLabel" Text="{x:Bind messages:MessageCatalog.getMsg('SettingsPageLogic.templateNewHeading')}" Style="{StaticResource SubHeadingTextStyle}"/>
-                                    <TextBox x:Name="TemplateInputBox" Text="{Binding Template.TweetTemplateDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="280" MinHeight="220" FontFamily="{StaticResource AFontMono}" FontSize="{StaticResource AFontSizeMd}" BeforeTextChanging="TemplateInputBox_BeforeTextChanging" PlaceholderText="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.templatePlaceholder')}"/>
+                                    <TextBox x:Name="TemplateInputBox" Text="{Binding Template.TweetTemplateDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="{x:Bind core:AppConstants.StandardPostCharacterLimit}" MinHeight="220" FontFamily="{StaticResource AFontMono}" FontSize="{StaticResource AFontSizeMd}" BeforeTextChanging="TemplateInputBox_BeforeTextChanging" PlaceholderText="{x:Bind messages:MessageCatalog.getMsg('SettingsPage.templatePlaceholder')}"/>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>

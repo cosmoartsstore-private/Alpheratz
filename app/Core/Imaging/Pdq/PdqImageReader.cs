@@ -1,3 +1,4 @@
+using static Alpheratz.Messages.MessageCatalog;
 using System;
 using System.Buffers;
 using System.IO;
@@ -33,7 +34,7 @@ public static class PdqImageReader
     {
         try
         {
-            var file = await StorageFile.GetFileFromPathAsync(path.Replace('/', '\\')).AsTask(ct).ConfigureAwait(false);
+            var file = await StorageFile.GetFileFromPathAsync(AppPaths.ToNativePath(path)).AsTask(ct).ConfigureAwait(false);
             using var stream = await file.OpenAsync(FileAccessMode.Read).AsTask(ct).ConfigureAwait(false);
             return await ReadLumaCoreAsync(stream, usePool, ct).ConfigureAwait(false);
         }
@@ -128,7 +129,7 @@ internal sealed class PdqLumaImage : IDisposable
     internal float[] DetachBuffer()
     {
         if (isPooled)
-            throw new InvalidOperationException("プール配列は所有権を切り離せません。");
+            throw new InvalidOperationException(getMsg("PdqImageReader.pooledBufferOwnershipRequired"));
         return Interlocked.Exchange(ref buffer, null)
             ?? throw new ObjectDisposedException(nameof(PdqLumaImage));
     }

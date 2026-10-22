@@ -1,3 +1,4 @@
+using Alpheratz.Core;
 using Microsoft.Data.Sqlite;
 using Microsoft.Win32;
 using static Alpheratz.Messages.MessageCatalog;
@@ -10,10 +11,11 @@ namespace Alpheratz.Services;
 /// </summary>
 internal static class StellaRecordRegistration
 {
-    private const string AppName = "Alpheratz";
+    private const string AppName = AppConstants.ApplicationName;
     private const string LegacyAppName = "Alpheratz " + "v" + "2";
     private static string AppDescription => getMsg("StellaRecordRegistration.appDescription");
     private const string RegKeyPath = @"Software\CosmoArtsStore\StellaRecord";
+    private const string DatabaseFileName = "stellarecord.db";
 
     private const string CreateTableSql = """
         CREATE TABLE IF NOT EXISTS apps (
@@ -318,10 +320,10 @@ internal static class StellaRecordRegistration
     private static string? GetDbPath()
     {
         using var key = Registry.CurrentUser.OpenSubKey(RegKeyPath);
-        var installLocation = key?.GetValue("InstallLocation") as string;
+        var installLocation = key?.GetValue(AppConstants.InstallLocationRegistryValue) as string;
         if (!string.IsNullOrWhiteSpace(installLocation))
         {
-            var installedDbPath = Path.Combine(installLocation, "Data", "db", "stellarecord.db");
+            var installedDbPath = Path.Combine(installLocation, AppConstants.DataDirectoryName, AppConstants.DatabaseDirectoryName, DatabaseFileName);
             if (File.Exists(installedDbPath))
                 return installedDbPath;
         }

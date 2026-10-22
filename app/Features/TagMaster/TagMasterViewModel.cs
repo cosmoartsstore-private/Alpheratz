@@ -18,8 +18,6 @@ namespace Alpheratz.Features.TagMaster;
 /// </summary>
 public partial class TagMasterViewModel : UiThreadSafeObservableObject
 {
-    /// <summary>1 タグの最大文字数。入力欄と保存時検証で共通利用する。</summary>
-    public const int MaxTagLength = 25;
     private readonly AlpheratzDb db;
     private readonly ToastService toastService;
     private readonly DispatcherService dispatcherService;
@@ -76,10 +74,10 @@ public partial class TagMasterViewModel : UiThreadSafeObservableObject
             return;
         }
 
-        if (normalized.Length > MaxTagLength)
+        if (normalized.Length > AppConstants.MaxTagLength)
         {
             AppLogger.Trace("TagMasterViewModel.createTag: skip (too long)");
-            toastService.addToast(getMsg("TagMasterViewModel.tagTooLong", ("maxLength", MaxTagLength)), ToastType.error);
+            toastService.addToast(getMsg("TagMasterViewModel.tagTooLong", ("maxLength", AppConstants.MaxTagLength)), ToastType.error);
             return;
         }
 

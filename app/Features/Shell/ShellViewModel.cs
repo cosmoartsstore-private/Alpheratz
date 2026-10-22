@@ -803,7 +803,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         try
         {
             if (cleanup.SourceSlot is not (1 or 2) || string.IsNullOrWhiteSpace(cleanup.OperationId))
-                throw new InvalidDataException("写真フォルダ整理要求が破損しています");
+                throw new InvalidDataException(getMsg("ShellViewModel.corruptedFolderCleanupRequest"));
 
             var isCurrent = await settingsService.IsPendingFolderCleanupCurrentAsync(cleanup).ConfigureAwait(false);
             if (!isCurrent)
@@ -837,9 +837,9 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         try
         {
             if (slot is not (1 or 2))
-                throw new ArgumentOutOfRangeException(nameof(slot), slot, "source_slot は 1 または 2 である必要があります");
+                throw new ArgumentOutOfRangeException(nameof(slot), slot, getMsg("common.invalidSourceSlot"));
             if (string.IsNullOrWhiteSpace(newPath) || !Directory.Exists(newPath))
-                throw new DirectoryNotFoundException($"写真フォルダが見つかりません: {newPath}");
+                throw new DirectoryNotFoundException(getMsg("ShellViewModel.photoDirectoryMissing", ("path", newPath)));
 
             var currentPath = slot == 1 ? PhotoFolderPath : SecondaryPhotoFolderPath;
             var pendingCleanup = await settingsService.GetPendingFolderCleanupAsync().ConfigureAwait(false);
@@ -854,7 +854,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
                 && !string.IsNullOrWhiteSpace(otherPath)
                 && AppPaths.AreOverlappingDirectories(newPath, otherPath))
             {
-                throw new InvalidOperationException("1st と 2nd の写真フォルダには、同じフォルダや親子関係のフォルダを設定できません");
+                throw new InvalidOperationException(getMsg("common.overlappingPhotoFolders"));
             }
 
             await StopActiveScanAsync().ConfigureAwait(false);
@@ -943,7 +943,7 @@ public partial class ShellViewModel : UiThreadSafeObservableObject, IAsyncDispos
         try
         {
             if (slot is not (1 or 2))
-                throw new ArgumentOutOfRangeException(nameof(slot), slot, "source_slot は 1 または 2 である必要があります");
+                throw new ArgumentOutOfRangeException(nameof(slot), slot, getMsg("common.invalidSourceSlot"));
 
             // 確認後に別のフォルダ操作が先に完了していた場合、古い確認内容で現在の設定を消さない。
             currentPath = slot == 1 ? PhotoFolderPath : SecondaryPhotoFolderPath;

@@ -152,7 +152,7 @@ public sealed class WorldService
     internal static Uri BuildWorldUri(string worldId)
     {
         if (!IsValidWorldId(worldId))
-            throw new ArgumentException("VRChat ワールドIDの形式が不正です。");
+            throw new ArgumentException(getMsg("WorldService.invalidWorldId"));
 
         return new Uri($"https://vrchat.com/home/world/{worldId}/info");
     }
@@ -171,7 +171,7 @@ public sealed class WorldService
             || uri.Fragment.Length > 0
             || !IsTextOnlyTweetIntentQuery(uri.Query))
         {
-            throw new ArgumentException("Tweet intent URL の形式が不正です。");
+            throw new ArgumentException(getMsg("WorldService.invalidTweetIntentUrl"));
         }
 
         return uri;
@@ -181,7 +181,7 @@ public sealed class WorldService
     internal static ProcessStartInfo BuildExplorerSelectionStartInfo(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
-            throw new ArgumentException("Explorer で表示する写真パスが空です。", nameof(path));
+            throw new ArgumentException(getMsg("WorldService.emptyPhotoPath"), nameof(path));
 
         // Explorer の選択指定は /select,<path> が1つの引数である。
         // ArgumentList に渡し、空白を含むパスの引用処理は ProcessStartInfo に委ねる。
@@ -220,7 +220,7 @@ public sealed class WorldService
         if (string.IsNullOrWhiteSpace(windowsDirectory))
             windowsDirectory = Environment.GetEnvironmentVariable("WINDIR") ?? string.Empty;
         if (string.IsNullOrWhiteSpace(windowsDirectory))
-            throw new InvalidOperationException("Windows ディレクトリを特定できないため Explorer を起動できません。");
+            throw new InvalidOperationException(getMsg("WorldService.windowsDirectoryUnavailable"));
 
         return System.IO.Path.Combine(windowsDirectory, ExplorerExecutableName);
     }

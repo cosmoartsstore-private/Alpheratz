@@ -3,13 +3,16 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows.Forms;
 using Microsoft.Win32;
+using Alpheratz.Core;
+using static Alpheratz.Messages.MessageCatalog;
 
 namespace Launcher;
 
 internal static class Program
 {
-    private const string AppName = "Alpheratz";
-    private const string RegistryKeyPath = @"Software\CosmoArtsStore\Alpheratz";
+    private const string AppName = AppConstants.ApplicationName;
+    private const string RegistryKeyPath = AppConstants.RegistryKeyPath;
+    private const string RuntimeExecutableName = "Alpheratz.Frontend.exe";
 
     [STAThread]
     private static int Main(string[] args)
@@ -19,7 +22,7 @@ internal static class Program
             var runtimeExe = ResolveRuntimeExecutable();
             if (!File.Exists(runtimeExe))
             {
-                ShowError($"Alpheratz runtime executable was not found.\n\n{runtimeExe}");
+                ShowError(getMsg("Launcher.runtimeMissing", ("path", runtimeExe)));
                 return 2;
             }
 
@@ -30,8 +33,8 @@ internal static class Program
         {
             var logWritten = TryWriteLaunchError(ex);
             ShowError(logWritten
-                ? "Alpheratzを起動できませんでした。詳細は Data\\logs\\launcher_error.log を確認してください。"
-                : "Alpheratzを起動できませんでした。エラー情報も保存できませんでした。");
+                ? getMsg("Launcher.startFailedWithLog")
+                : getMsg("Launcher.startFailedWithoutLog"));
             return 1;
         }
     }
@@ -50,23 +53,23 @@ internal static class Program
         var installLocation = ReadRegistryValue("RuntimeLocation");
         if (!string.IsNullOrWhiteSpace(installLocation))
         {
-            return Path.Combine(installLocation, "Alpheratz.Frontend.exe");
+            return Path.Combine(installLocation, RuntimeExecutableName);
         }
 
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        return Path.Combine(localAppData, "CosmoArtsStore", AppName, "app", "Alpheratz.Frontend.exe");
+        return Path.Combine(localAppData, AppConstants.PublisherName, AppName, "app", RuntimeExecutableName);
     }
 
     private static string ResolveDataRoot()
     {
-        var installLocation = ReadRegistryValue("InstallLocation");
+        var installLocation = ReadRegistryValue(AppConstants.InstallLocationRegistryValue);
         if (!string.IsNullOrWhiteSpace(installLocation))
         {
-            return Path.Combine(installLocation, "Data", "logs");
+            return Path.Combine(installLocation, AppConstants.DataDirectoryName, AppConstants.LogDirectoryName);
         }
 
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        return Path.Combine(localAppData, "CosmoArtsStore", AppName, "Data", "logs");
+        return Path.Combine(localAppData, AppConstants.PublisherName, AppName, AppConstants.DataDirectoryName, AppConstants.LogDirectoryName);
     }
 
     private static string? ReadRegistryValue(string valueName)

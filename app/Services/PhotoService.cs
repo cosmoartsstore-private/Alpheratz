@@ -336,7 +336,7 @@ public sealed class PhotoService
             {
                 var updated = await _db.TrySetPhotoFavoriteAsync(photo.photo_path, isFavorite, CancellationToken.None).ConfigureAwait(false);
                 if (!updated)
-                    throw new InvalidOperationException($"写真が見つかりません: {photo.photo_path}");
+                    throw new InvalidOperationException(getMsg("common.photoNotFound", ("path", photo.photo_path)));
             },
             ct);
         AppLogger.Trace("PhotoService.BulkSetPhotoFavoriteAsync: exit (dispatched)");
@@ -434,7 +434,7 @@ public sealed class PhotoService
                 {
                     try
                     {
-                        var nativePath = ToNativePath(photo.photo_path);
+                        var nativePath = AppPaths.ToNativePath(photo.photo_path);
                         var info = new FileInfo(nativePath);
                         if (info.Exists)
                             candidates.Add(new DuplicateFileCandidate(photo, nativePath, info.Length));
@@ -560,7 +560,7 @@ public sealed class PhotoService
                     FileContentReadLease? candidateLease = null;
                     try
                     {
-                        candidateLease = await OpenFileContentReadLeaseAsync(ToNativePath(retainedPath), allowDelete: false, ct).ConfigureAwait(false);
+                        candidateLease = await OpenFileContentReadLeaseAsync(AppPaths.ToNativePath(retainedPath), allowDelete: false, ct).ConfigureAwait(false);
                         if (candidateLease is not null
                             && candidateLease.Snapshot.FileSize == targetGroup.Key.ExpectedFileSize
                             && string.Equals(candidateLease.Snapshot.ContentHash, targetGroup.Key.ExpectedContentHash, StringComparison.Ordinal))
@@ -599,7 +599,7 @@ public sealed class PhotoService
                     foreach (var target in targetGroup)
                     {
                         ct.ThrowIfCancellationRequested();
-                        var nativeTargetPath = ToNativePath(target.Photo.photo_path);
+                        var nativeTargetPath = AppPaths.ToNativePath(target.Photo.photo_path);
                         FileContentReadLease? targetLease;
                         try
                         {
@@ -761,14 +761,14 @@ public sealed class PhotoService
             try
             {
                 if (!Directory.Exists(destinationFolder))
-                    throw new DirectoryNotFoundException($"コピー先フォルダが見つかりません: {destinationFolder}");
+                    throw new DirectoryNotFoundException(getMsg("PhotoService.destinationDirectoryMissing", ("path", destinationFolder)));
 
                 var skipped = 0;
                 var copied = 0;
                 foreach (var photo in photos)
                 {
                     ct.ThrowIfCancellationRequested();
-                    var nativeSource = photo.photo_path.Replace('/', Path.DirectorySeparatorChar);
+                    var nativeSource = AppPaths.ToNativePath(photo.photo_path);
                     var filename = Path.GetFileName(nativeSource);
                     var dest = Path.Combine(destinationFolder, filename);
                     try
@@ -802,7 +802,6 @@ public sealed class PhotoService
         return task;
     }
 
-    private static string ToNativePath(string path) => path.Replace('/', Path.DirectorySeparatorChar);
 
     /// <summary>
     /// 既存の類似分析結果を候補グループとして再利用し、完全一致確認が必要な写真だけを返す。
@@ -873,7 +872,7 @@ public sealed class PhotoService
                 FileMode.Open,
                 FileAccess.Read,
                 allowDelete ? FileShare.Read | FileShare.Delete : FileShare.Read,
-                bufferSize: 128 * 1024,
+                bufferSize: 128 * AppConstants.BytesPerKibibyte,
                 FileOptions.Asynchronous | FileOptions.SequentialScan);
             try
             {

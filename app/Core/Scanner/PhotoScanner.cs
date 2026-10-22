@@ -18,7 +18,7 @@ namespace Alpheratz.Core.Scanner;
 
 public sealed partial class PhotoScanner
 {
-    private const int MaxItxtSize = 4 * 1024 * 1024;
+    private const int MaxItxtSize = 4 * AppConstants.BytesPerMebibyte;
     private const int ScanDbBatchSize = 500;
     private const int ScanProgressUpdateIntervalMilliseconds = 100;
     // 画像ヘッダーと PNG メタデータの読込みを並列化する。UI と他処理へ余力を残すため最大 4 並列に抑える。
@@ -26,7 +26,7 @@ public sealed partial class PhotoScanner
         => Math.Clamp(Environment.ProcessorCount / 2, 1, 4);
     // VRChat の output_log 1 行の上限。ここを超える行は破損または異常データとみなして
     // Regex を走らせずに打ち切る。デフォルト 64 KiB。
-    private const int MaxLogLineLength = 64 * 1024;
+    private const int MaxLogLineLength = 64 * AppConstants.BytesPerKibibyte;
     // 任意追加の Windows codec に依存せず、対応 OS だけで全処理を完結できる形式に限定する。
     private static readonly string[] SupportedExtensions = ["png", "jpg", "jpeg"];
     private static readonly string[] SkipDirs = ["node_modules", "vendor", "cache", "$recycle.bin", "system volume information", "thumbnails"];

@@ -1,3 +1,4 @@
+using static Alpheratz.Messages.MessageCatalog;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -102,20 +103,20 @@ public sealed class SettingsService
     public Task<PendingFolderCleanupSetting> SaveFolderChangeAsync(int sourceSlot, string expectedCurrentPath, string committedPath, CancellationToken ct = default)
     {
         if (sourceSlot is not (1 or 2))
-            throw new ArgumentOutOfRangeException(nameof(sourceSlot), sourceSlot, "source_slot は 1 または 2 である必要があります");
+            throw new ArgumentOutOfRangeException(nameof(sourceSlot), sourceSlot, getMsg("common.invalidSourceSlot"));
 
         ct.ThrowIfCancellationRequested();
         lock (_writeGate)
         {
             var setting = _config.LoadSetting();
             if (setting.PendingFolderCleanup is not null)
-                throw new InvalidOperationException("前回の写真フォルダ整理が完了していません");
+                throw new InvalidOperationException(getMsg("SettingsService.folderCleanupPending"));
 
             var savedPath = sourceSlot == 1
                 ? setting.PhotoFolderPath
                 : setting.SecondaryPhotoFolderPath;
             if (!string.Equals(savedPath, expectedCurrentPath, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("写真フォルダ設定が確認後に変更されました。設定画面を開き直してください");
+                throw new InvalidOperationException(getMsg("SettingsService.photoFolderChanged"));
 
             var otherPath = sourceSlot == 1
                 ? setting.SecondaryPhotoFolderPath
@@ -124,7 +125,7 @@ public sealed class SettingsService
                 && !string.IsNullOrWhiteSpace(otherPath)
                 && AppPaths.AreOverlappingDirectories(committedPath, otherPath))
             {
-                throw new InvalidOperationException("1st と 2nd の写真フォルダには、同じフォルダや親子関係のフォルダを設定できません");
+                throw new InvalidOperationException(getMsg("common.overlappingPhotoFolders"));
             }
 
             var cleanup = new PendingFolderCleanupSetting
@@ -186,7 +187,7 @@ public sealed class SettingsService
             if (current is null)
                 return Task.CompletedTask;
             if (!string.Equals(current.OperationId, operationId, StringComparison.Ordinal))
-                throw new InvalidOperationException("別の写真フォルダ整理要求へ更新されています");
+                throw new InvalidOperationException(getMsg("SettingsService.folderCleanupRequestChanged"));
 
             setting.PendingFolderCleanup = null;
             _config.SaveSetting(setting);

@@ -1,3 +1,4 @@
+using static Alpheratz.Messages.MessageCatalog;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -85,7 +86,7 @@ ON CONFLICT(photo_path) DO UPDATE SET
     private SqliteConnection OpenConnection()
     {
         var path = databasePath ?? AppPaths.GetDbPath()
-            ?? throw new InvalidOperationException("Alpheratz DB の保存先を取得できません");
+            ?? throw new InvalidOperationException(getMsg("AlpheratzDb.pathUnavailable"));
         var connectionString = new SqliteConnectionStringBuilder { DataSource = path }.ToString();
         var conn = new SqliteConnection(connectionString);
         try
@@ -813,7 +814,7 @@ ORDER BY photo_path ASC";
             findPhoto.CommandText = "SELECT 1 FROM photos WHERE photo_path = @p LIMIT 1";
             findPhoto.Parameters.AddWithValue("@p", photoPath);
             if (findPhoto.ExecuteScalar() is null)
-                throw new InvalidOperationException($"写真が見つかりません: {photoPath}");
+                throw new InvalidOperationException(getMsg("common.photoNotFound", ("path", photoPath)));
 
             using var insertTag = conn.CreateCommand();
             insertTag.Transaction = tx;
@@ -926,7 +927,7 @@ WHERE photo_path = @p
 
             var normalized = tag.Trim();
             if (normalized.Length == 0)
-                throw new ArgumentException("タグ名が空です", nameof(tag));
+                throw new ArgumentException(getMsg("common.emptyTagName"), nameof(tag));
 
             using var conn = OpenConnection();
             using var cmd = conn.CreateCommand();
@@ -957,7 +958,7 @@ WHERE photo_path = @p
 
             var normalized = tag.Trim();
             if (normalized.Length == 0)
-                throw new ArgumentException("タグ名が空です", nameof(tag));
+                throw new ArgumentException(getMsg("common.emptyTagName"), nameof(tag));
 
             using var conn = OpenConnection();
             using var tx = conn.BeginTransaction();
@@ -1226,7 +1227,7 @@ ON CONFLICT(photo_path, tag_id) DO NOTHING";
         try
         {
             if (slot is not (1 or 2))
-                throw new ArgumentOutOfRangeException(nameof(slot), slot, "source_slot は 1 または 2 である必要があります");
+                throw new ArgumentOutOfRangeException(nameof(slot), slot, getMsg("common.invalidSourceSlot"));
             ct.ThrowIfCancellationRequested();
 
             using var conn = OpenConnection();

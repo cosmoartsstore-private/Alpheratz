@@ -42,7 +42,7 @@ public partial class DuplicatePhotoItemViewModel : UiThreadSafeObservableObject
             ? Path.GetFileName(photo.PhotoPath)
             : photo.PhotoFilename;
         PhotoPath = photo.PhotoPath;
-        PreviewPath = photo.PhotoPath.Replace('/', Path.DirectorySeparatorChar);
+        PreviewPath = AppPaths.ToNativePath(photo.PhotoPath);
         DirectoryPath = ResolveDirectoryPath(PreviewPath);
         SourceSlot = photo.SourceSlot;
         FileSize = photo.FileSize;
@@ -326,9 +326,9 @@ public partial class DuplicatePhotosViewModel : UiThreadSafeObservableObject
         var value = Math.Max(0, bytes);
         var displayValue = (double)value;
         var unitIndex = 0;
-        while (displayValue >= 1024 && unitIndex < units.Length - 1)
+        while (displayValue >= AppConstants.BytesPerKibibyte && unitIndex < units.Length - 1)
         {
-            displayValue /= 1024;
+            displayValue /= AppConstants.BytesPerKibibyte;
             unitIndex++;
         }
 

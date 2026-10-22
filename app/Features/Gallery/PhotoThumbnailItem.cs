@@ -148,7 +148,7 @@ public partial class PhotoThumbnailItem : UiThreadSafeObservableObject
         get
         {
             var path = !string.IsNullOrEmpty(grid_thumb_path) ? grid_thumb_path : photo_path;
-            return string.IsNullOrEmpty(path) ? null : path.Replace('/', '\\');
+            return string.IsNullOrEmpty(path) ? null : AppPaths.ToNativePath(path);
         }
     }
 
@@ -160,7 +160,7 @@ public partial class PhotoThumbnailItem : UiThreadSafeObservableObject
             var path = !string.IsNullOrEmpty(display_thumb_path) ? display_thumb_path
                      : !string.IsNullOrEmpty(resolved_photo_path) ? resolved_photo_path
                      : photo_path;
-            return string.IsNullOrEmpty(path) ? null : path.Replace('/', '\\');
+            return string.IsNullOrEmpty(path) ? null : AppPaths.ToNativePath(path);
         }
     }
 

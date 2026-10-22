@@ -1,3 +1,4 @@
+using static Alpheratz.Messages.MessageCatalog;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -14,7 +15,7 @@ public sealed class AppConfig
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private const string StartupRegistryKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string StartupRegistryValueName = "Alpheratz";
+    private const string StartupRegistryValueName = AppConstants.ApplicationName;
     private const string LauncherExecutableName = "Alpheratz.exe";
     private readonly object _lock = new();
     private readonly string? settingDir;
@@ -31,7 +32,7 @@ public sealed class AppConfig
         AppLogger.Trace("AppConfig.LoadSetting: enter");
         lock (_lock)
         {
-            var path = GetSettingDir() is { } d ? Path.Combine(d, "setting.json") : null;
+            var path = GetSettingDir() is { } d ? Path.Combine(d, AppConstants.SettingsFileName) : null;
             if (path is not null && File.Exists(path))
             {
                 try
@@ -65,8 +66,8 @@ public sealed class AppConfig
             lock (_lock)
             {
                 var dir = GetSettingDir()
-                    ?? throw new InvalidOperationException("設定ファイルの保存先を取得できません");
-                var path = Path.Combine(dir, "setting.json");
+                    ?? throw new InvalidOperationException(getMsg("AppConfig.settingDirectoryUnavailable"));
+                var path = Path.Combine(dir, AppConstants.SettingsFileName);
                 var json = JsonSerializer.Serialize(setting, JsonOptions);
                 tempPath = Path.Combine(dir, $"setting.{Guid.NewGuid():N}.tmp");
 
@@ -152,7 +153,7 @@ public sealed class AppConfig
                 }
                 catch (Exception restoreException)
                 {
-                    throw new AggregateException("自動起動設定の更新と以前の登録への復元に失敗しました", updateException, restoreException);
+                    throw new AggregateException(getMsg("AppConfig.startupUpdateAndRestoreFailed"), updateException, restoreException);
                 }
                 throw;
             }
@@ -172,7 +173,7 @@ public sealed class AppConfig
         try
         {
             using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(StartupRegistryKeyPath, writable: true)
-                ?? throw new InvalidOperationException("Windows の自動起動設定を開けません");
+                ?? throw new InvalidOperationException(getMsg("AppConfig.startupRegistryUnavailable"));
             if (enabled)
             {
                 var launcherPath = ResolveStartupExecutablePath();
@@ -237,7 +238,7 @@ public sealed class AppConfig
                 return adjacentLauncher;
         }
 
-        throw new FileNotFoundException("自動起動へ登録する Alpheratz launcher が見つかりません");
+        throw new FileNotFoundException(getMsg("AppConfig.launcherMissing"));
     }
 
     private static string QuoteExecutablePath(string path) => $"\"{path}\"";
@@ -257,7 +258,7 @@ public sealed class AppConfig
     private static void RestoreStartupRegistration(StartupRegistrationSnapshot snapshot)
     {
         using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(StartupRegistryKeyPath, writable: true)
-            ?? throw new InvalidOperationException("Windows の自動起動設定を復元できません");
+            ?? throw new InvalidOperationException(getMsg("AppConfig.startupRegistryRestoreFailed"));
         if (snapshot.Exists)
             key.SetValue(StartupRegistryValueName, snapshot.Value!, snapshot.Kind);
         else

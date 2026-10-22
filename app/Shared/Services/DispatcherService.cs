@@ -1,3 +1,4 @@
+using static Alpheratz.Messages.MessageCatalog;
 using System;
 using System.Threading.Tasks;
 using Alpheratz.Core;
@@ -86,7 +87,7 @@ public sealed class DispatcherService
         if (!queued)
         {
             AppLogger.Error("DispatcherService.RunOnUiThread: TryEnqueue failed");
-            tcs.SetException(new InvalidOperationException("DispatcherQueue が利用できません"));
+            tcs.SetException(new InvalidOperationException(getMsg("DispatcherService.queueUnavailable")));
         }
         return tcs.Task;
     }

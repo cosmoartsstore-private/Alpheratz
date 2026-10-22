@@ -22,7 +22,6 @@ namespace Alpheratz.Features.Gallery;
 /// </summary>
 public partial class GalleryViewModel : UiThreadSafeObservableObject
 {
-    private const int MAX_TAG_LENGTH = 25;
 
     private readonly PhotoService photoService;
     private readonly WorldService worldService;
@@ -242,10 +241,10 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
             return;
         }
 
-        if (normalized.Length > MAX_TAG_LENGTH)
+        if (normalized.Length > AppConstants.MaxTagLength)
         {
             AppLogger.Trace("GalleryViewModel.addTag: skip (too long)");
-            toastService.addToast(getMsg("GalleryViewModel.tagTooLong", ("maxLength", MAX_TAG_LENGTH)), ToastType.error);
+            toastService.addToast(getMsg("GalleryViewModel.tagTooLong", ("maxLength", AppConstants.MaxTagLength)), ToastType.error);
             return;
         }
 
@@ -282,9 +281,9 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         AppLogger.Trace($"GalleryViewModel.addTags: enter photoPath={photoPath} count={normalizedTags.Length}");
         if (normalizedTags.Length == 0) return;
 
-        if (normalizedTags.Any(tag => tag.Length > MAX_TAG_LENGTH))
+        if (normalizedTags.Any(tag => tag.Length > AppConstants.MaxTagLength))
         {
-            toastService.addToast(getMsg("GalleryViewModel.tagTooLong", ("maxLength", MAX_TAG_LENGTH)), ToastType.error);
+            toastService.addToast(getMsg("GalleryViewModel.tagTooLong", ("maxLength", AppConstants.MaxTagLength)), ToastType.error);
             return;
         }
 
@@ -472,10 +471,10 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
             return;
         }
 
-        if (normalizedTags.Any(tag => tag.Length > MAX_TAG_LENGTH))
+        if (normalizedTags.Any(tag => tag.Length > AppConstants.MaxTagLength))
         {
             AppLogger.Trace("GalleryViewModel.bulkAddTags: skip (too long)");
-            toastService.addToast(getMsg("GalleryViewModel.tagTooLong", ("maxLength", MAX_TAG_LENGTH)), ToastType.error);
+            toastService.addToast(getMsg("GalleryViewModel.tagTooLong", ("maxLength", AppConstants.MaxTagLength)), ToastType.error);
             return;
         }
 
@@ -589,7 +588,7 @@ public partial class GalleryViewModel : UiThreadSafeObservableObject
         }
 
         var names = result.FailedPhotos
-            .Select(failure => Path.GetFileName(failure.Photo.photo_path.Replace('/', Path.DirectorySeparatorChar)))
+            .Select(failure => Path.GetFileName(AppPaths.ToNativePath(failure.Photo.photo_path)))
             .Select(name => string.IsNullOrWhiteSpace(name)
                 ? getMsg("GalleryViewModel.unknownPhotoName")
                 : name)

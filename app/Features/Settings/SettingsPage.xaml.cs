@@ -320,7 +320,7 @@ public sealed partial class SettingsPage : Page
         return (float)point.Y;
     }
 
-    private Button GetSettingsSectionButton(string section) => section switch { "general" => GeneralNavButton, "similar" => SimilarPhotosNavButton, "tags" => TagMasterNavButton, "templates" => TemplateNavButton, "credits" => CreditsNavButton, _ => throw new ArgumentOutOfRangeException(nameof(section), section, "未定義の設定セクションです。"), };
+    private Button GetSettingsSectionButton(string section) => section switch { "general" => GeneralNavButton, "similar" => SimilarPhotosNavButton, "tags" => TagMasterNavButton, "templates" => TemplateNavButton, "credits" => CreditsNavButton, _ => throw new ArgumentOutOfRangeException(nameof(section), section, getMsg("SettingsPage.undefinedSection")), };
 
     /// <summary>背景タップで設定モーダルのクローズ要求を発行する。</summary>
     private void Backdrop_Tapped(object sender, TappedRoutedEventArgs e)
@@ -585,15 +585,15 @@ public sealed partial class SettingsPage : Page
         var normalized = draft.Trim();
         var duplicate = normalized.Length > 0
             && viewModel.TagMaster.masterTags.Any(existing => string.Equals(existing, normalized, StringComparison.OrdinalIgnoreCase));
-        var tooLong = draft.Length > TagMasterViewModel.MaxTagLength;
-        var atLimit = draft.Length >= TagMasterViewModel.MaxTagLength;
+        var tooLong = draft.Length > AppConstants.MaxTagLength;
+        var atLimit = draft.Length >= AppConstants.MaxTagLength;
 
         AddTagButton.IsEnabled = normalized.Length > 0 && !duplicate && !tooLong;
 
         TagValidationText.Text = duplicate
             ? getMsg("TagMasterViewModel.tagAlreadyExists")
             : atLimit
-                ? getMsg("SettingsPage.tagLengthLimitReached", ("maxLength", TagMasterViewModel.MaxTagLength))
+                ? getMsg("SettingsPage.tagLengthLimitReached", ("maxLength", AppConstants.MaxTagLength))
                 : string.Empty;
         TagValidationText.Visibility = TagValidationText.Text.Length > 0
             ? Visibility.Visible
@@ -690,7 +690,7 @@ public sealed partial class SettingsPage : Page
         var normalized = draft.Trim();
         var count = TemplatePageViewModel.countPostCharacters(draft);
         var inputWithinLimit = TemplatePageViewModel.isTemplateInputWithinLimit(draft);
-        var remaining = Math.Max(0, TemplatePageViewModel.StandardPostCharacterLimit - count);
+        var remaining = Math.Max(0, AppConstants.StandardPostCharacterLimit - count);
         var placeholderMayOverflow = remaining <= TemplatePageViewModel.PlaceholderWarningRemainingCharacters
             && TemplatePageViewModel.containsPostPlaceholder(draft);
         var changesExisting = viewModel.Template.EditingTweetTemplate is not null
@@ -700,11 +700,11 @@ public sealed partial class SettingsPage : Page
             && (viewModel.Template.EditingTweetTemplate is null || changesExisting);
 
         SaveButton.IsEnabled = normalized.Length > 0 && inputWithinLimit && !duplicate;
-        TemplateCharacterCountText.Text = getMsg("SettingsPage.templateLengthCount", ("count", count), ("max", TemplatePageViewModel.StandardPostCharacterLimit));
+        TemplateCharacterCountText.Text = getMsg("SettingsPage.templateLengthCount", ("count", count), ("max", AppConstants.StandardPostCharacterLimit));
         string validationMessage;
         if (templateInputLimitReached || !inputWithinLimit)
         {
-            validationMessage = getMsg("SettingsPage.templateLengthLimitReached", ("max", TemplatePageViewModel.StandardPostCharacterLimit));
+            validationMessage = getMsg("SettingsPage.templateLengthLimitReached", ("max", AppConstants.StandardPostCharacterLimit));
         }
         else if (duplicate)
         {

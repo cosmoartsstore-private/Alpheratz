@@ -13,4 +13,11 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\app\Core\AppConstants.cs" Link="Shared\AppConstants.cs" />
+    <Compile Include="..\..\app\Messages\MessageCatalog.cs" Link="Shared\MessageCatalog.cs" />
+    <EmbeddedResource Include="..\..\app\Messages\messages.ja.properties" LogicalName="Alpheratz.Messages.messages.ja.properties">
+      <WithCulture>false</WithCulture>
+    </EmbeddedResource>
+  </ItemGroup>
 </Project>

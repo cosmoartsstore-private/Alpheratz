@@ -13,7 +13,7 @@ public static class AppLogger
 {
     private const int MaxQueuedLines = 512;
     private const int MaxMessageChars = 8000;
-    private const long MaxLogBytes = 1024 * 1024;
+    private const long MaxLogBytes = AppConstants.BytesPerMebibyte;
     private static readonly string _fallbackLogPath = GetFallbackLogPath();
     private static readonly ConcurrentQueue<string> _queue = new();
     private static readonly bool _verboseLogs =
@@ -56,9 +56,9 @@ public static class AppLogger
     private static string GetFallbackLogPath()
     {
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var dir = Path.Combine(localAppData, "CosmoArtsStore", "Alpheratz", "Data", "logs");
+        var dir = Path.Combine(localAppData, AppConstants.PublisherName, AppConstants.ApplicationName, AppConstants.DataDirectoryName, AppConstants.LogDirectoryName);
         try { Directory.CreateDirectory(dir); } catch { }
-        return Path.Combine(dir, "info.log");
+        return Path.Combine(dir, AppConstants.LogFileName);
     }
 
     private static void Enqueue(string level, string message)
@@ -98,7 +98,7 @@ public static class AppLogger
         try
         {
             var logDir = AppPaths.GetLogDir();
-            var path = logDir is not null ? Path.Combine(logDir, "info.log") : _fallbackLogPath;
+            var path = logDir is not null ? Path.Combine(logDir, AppConstants.LogFileName) : _fallbackLogPath;
             EnsureDirectoryFor(path);
             RotateIfOverBudget(path);
 

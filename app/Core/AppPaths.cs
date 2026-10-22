@@ -6,8 +6,6 @@ namespace Alpheratz.Core;
 
 public static class AppPaths
 {
-    private const string RegistryKeyPath = @"Software\CosmoArtsStore\Alpheratz";
-    private const string PolarisKeyPath = @"Software\CosmoArtsStore\Polaris";
 
     /// <summary>テスト時に利用者のデータ領域へ書き込まないための一時データdirectory。</summary>
     internal static string? DataDirOverrideForTests { get; set; }
@@ -19,40 +17,40 @@ public static class AppPaths
     {
         try
         {
-            using var key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath);
-            var path = key?.GetValue("InstallLocation") as string;
+            using var key = Registry.CurrentUser.OpenSubKey(AppConstants.RegistryKeyPath);
+            var path = key?.GetValue(AppConstants.InstallLocationRegistryValue) as string;
             if (!string.IsNullOrWhiteSpace(path) && Directory.Exists(path))
                 return path;
         }
         catch { /* registry を参照できない場合は次の候補を使用する。 */ }
 
         var exeDir = Path.GetDirectoryName(Environment.ProcessPath);
-        if (exeDir is not null && Directory.Exists(Path.Combine(exeDir, "Data")))
+        if (exeDir is not null && Directory.Exists(Path.Combine(exeDir, AppConstants.DataDirectoryName)))
             return exeDir;
 
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        return Path.Combine(localAppData, "CosmoArtsStore", "Alpheratz");
+        return Path.Combine(localAppData, AppConstants.PublisherName, AppConstants.ApplicationName);
     }
 
     /// <summary>アプリデータのルートdirectoryを返す。</summary>
     public static string? GetDataDir()
         => EnsureDir(DataDirOverrideForTests
-            ?? (InstallLocation is null ? null : Path.Combine(InstallLocation, "Data")));
+            ?? (InstallLocation is null ? null : Path.Combine(InstallLocation, AppConstants.DataDirectoryName)));
 
     /// <summary>ログ保存directoryを返す。</summary>
-    public static string? GetLogDir() => EnsureDir(GetDataDir() is { } d ? Path.Combine(d, "logs") : null);
+    public static string? GetLogDir() => EnsureDir(GetDataDir() is { } d ? Path.Combine(d, AppConstants.LogDirectoryName) : null);
 
     /// <summary>設定 JSON 保存directoryを返す。</summary>
-    public static string? GetSettingDir() => EnsureDir(GetDataDir() is { } d ? Path.Combine(d, "db") : null);
+    public static string? GetSettingDir() => EnsureDir(GetDataDir() is { } d ? Path.Combine(d, AppConstants.DatabaseDirectoryName) : null);
 
     /// <summary>画像cacheなどの一時データ保存directoryを返す。</summary>
-    public static string? GetCacheDir() => EnsureDir(GetDataDir() is { } d ? Path.Combine(d, "cache") : null);
+    public static string? GetCacheDir() => EnsureDir(GetDataDir() is { } d ? Path.Combine(d, AppConstants.CacheDirectoryName) : null);
 
     /// <summary>SQLite DB 保存directoryを返す。</summary>
-    public static string? GetDbDir() => EnsureDir(GetDataDir() is { } d ? Path.Combine(d, "db") : null);
+    public static string? GetDbDir() => EnsureDir(GetDataDir() is { } d ? Path.Combine(d, AppConstants.DatabaseDirectoryName) : null);
 
     /// <summary>SQLite DB ファイルのパスを返す。</summary>
-    public static string? GetDbPath() => GetDbDir() is { } d ? Path.Combine(d, "Alpheratz.db") : null;
+    public static string? GetDbPath() => GetDbDir() is { } d ? Path.Combine(d, AppConstants.DatabaseFileName) : null;
 
     /// <summary>指定 source_slot のサムネイルcachedirectoryを返す。</summary>
     public static string? GetImgCacheDir(long sourceSlot = 1)
@@ -67,10 +65,10 @@ public static class AppPaths
     {
         try
         {
-            using var key = Registry.CurrentUser.OpenSubKey(PolarisKeyPath);
-            var path = key?.GetValue("InstallLocation") as string;
+            using var key = Registry.CurrentUser.OpenSubKey(AppConstants.PolarisRegistryKeyPath);
+            var path = key?.GetValue(AppConstants.InstallLocationRegistryValue) as string;
             if (string.IsNullOrWhiteSpace(path)) return null;
-            var archiveDir = Path.Combine(path, "Data", "archive");
+            var archiveDir = Path.Combine(path, AppConstants.DataDirectoryName, "archive");
             return Directory.Exists(archiveDir) ? archiveDir : null;
         }
         catch { return null; }
@@ -78,6 +76,9 @@ public static class AppPaths
 
     /// <summary>DB 保存用に Windows パス区切りをスラッシュへ正規化する。</summary>
     public static string NormalizePathForDb(string path) => path.Replace('\\', '/');
+
+    /// <summary>DB形式の区切りをWindowsのファイルAPIへ渡す区切りへ変換する。</summary>
+    public static string ToNativePath(string path) => path.Replace('/', Path.DirectorySeparatorChar);
 
     /// <summary>末尾区切りと相対表記を除いた、比較用の絶対directoryパスを返す。</summary>
     internal static string NormalizeDirectoryPath(string path) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
